@@ -1,5 +1,7 @@
 # CI matrix: macos-14 (arm64, metal), ubuntu-22.04 (x86_64; CPU tests, CUDA build-only), windows-2022 (build-only).
-# Task P0.2 — `cargo clippy -D warnings`, `cargo fmt --check` must be green on all three.
+# Task P0.2 — `cargo clippy -D warnings`, `cargo fmt --check` must be green on all three; since
+# the move to listepo/infra they run in pipeline.yml (ci-rust.yml). This file keeps the
+# runa-specific steps: dist check, fixtures, e2e/SDK smoke, lints, feature checks, moon, revert.
 # Source of truth for toolchain: rust-toolchain.toml (channel 1.98). The `dtolnay/rust-toolchain`
 # action respects that file; we also request clippy + rustfmt components.
 name: ci
@@ -105,22 +107,8 @@ jobs:
         if: runner.os == 'Linux'
         run: dist generate --mode=ci --check
 
-      - name: cargo fmt --check
-        run: cargo fmt --all -- --check
-
-      - name: cargo clippy (-D warnings)
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: cargo build --workspace
-        run: cargo build --workspace
-
-      - name: cargo test --workspace (CPU tests)
-        # P0.2 says ubuntu does CPU tests; other OS also run tests. We test
-        # only libs (`--lib`) so the P0.4 `runa-engine` examples (which need
-        # `llama-cpp-2`/`encoding_rs` wiring still in progress) are not
-        # compiled as part of the test step — they are exercised separately
-        # via `cargo build --workspace` and the P0.4 spike.
-        run: cargo test --workspace --lib
+      # cargo fmt, clippy (-D warnings), build and `cargo test --workspace --lib` run in
+      # pipeline.yml through listepo/infra ci-rust.yml on the same three targets.
 
       - name: fetch qwen2 fixture (P0.7, git-ignored weights)
         # Real GGUFs are git-ignored (GitHub rejects >100MB); the serve e2e

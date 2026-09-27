@@ -1,0 +1,48 @@
+# Gated pipeline from listepo/infra: Rust CI (ci-rust.yml), CodeQL, Semgrep and Snyk in
+# parallel behind `pipeline / gate`. ci-rust replaces the generic steps of ci.yml (fmt,
+# clippy -D warnings, check, `cargo test --workspace --lib`) on ci.yml's three targets;
+# ci.yml keeps everything runa-specific (fixtures, e2e, feature checks, moon, revert).
+# Inputs, secrets and permissions: listepo/infra docs/reusable-workflows.md.
+name: pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: pipeline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    uses: listepo/infra/.github/workflows/pipeline.yml@189816ac5a375e18e0235044970efcbc40e3cabd
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      rust: true
+      # Same targets as ci.yml; all native, so every entry runs the tests.
+      rust-matrix: >-
+        [
+        {"os": "macos-14", "target": "aarch64-apple-darwin"},
+        {"os": "ubuntu-22.04", "target": "x86_64-unknown-linux-gnu"},
+        {"os": "windows-2022", "target": "x86_64-pc-windows-msvc"}
+        ]
+      # Default features only: cuda/metal/mtmd/native and the NPU stubs are opt-in (and
+      # runa-engine's tests assert the default set); ci.yml checks the stub features.
+      rust-feature-args: ""
+      rust-test-command: cargo test --workspace --lib
+      # C/C++ is the vendored ggml-rpc and kernels; Python and JS are repo scripts.
+      codeql-languages: '["actions", "c-cpp", "javascript-typescript", "python", "rust"]'
+    secrets:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
