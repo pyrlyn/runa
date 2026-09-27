@@ -573,7 +573,7 @@ mod tests {
 
     #[test]
     fn events_roundtrip_and_map_gen_events() {
-        let gen_events = vec![
+        let gen_events = [
             GenEvent::Text("hello".into()),
             GenEvent::Reasoning("plan".into()),
             GenEvent::ToolCalls(vec![ToolCall {

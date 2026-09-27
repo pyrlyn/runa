@@ -63,6 +63,7 @@ pub fn ensure_backend_available(
 #[cfg(test)]
 mod native_feature_tests {
     #[test]
+    #[allow(clippy::assertions_on_constants)] // a runtime check of the feature set, on purpose
     fn portable_default_build_is_not_native() {
         assert!(
             !cfg!(feature = "native"),
