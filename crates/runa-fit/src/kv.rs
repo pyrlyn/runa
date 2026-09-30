@@ -71,7 +71,7 @@ pub fn estimate_kv(desc: &Descriptor, ctx_len: u64, kv_type: &str) -> KvEstimate
         let layer_bytes = if desc.kv_lora_rank > 0 {
             // MLA: compressed latent + rope_dim per token
             let rope_dim = desc.head_dim; // usually head_dim for MLA
-            let elements_per_token = 2 * (desc.kv_lora_rank + rope_dim);
+            let elements_per_token = desc.kv_lora_rank.saturating_add(rope_dim).saturating_mul(2);
             let bytes_per_token = (elements_per_token as f64) * bpe;
             (ctx_len as f64 * bytes_per_token) as u64
         } else {
@@ -82,11 +82,14 @@ pub fn estimate_kv(desc: &Descriptor, ctx_len: u64, kv_type: &str) -> KvEstimate
             } else {
                 ctx_len
             };
-            let elements_per_token = 2 * desc.n_head_kv * desc.head_dim;
+            let elements_per_token = desc
+                .n_head_kv
+                .saturating_mul(desc.head_dim)
+                .saturating_mul(2);
             let bytes_per_token = (elements_per_token as f64) * bpe;
             (ctx as f64 * bytes_per_token) as u64
         };
-        kv_bytes += layer_bytes;
+        kv_bytes = kv_bytes.saturating_add(layer_bytes);
         kv_bytes_per_layer.push(layer_bytes);
     }
 

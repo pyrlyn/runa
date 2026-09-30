@@ -74,7 +74,10 @@ pub fn estimate_compute_with_safety(
     let ffn_scratch = n_ubatch * ffn_dim * 2 * n_layer;
 
     // Softmax scratch: vocab slice for the output layer.
-    let vocab_slice = n_ubatch * desc.n_vocab * bpe / desc.n_embd; // scaled down
+    // `checked_div`: a hostile header can declare `embedding_length = 0`.
+    let vocab_slice = (n_ubatch * desc.n_vocab * bpe)
+        .checked_div(desc.n_embd)
+        .unwrap_or(0); // scaled down
 
     let raw = activations + matmul_scratch + attn_scratch + ffn_scratch + vocab_slice;
     let compute_bytes = ((raw as f64) * safety) as u64;

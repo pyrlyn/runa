@@ -319,7 +319,10 @@ impl Reader {
             let name = r.string()?;
             let n_dims = r.u32()?;
             let n_dims_usize = usize::try_from(n_dims).map_err(|_| ReadError::CountOverflow)?;
-            let mut dims = Vec::with_capacity(n_dims_usize);
+            // `n_dims` is untrusted: never reserve more than the bytes left
+            // could hold (8 per dim), or a 38-byte file asks for gigabytes.
+            let room = r.buf.len().saturating_sub(r.pos) / 8;
+            let mut dims = Vec::with_capacity(n_dims_usize.min(room));
             for _ in 0..n_dims {
                 dims.push(r.u64()?);
             }
