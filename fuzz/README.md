@@ -85,9 +85,13 @@ past known crashes.
 - Crashes land in `artifacts/<target>/`. Reproduce with
   `cargo +nightly fuzz run <target> artifacts/<target>/crash-…`, shrink with
   `cargo +nightly fuzz tmin <target> <file>`.
-- Known reproducers are committed under `regressions/<target>/`; replay all
-  of them with `cargo +nightly fuzz run <target> regressions/<target>/* -- -runs=0`
-  (a fixed bug exits 0).
+- Fixed reproducers are committed under `regressions/<target>/`; replay
+  them with `cargo +nightly fuzz run <target> regressions/<target>/* -- -runs=0`.
+  `crates/runa-fit/tests/fuzz_regressions.rs` replays the `gguf-header`
+  ones under plain `cargo test` (reader, descriptor, KV estimate); the fuzz
+  target also runs `check_fit`, where some of them still reach the open
+  overflows below.
+- Open (unfixed) reproducers live in `regressions/<target>-open/`.
 - `--target-dir target/cli` keeps the heavy `cli` build apart from the
   default one, so switching between them does not rebuild everything.
 
@@ -95,6 +99,28 @@ ASan on macOS: `ctor` (via `hf-hub` → `xet-runtime`) fails to link under
 ASan's global instrumentation (`ld: initializer pointer has no target`);
 `-Cllvm-args=-asan-globals=0` keeps heap/stack checks and fixes the link.
 Alternatively build with `--sanitizer none`. Linux does not need it.
+
+## Known findings
+
+First runs (2026-09-30, macOS arm64, ~90–120 s per target): the four
+`cli`-feature targets and `reasoning-stream`, `cloud-responses`,
+`model-refs` found nothing. `gguf-header` found hostile-header crashes;
+the trivial ones are fixed (`fix(fit): …`, reproducers in
+`regressions/gguf-header/`). Still open, reproducers in
+`regressions/gguf-header-open/`:
+
+- `kv-oom-huge-block-count` — `estimate_kv` reserves and loops over
+  `{arch}.block_count` layers (u64 from the header): a ~560-byte file asks
+  for 32 GiB. Needs a sanity bound on header dimensions in
+  `Descriptor::from_reader` (a policy choice, so not patched here).
+- `compute-overflow`, `planner-overflow`, `speed-overflow` — unchecked
+  `u64` math in `estimate_compute`, `plan_placement` and
+  `active_weight_bytes` on huge header values. Panics only with debug
+  assertions (tests, fuzzing); release builds wrap to wrong estimates.
+  The same descriptor bound would cover these.
+
+Until those are fixed, run `gguf-header` with
+`-fork=4 -ignore_crashes=1 -ignore_ooms=1` to fuzz past them.
 
 ## CI
 
