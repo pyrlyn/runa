@@ -38,7 +38,12 @@ Plan: add a web dashboard showing, in real time, with graphs:
 - latency percentiles (p50, p95, p99);
 - errors: a counter and the most recent failures with tracebacks;
 - quotas and limits (tokens per minute, requests per second), showing whether
-  the app is hitting the ceiling.
+  the app is hitting the ceiling;
+- warm daemon status: alive or not;
+- loaded models: how many and how much memory they use;
+- active MCP tools;
+- the request queue while the server is up;
+- reasoning budget: current spend.
 
 Machine check: TBD.
 
