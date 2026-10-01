@@ -2,7 +2,7 @@
 lang: uk
 ---
 
-# docs/memory.md — публічні методи: `MemoryManager` і `TaskRegistry`
+# Публічні методи: `MemoryManager` і `TaskRegistry`
 
 Крейт: `runa-memory` (план D17/D18, фаза P7, метрики M11/M12).
 Цілі: M11 (RSS у простої ≤ нижня межа + 10 %), M12 (жодна задача не утримується двічі).

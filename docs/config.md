@@ -1,4 +1,4 @@
-# docs/config.md — `runa.toml` and environment keys
+# Configuration: `runa.toml` and environment keys
 
 Search order (later files win): `~/.config/runa/config.toml`, then `./runa.toml`.
 CLI flags beat `RUNA_*` env vars, which beat the files. Inline API keys in TOML

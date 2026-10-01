@@ -120,8 +120,8 @@ it instead of loosening the gate.
   to fill a table — if the docs promise it, the code must have it.
 - `docs/README.md` is the index: a new doc is added there **and** to the Docs
   table in `README.md` in the same change.
-- One topic per file, with the `# <file> — <purpose>` H1 that every file in
-  `docs/` already uses.
+- One topic per file, with a short H1 title (no `docs/<file> —` prefix and no
+  plan codes): the H1 is the page title on the project site.
 - Public API: every new public method gets an entry in `docs/memory.md` (§5,
   P7.5); the docs update is part of the task, not a follow-up.
 - Decisions are recorded as ADRs in `docs/adr/` (`d01`–`d18`, `d23`; D19–D22

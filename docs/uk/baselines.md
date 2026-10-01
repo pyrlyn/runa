@@ -2,7 +2,7 @@
 lang: uk
 ---
 
-# docs/baselines.md — еталон llama-bench (P0.6)
+# Еталонні числа llama-bench
 
 Виміряно 2026-09-08 на Apple M3 Max (Metal, 48GB уніфікованої пам'яті, macOS 15) за допомогою
 `crates/runa-engine/examples/gen.rs` (`llama-cpp-2 =0.1.133 → llama.cpp b7709`).
