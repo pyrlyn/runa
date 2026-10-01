@@ -45,6 +45,8 @@ Plan: add a web dashboard showing, in real time, with graphs:
 - the request queue while the server is up;
 - reasoning budget: current spend.
 
+Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
+
 Machine check: TBD.
 
 ## Reference
