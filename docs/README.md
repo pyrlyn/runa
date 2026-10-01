@@ -32,6 +32,7 @@ All prose in this repository is English, except the translations in `docs/ru/` a
 | [`prices.toml`](prices.toml) | User-editable cloud price table, USD per 1M tokens |
 | [`versions.md`](versions.md) | What each pin maps to upstream (D16), cargo feature flags, release artifacts and install variants, and the root `ketch.toml` package manifest |
 | [`runa.1`](runa.1), [`runa-run.1`](runa-run.1) | Man pages (`man ./docs/runa.1`) |
+| [`site.md`](site.md) | Product card for the project site: tagline, features, install, usage examples, links |
 
 ## Engineering
 

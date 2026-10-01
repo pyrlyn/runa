@@ -112,6 +112,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | [`docs/release-1.0.md`](docs/release-1.0.md) | v1.0 metric checklist with evidence |
 | [`docs/adr/`](docs/adr/) | ADRs for D1–D18 and D23 |
 | [`docs/runa.1`](docs/runa.1) / [`docs/runa-run.1`](docs/runa-run.1) | Man pages |
+| [`docs/site.md`](docs/site.md) | Product card for the project site |
 
 ### Contributors
 
