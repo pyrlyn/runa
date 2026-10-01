@@ -7,6 +7,8 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Muse Spark |
+| P14.3 | todo | medium | M | ready | — |
+| P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
 
@@ -19,6 +21,33 @@ glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
+
+### P14.3. Add fast testing
+
+Plan: add a fast test path for local development and PR checks.
+
+Machine check: TBD.
+
+### P14.4. Add web dashboard
+
+Plan: add a web dashboard showing, in real time, with graphs:
+
+- token speed;
+- the in-flight request/response pairs;
+- the system load attributable to this app;
+- latency percentiles (p50, p95, p99);
+- errors: a counter and the most recent failures with tracebacks;
+- quotas and limits (tokens per minute, requests per second), showing whether
+  the app is hitting the ceiling;
+- warm daemon status: alive or not;
+- loaded models: how many and how much memory they use;
+- active MCP tools;
+- the request queue while the server is up;
+- reasoning budget: current spend.
+
+Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
+
+Machine check: TBD.
 
 ## Reference
 

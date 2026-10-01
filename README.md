@@ -1,5 +1,7 @@
 # runa
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=listepo_runa) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=coverage)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=coverage) [![Tests](https://img.shields.io/sonar/tests/listepo_runa?server=https%3A%2F%2Fsonarcloud.io&compact_message)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=tests)
+
 Local-first AI CLI: fit-check a GGUF before you download it, run locally via
 ggml / llama.cpp, or hit OpenAI and Anthropic — one binary, one thinking model,
 one OpenAI-compatible `serve`.
@@ -165,4 +167,12 @@ upload macOS arm64, Linux x86_64, and Windows x86_64 CPU archives plus
 installers; Metal / Vulkan / CUDA builds are extra artifacts. Cutting a release:
 `bash scripts/release.sh` — see [`docs/release.md`](docs/release.md).
 
-License target: MIT OR Apache-2.0. No telemetry.
+License: see [License](#license) below. No telemetry.
+
+## License
+
+You can use this project under **any** of the following licenses, at your choice:
+
+1. [GNU GPLv3](LICENSE): free for open source applications on any platform, including embedded systems.
+2. [Royalty-free License](LICENSE-ROYALTY-FREE.md): free for proprietary desktop, mobile, and web applications, as long as you disclose that your application uses this project. Embedded systems are not covered.
+3. [Commercial license](PRICING.md): for proprietary applications, including embedded systems, without the attribution requirement.
