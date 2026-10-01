@@ -4,7 +4,7 @@
 or through the OpenAI and Anthropic APIs. Thinking controls, tools, and
 `runa serve` work the same way on both sides.
 
-**Website:** https://listepo.github.io/runa/
+**Repository:** https://github.com/pyrlyn/runa
 
 ## Install
 
