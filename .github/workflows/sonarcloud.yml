@@ -1,9 +1,7 @@
+# SonarCloud analysis (+ Rust LCOV coverage) through pyrlyn/infra's sonarcloud.yml. Every
+# step skips with a notice when SONAR_TOKEN is not set; coverage and scan are soft-fail.
 name: sonarcloud
 
-# SonarCloud OSS analysis: pull requests to main (drafts skipped), pushes to main, and manual
-# runs. Soft-fail for now: the coverage and scan steps use continue-on-error, and every step
-# soft-skips when the SONAR_TOKEN secret is empty (fork pull requests, or before the secret is
-# added). Setup and how to make it blocking: docs/sonarcloud-setup.md
 on:
   pull_request:
     branches: [main]
@@ -18,67 +16,16 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
-
-env:
-  # Empty on fork pull requests and until the repository secret is added.
-  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  CARGO_TERM_COLOR: always
 
 jobs:
   sonarcloud:
-    if: github.event.pull_request.draft == false || github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - name: Skip SonarCloud (no token)
-        if: env.SONAR_TOKEN == ''
-        run: |
-          echo "::notice::SONAR_TOKEN is not set; skipping SonarCloud analysis."
-          echo "Expected for fork pull requests and before the secret is added."
-          echo "See docs/sonarcloud-setup.md."
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.SONAR_TOKEN != ''
-        with:
-          # Full history: Sonar uses blame data for new-code detection.
-          fetch-depth: 0
-
-      # Rust 1.98 and the rest of the tool pins from mise.toml, same as ci.yml.
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        if: env.SONAR_TOKEN != ''
-        with:
-          install: true
-
-      - name: llvm-tools-preview
-        if: env.SONAR_TOKEN != ''
-        run: rustup component add llvm-tools-preview
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        if: env.SONAR_TOKEN != ''
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install cargo-llvm-cov
-        if: env.SONAR_TOKEN != ''
-        continue-on-error: true
-        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
-        with:
-          tool: cargo-llvm-cov
-
-      - name: Coverage (LCOV)
-        if: env.SONAR_TOKEN != ''
-        continue-on-error: true
-        run: |
-          mkdir -p coverage
-          # Library tests only, like the CPU test step in ci.yml (no model weights needed).
-          cargo llvm-cov --workspace --lib --lcov --output-path coverage/lcov.info
-
-      - name: SonarCloud scan
-        if: env.SONAR_TOKEN != ''
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: pyrlyn/infra/.github/workflows/sonarcloud.yml@863d8960601216eec62d4aa78924f84ce61d72b9
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write # cancel-run on failure
+    with:
+      rust: true # llvm-tools-preview, cargo-llvm-cov
+      coverage-command: cargo llvm-cov --workspace --lib --lcov --output-path coverage/lcov.info
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

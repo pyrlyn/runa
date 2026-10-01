@@ -1,4 +1,6 @@
-name: Deploy documentation site
+# Build the runa site (Hugo extended + Tailwind, site/) and deploy it to GitHub Pages through
+# pyrlyn/infra's pages.yml.
+name: pages
 
 on:
   push:
@@ -10,44 +12,30 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: github-pages
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - uses: peaceiris/actions-hugo@v3
-        with:
-          hugo-version: '0.152.2'
-          extended: true
-      - name: Install Tailwind dependencies
-        working-directory: site
-        run: npm ci
-      - name: Build Tailwind CSS
-        working-directory: site
-        run: npm run build:css
-      - name: Build Hugo site
-        working-directory: site
-        run: hugo --minify --destination public
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site/public
-
-  deploy:
-    environment:
-      name: github-pages
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/deploy-pages@v5
+  pages:
+    uses: pyrlyn/infra/.github/workflows/pages.yml@863d8960601216eec62d4aa78924f84ce61d72b9
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      mise: false
+      node-version: "22"
+      node-cache-dependency-path: site/package-lock.json
+      working-directory: site
+      # Hugo extended 0.152.2 (was peaceiris/actions-hugo).
+      setup-command: |
+        v=0.152.2
+        url=https://github.com/gohugoio/hugo/releases/download/v$v
+        curl -fsSL "$url/hugo_extended_${v}_linux-amd64.tar.gz" | tar -xz hugo
+        sudo install -m 755 hugo /usr/local/bin/hugo
+        hugo version
+        npm ci
+      build-command: npm run build:css && hugo --minify --destination public
+      artifact-path: site/public
