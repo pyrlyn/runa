@@ -30,8 +30,15 @@ Machine check: TBD.
 
 ### P14.4. Add web dashboard
 
-Plan: add a web dashboard showing, in real time, token speed, the in-flight
-request/response pairs, and the system load attributable to this app, with graphs.
+Plan: add a web dashboard showing, in real time, with graphs:
+
+- token speed;
+- the in-flight request/response pairs;
+- the system load attributable to this app;
+- latency percentiles (p50, p95, p99);
+- errors: a counter and the most recent failures with tracebacks;
+- quotas and limits (tokens per minute, requests per second), showing whether
+  the app is hitting the ceiling.
 
 Machine check: TBD.
 
