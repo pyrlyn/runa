@@ -1,7 +1,8 @@
 # Contributing
 
-Repository prose is English. Read [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md)
-before changing code: claim protocol, Zig vs C kernels, and workspace layout.
+Repository prose is English (except the `docs/ru/` and `docs/uk/` translations). Read
+[`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) before changing code:
+claim protocol, Zig vs C kernels, and workspace layout.
 
 ## Checks
 
