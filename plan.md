@@ -30,8 +30,8 @@ Machine check: TBD.
 
 ### P14.4. Add web dashboard
 
-Plan: add a web dashboard showing statistics and the current application state
-(e.g. load, speed).
+Plan: add a web dashboard showing, in real time, token speed, the in-flight
+request/response pairs, and the system load attributable to this app, with graphs.
 
 Machine check: TBD.
 
