@@ -28,9 +28,10 @@ Plan: add a fast test path for local development and PR checks.
 
 Machine check: TBD.
 
-### P14.4. Create the web
+### P14.4. Add web dashboard
 
-Plan: create a web interface for runa.
+Plan: add a web dashboard showing statistics and the current application state
+(e.g. load, speed).
 
 Machine check: TBD.
 
