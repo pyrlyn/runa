@@ -50,3 +50,21 @@ jobs:
           else
             bash scripts/release.sh "$LEVEL" "$MODE"
           fi
+
+  # A failed real release (not --dry-run or --local) opens or comments on a `release-failure`
+  # issue that mentions and assigns @listepo (pyrlyn/infra notify-release-failure): GitHub
+  # cannot filter Actions notifications per workflow. The dist Release workflow it starts is
+  # covered by release-failure.yml. Pinned to pyrlyn/infra ci/notify-release-failure; repin to
+  # its merge commit.
+  notify-failure:
+    needs: release
+    if: always() && inputs.mode == '' && needs.release.result == 'failure'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      actions: read # failed job names
+      issues: write
+    steps:
+      - uses: pyrlyn/infra/.github/actions/notify-release-failure@0139bdcb95d4e021540743f8fe2c83529a8f676e
+        with:
+          needs: ${{ toJSON(needs) }}
