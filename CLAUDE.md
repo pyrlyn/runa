@@ -114,7 +114,8 @@ it instead of loosening the gate.
 
 ## 10. Documentation rules
 
-- Prose is English (repository rule, `CONTRIBUTING.md`).
+- Prose is English (repository rule, `CONTRIBUTING.md`), except the `docs/ru/` and
+  `docs/uk/` translations (§13).
 - Document only what the tree ships. Never invent a flag, key, or public method
   to fill a table — if the docs promise it, the code must have it.
 - `docs/README.md` is the index: a new doc is added there **and** to the Docs
@@ -162,6 +163,16 @@ A task is done when all of these hold:
    `docs/tasks.md`. An empty registry table is the normal end state.
 5. No claim is left behind on a task you are not actively working: stop and
    done both clear it (§2).
+
+## 13. Documentation translations
+
+English docs in `docs/` are the source of truth. Russian and Ukrainian translations live in
+`docs/ru/` and `docs/uk/` under the same relative path and file name (front matter adds
+`lang: ru` / `lang: uk`). Any change to an English doc must update the matching `docs/ru/` and
+`docs/uk/` translations in the same change, without waiting for a separate request. New English
+docs get translations too, and removing an English doc removes its translations. These two
+directories are the only place non-English prose is allowed.
+Maintainer-only docs (for example `docs/sonarcloud-setup.md`) stay English-only.
 
 ## Host agents
 
