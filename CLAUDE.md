@@ -137,10 +137,8 @@ it instead of loosening the gate.
   one exists (`feat: P9.3 real RPC backend behind rpc feature`). No trailers.
 - One concern per commit; scope `git add` to the files the task card lists.
   Never commit another agent's uncommitted work.
-- `main` is the reference. Work that touches CI, or that risks a red `main`,
-  goes through a topic branch plus a PR (the P11 flow); a scoped push is fine
-  while CI is green. The `ci.yml` `revert-on-failure` job reverts a red push to
-  `main`, so verify locally first (§9).
+- `main` is the reference. The `ci.yml` `revert-on-failure` job reverts a red
+  commit on `main`, so verify locally first (§9).
 - Never force-push a shared branch. `git pull --rebase` before pushing; on a
   conflict stop and report instead of guessing.
 - Doc-only commits still use the same prefixes (`docs: …`) and mention the task
