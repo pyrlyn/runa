@@ -302,9 +302,11 @@ ketch registry validate "$TMP"    # validated 1 package
 
 ### Release flow
 
-A release is a version commit plus a tag, made by `scripts/release.sh`
-(details, modes and the not-wired list: [`release.md`](release.md)). The tag is
-what the dist-generated `release.yml` turns into a GitHub Release.
+A release is a version commit made by `scripts/release.sh`, landed on `main`
+through a pull request that `bump.yml` merges by rebase once the required
+checks are green; bump then tags the landed commit and dispatches the
+dist-generated `release.yml` (details, modes and the not-wired list:
+[`release.md`](release.md)).
 
 ## Upgrade policy (D16)
 

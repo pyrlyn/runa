@@ -41,7 +41,7 @@ All prose in this repository is English (see [`../CONTRIBUTING.md`](../CONTRIBUT
 | [`perf-baseline.json`](perf-baseline.json) | Machine-readable baseline that `scripts/perf-regress.py` reads and refreshes |
 | [`kernels.md`](kernels.md) | `runa-kernels` benchmark results and the adoption gates (D1, D14, D23) |
 | [`release-1.0.md`](release-1.0.md) | The v1.0 metric checklist with per-metric evidence |
-| [`release.md`](release.md) | How a release runs: `scripts/release.sh`, the tag trigger, artifacts |
+| [`release.md`](release.md) | How a release runs: `bump.yml` (version PR, rebase merge, tag), `scripts/release.sh`, artifacts |
 | [`adr/`](adr/) | One ADR per plan decision: `d01`–`d18`, `d23`. D19–D22 are recorded in [`../plan.md`](../plan.md) §1 only |
 | [`notes/`](notes/) | Spike write-ups; currently `p0.5-mtmd-spike.md` (is `mtmd` reachable through the pinned `llama-cpp-2`?) |
 

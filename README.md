@@ -110,7 +110,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | [`docs/baselines.md`](docs/baselines.md) | `llama-bench` reference numbers |
 | [`docs/perf-nightly.md`](docs/perf-nightly.md) | Nightly perf workflow and > 3 % regression gate |
 | [`docs/perf-baseline.json`](docs/perf-baseline.json) | Baseline data the gate reads |
-| [`docs/release.md`](docs/release.md) | How a release runs (`scripts/release.sh`, tag, artifacts) |
+| [`docs/release.md`](docs/release.md) | How a release runs (`bump.yml`, `scripts/release.sh`, tag, artifacts) |
 | [`docs/release-1.0.md`](docs/release-1.0.md) | v1.0 metric checklist with evidence |
 | [`docs/adr/`](docs/adr/) | ADRs for D1–D18 and D23 |
 | [`docs/runa.1`](docs/runa.1) / [`docs/runa-run.1`](docs/runa-run.1) | Man pages |
@@ -165,7 +165,7 @@ after-1.0 ideas in [`roadmap.md`](roadmap.md).
 Release binaries are **portable** (ggml runtime CPU dispatch). GitHub Releases
 upload macOS arm64, Linux x86_64, and Windows x86_64 CPU archives plus
 installers; Metal / Vulkan / CUDA builds are extra artifacts. Cutting a release:
-`bash scripts/release.sh` — see [`docs/release.md`](docs/release.md).
+Actions → Bump and release (or `bash scripts/release.sh`, which starts it) — see [`docs/release.md`](docs/release.md).
 
 License: see [License](#license) below. No telemetry.
 
