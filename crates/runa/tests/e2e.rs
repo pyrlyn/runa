@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P2.3/P2.5 e2e: `runa run` (one-shot, stdin piping, `--json`, auto/`on_unfit`)
 //! and `runa chat` (piped REPL with slash commands), via `assert_cmd`.
 //!

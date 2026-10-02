@@ -116,4 +116,5 @@ route = "auto"
 | [memory.md](memory.md) | Adaptive memory and task registry API |
 | [README.md](README.md) | Full docs index |
 
-License target: MIT OR Apache-2.0. No telemetry.
+License: GPL-3.0-or-later (or the royalty-free or commercial license, see the README).
+No telemetry.

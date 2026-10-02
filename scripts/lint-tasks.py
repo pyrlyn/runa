@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ivan Tugay
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 """Lint docs/tasks.md claim registry (plan P0.9/P7.6, protocol AGENTS.md §6).
 
 Fail (exit 1):

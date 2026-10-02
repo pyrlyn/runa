@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P3.5: wiremock tests against recorded OpenAI chat-completion fixtures.
 use runa_cloud::openai::{ChatMessage, ChatRequest, CloudEvent, OpenAiClient};
 use runa_core::ThinkConfig;

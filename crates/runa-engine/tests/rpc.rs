@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P9.3 loopback test (`--features rpc`): a minimal fake `rpc-server` that
 //! answers just `HELLO` (protocol 3.6.0) and `DEVICE_COUNT` proves the full
 //! client path — parse → `ggml_backend_rpc_add_server` → global registry →
