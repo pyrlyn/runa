@@ -495,8 +495,8 @@ pub(crate) fn default_threads() -> i32 {
 }
 
 /// `hw.perflevel0.logicalcpu` via `sysctlbyname(3)`. `None` on any failure
-/// (missing key on Intel Macs without perf levels, short read, absurd
-/// value) — the caller falls back to logical CPUs.
+/// (missing key, short read, absurd value) — the caller falls back to
+/// logical CPUs. macOS is Apple Silicon only.
 #[cfg(target_os = "macos")]
 fn apple_pcore_threads() -> Option<i32> {
     let name = c"hw.perflevel0.logicalcpu";
@@ -920,8 +920,8 @@ mod threads_tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn apple_pcore_reading_is_plausible() {
-        // Apple Silicon exposes perf levels; Intel Macs return None and
-        // fall back to logical CPUs — both are acceptable here.
+        // Apple Silicon exposes perf levels; a failed read returns None and
+        // falls back to logical CPUs — both are acceptable here.
         if let Some(p) = super::apple_pcore_threads() {
             let logical = std::thread::available_parallelism()
                 .map(|n| n.get() as i32)

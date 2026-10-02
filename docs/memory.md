@@ -448,8 +448,8 @@ P-cores on Apple Silicon, logical CPUs elsewhere.
   `sysctlbyname`, `libc` macOS-only dep), else
   `available_parallelism`; always `>= 1` (fallback 4 when unknowable).
 - `fn apple_pcore_threads() -> Option<i32>` — the raw sysctl read;
-  `None` on any failure (Intel Macs without perf levels, short read,
-  absurd value) so the caller falls back silently to logical CPUs.
+  `None` on any failure (missing key, short read, absurd value; macOS
+  is Apple Silicon only) so the caller falls back silently to logical CPUs.
 - Check: `threads_tests::{default_threads_is_sane,
   apple_pcore_reading_is_plausible}`.
 
