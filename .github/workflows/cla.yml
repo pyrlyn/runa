@@ -1,0 +1,30 @@
+name: cla
+
+# Contributor License Agreement check: every committer of a pull request must have signed
+# https://github.com/pyrlyn/infra/blob/main/CLA.md (one signature covers all pyrlyn
+# repositories). The logic, allowlist and signature storage live in pyrlyn/infra's cla.yml; see
+# its docs/cla.md for setup. Keep this workflow's name `cla` unique in the repository: after a
+# signing comment the action re-runs the last failed run of the workflow with this name.
+#
+# `pull_request_target` runs in the context of the base branch and never checks out the pull
+# request's code, so secrets stay safe on fork pull requests.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  cla:
+    # Pinned to pyrlyn/infra docs/cla; repin to its merge commit.
+    uses: pyrlyn/infra/.github/workflows/cla.yml@9fdb2056f6e3d5f04a3902bd49a122d95eb738a6
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: write
+      statuses: write
+    secrets:
+      CLA_SIGNATURES_TOKEN: ${{ secrets.CLA_SIGNATURES_TOKEN }}
