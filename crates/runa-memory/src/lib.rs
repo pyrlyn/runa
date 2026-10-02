@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! runa-memory — adaptive memory management (plan D17): shrink toward a
 //! floor after `idle_timeout_s` with no request/job, bounded pre-grow for
 //! heavy tasks; every transition logged with before/after RSS. Also hosts

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Minimal `runa.toml` reader (plan D10, task P2.4 slice).
 //!
 //! Only the `[models.<name>]` alias table is read here:

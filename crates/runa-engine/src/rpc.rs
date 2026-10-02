@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! llama.cpp RPC backend registration (plan P9.3, `--features rpc`).
 //!
 //! Upstream `llama-cpp-sys-2 0.1.133` strips the `ggml-rpc/` sources, so the

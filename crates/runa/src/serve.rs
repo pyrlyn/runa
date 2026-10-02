@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! OpenAI-compatible HTTP server (plan P3.9 / P6.1 / D11).
 //!
 //! Multi-model LRU pool, `--parallel` in-flight cap, `/v1/embeddings`,

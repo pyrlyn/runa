@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Ivan Tugay
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 # Run the test suite, then clean downloaded fixtures only on a full pass.
 #
 #   scripts/test-with-fixture-cleanup.sh [-- <cargo test args...>]
