@@ -4,15 +4,17 @@
 #     its front matter follows CONTENT_CONTRACT.md in pyrlyn/landing. runa has no card yet, so
 #     only its docs are synced. Localized cards docs/ru/site.md and docs/uk/site.md, if added,
 #     -> content/projects/ru/<name>.md and content/projects/uk/<name>.md.
-#   - every other English docs/**/*.md -> content/docs/<this repo's name>/ (mirrored: files
-#     removed here are removed there; the ru/ and uk/ folders are left out of this mirror and
-#     protected from its --delete), plus _source.json with the source repo, commit and ref. The
+#   - every other user-facing English docs/**/*.md -> content/docs/<this repo's name>/ (internal
+#     pages are left out, see `internal` below; mirrored: files removed or left out here are
+#     removed there; the ru/ and uk/ folders are left out of this mirror and protected
+#     from its --delete), plus _source.json with the source repo, commit and ref. The
 #     site renders them as /landing/<name>/docs/<page>/ and links other relative paths back to
 #     this repo at that commit. Page order and titles live in src/data/docs-nav.json in
 #     pyrlyn/landing.
-#   - every docs/<lang>/**/*.md translation (lang: ru, uk; except docs/<lang>/site.md) ->
-#     content/docs/<name>/<lang>/, mirrored with its own --delete. The site renders them as
-#     /landing/<lang>/<name>/docs/<page>/; a page without a translation falls back to English.
+#   - every user-facing docs/<lang>/**/*.md translation (lang: ru, uk; except
+#     docs/<lang>/site.md) -> content/docs/<name>/<lang>/, mirrored with its own --delete and
+#     the same filter. The site renders them as /landing/<lang>/<name>/docs/<page>/; a page
+#     without a translation falls back to English.
 #
 # Auth is a write-enabled deploy key on pyrlyn/landing only; its private half is this repo's
 # SITE_DEPLOY_KEY secret. GITHUB_TOKEN stays read-only. This workflow is independent of the
@@ -110,6 +112,24 @@ jobs:
           set -euo pipefail
           dest="site/content/docs/${PROJECT}"
           mkdir -p "$dest"
+          # Only user-facing docs are published. Internal pages stay in this repository and are
+          # left out here: research, QA audits, design notes and ADRs, proposals, plans and to-do,
+          # done and roadmap notes, agent instructions, maintainer runbooks and asset notes, plus
+          # this repository's own list (the last lines). The patterns carry no leading / so they
+          # match at any depth; --delete-excluded removes any copy already on the site.
+          internal=(
+            --exclude='research/' --exclude='research*.md'
+            --exclude='qa/' --exclude='*audit*.md'
+            --exclude='design/' --exclude='brand/' --exclude='assets/' --exclude='adr/' --exclude='notes/'
+            --exclude='proposals/' --exclude='*proposal*.md'
+            --exclude='plan*.md' --exclude='PLAN*.md' --exclude='todo*.md' --exclude='TODO*.md'
+            --exclude='next*.md' --exclude='done*.md' --exclude='roadmap*.md' --exclude='ideas.md'
+            --exclude='AGENTS.md' --exclude='CLAUDE.md' --exclude='agency.md'
+            --exclude='sonarcloud-setup.md' --exclude='release.md' --exclude='release-*.md'
+            --exclude='README.md' --exclude='tasks.md' --exclude='perf-nightly.md'
+            --exclude='baselines.md' --exclude='versions.md' --exclude='kernels.md'
+            --exclude='fit.md' --exclude='profiles.md' --exclude='memory.md'
+          )
           # English. The locale folders are not part of this mirror: excluded on the sending side
           # and protected (P) on the receiving side, so --delete / --delete-excluded never touch
           # content/docs/<name>/ru/ or uk/; each locale is mirrored by its own rsync below.
@@ -117,6 +137,7 @@ jobs:
             --filter='P /ru/' --filter='P /uk/' \
             --exclude='/ru/' --exclude='/uk/' \
             --exclude='/site.md' \
+            "${internal[@]}" \
             --include='*/' --include='*.md' --exclude='*' \
             source/docs/ "$dest/"
           # Translations: docs/<lang>/**/*.md -> content/docs/<name>/<lang>/, with English file
@@ -126,6 +147,7 @@ jobs:
               mkdir -p "$dest/${lang}"
               rsync -a --delete --delete-excluded --prune-empty-dirs \
                 --exclude='/site.md' \
+                "${internal[@]}" \
                 --include='*/' --include='*.md' --exclude='*' \
                 "source/docs/${lang}/" "$dest/${lang}/"
             else
