@@ -7,7 +7,9 @@
 //! Mel lives inside whisper.cpp (`whisper-rs`); this crate only feeds it
 //! 16 kHz PCM. Run: `cargo bench -p runa-media --bench media`.
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 use runa_media::{
     normalize_rgb_scalar, normalize_rgb_simd, patchify_rgb, resample_mono, resize_rgb,
 };

@@ -162,9 +162,8 @@ impl LoadedModel {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
+    #[allow(clippy::assertions_on_constants)] // a runtime check of the feature set, on purpose
     fn default_build_has_no_mtmd() {
         assert!(
             !cfg!(feature = "mtmd"),

@@ -1,0 +1,24 @@
+# Configuration for pyrlyn/infra's ci.yml, called from pipeline.yml (docs/config.md in
+# pyrlyn/infra). Rust CI stays in the local ci.yml (its job names are the required checks);
+# this file turns on the scans and SonarCloud, which replaces the former sonarcloud.yml.
+version: 1
+
+codeql:
+  # C/C++ is the vendored ggml-rpc and the first-party kernels; Python and JS are repo scripts.
+  languages: [actions, c-cpp, javascript-typescript, python, rust]
+
+sonarcloud:
+  enabled: true
+  events: [push, pull_request, workflow_dispatch] # as the former sonarcloud.yml
+  rust: true # llvm-tools-preview, cargo-llvm-cov
+  coverage-command: cargo llvm-cov --workspace --lib --lcov --output-path coverage/lcov.info
+
+# Snyk is switched off (flag; SNYK_TOKEN stays): the snyk job is skipped and the gate counts it
+# as passed. `enabled: true` turns it back on.
+snyk:
+  enabled: false
+
+# actionlint stays off for now: dist-generated release.yml (never hand-edited) has shellcheck
+# findings. Turn on once .github/actionlint.yaml ignores that file.
+lint:
+  enabled: false

@@ -3254,7 +3254,7 @@ mod history_tests {
         assert_eq!(estimate_history_tokens(&[msg("user", "abcd")]), 1 + 4);
         assert_eq!(
             estimate_history_tokens(&[msg("user", "abcd"), msg("assistant", "ef")]),
-            (1 + 4) + (0 + 4)
+            (1 + 4) + 4
         );
     }
 
