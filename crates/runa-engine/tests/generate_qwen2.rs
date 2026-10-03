@@ -91,10 +91,7 @@ fn qwen2_greedy_emits_text_zero_reasoning() {
     assert_eq!(u.reasoning_tokens, 0, "{u:?}");
     assert!(c.reasoning.is_empty(), "{:?}", c.reasoning);
     assert!(
-        matches!(
-            c.stop,
-            Some(StopReason::Eos | StopReason::MaxTokens)
-        ),
+        matches!(c.stop, Some(StopReason::Eos | StopReason::MaxTokens)),
         "{:?}",
         c.stop
     );
@@ -203,8 +200,7 @@ fn qwen2_required_weather_tool() {
     let c = collect(&mut loaded, req);
     assert_eq!(c.calls.len(), 1, "text {:?}", c.text);
     assert_eq!(c.calls[0].name, "get_weather");
-    let args: serde_json::Value =
-        serde_json::from_str(&c.calls[0].arguments).expect("args JSON");
+    let args: serde_json::Value = serde_json::from_str(&c.calls[0].arguments).expect("args JSON");
     assert!(args["city"].is_string(), "{args}");
     assert!(!c.text.contains("tool_call"), "markup leaked: {:?}", c.text);
 }
@@ -221,8 +217,7 @@ fn qwen2_required_weather_berlin() {
     let c = collect(&mut loaded, req);
     assert_eq!(c.calls.len(), 1, "{:?}", c.calls);
     assert_eq!(c.calls[0].name, "get_weather");
-    let args: serde_json::Value =
-        serde_json::from_str(&c.calls[0].arguments).expect("args JSON");
+    let args: serde_json::Value = serde_json::from_str(&c.calls[0].arguments).expect("args JSON");
     let city = args["city"].as_str().unwrap_or("").to_lowercase();
     assert!(city.contains("berlin"), "expected Berlin in args: {args}");
 }
@@ -243,8 +238,7 @@ fn qwen2_required_tool_from_multi() {
         "unexpected tool: {}",
         c.calls[0].name
     );
-    let args: serde_json::Value =
-        serde_json::from_str(&c.calls[0].arguments).expect("args JSON");
+    let args: serde_json::Value = serde_json::from_str(&c.calls[0].arguments).expect("args JSON");
     assert!(args["city"].is_string(), "{args}");
 }
 

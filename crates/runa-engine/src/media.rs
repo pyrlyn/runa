@@ -63,9 +63,9 @@ pub(crate) fn load_mtmd(
         media_marker: CString::new(mtmd_default_marker())
             .map_err(|_| EngineError::Media("media marker".into()))?,
     };
-    let path_str = path.to_str().ok_or_else(|| {
-        EngineError::Media(format!("non-utf8 mmproj path: {path:?}"))
-    })?;
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| EngineError::Media(format!("non-utf8 mmproj path: {path:?}")))?;
     let ctx = MtmdContext::init_from_file(path_str, model, &params)
         .map_err(|e| EngineError::Media(format!("mtmd init: {e:?}")))?;
     Ok(Some(ctx))
