@@ -1,0 +1,6 @@
+tests/fixtures/*.gguf filter=lfs diff=lfs merge=lfs -text
+tests/fixtures/**/*.gguf filter=lfs diff=lfs merge=lfs -text
+*.gguf filter=lfs diff=lfs merge=lfs -text
+tests/fixtures/*.bin filter=lfs diff=lfs merge=lfs -text
+tests/fixtures/*.safetensors filter=lfs diff=lfs merge=lfs -text
+tests/fixtures/mmproj-*.gguf filter=lfs diff=lfs merge=lfs -text
