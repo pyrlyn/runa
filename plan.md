@@ -1,6 +1,6 @@
 # runa
 
-https://github.com/listepo/runa
+https://github.com/pyrlyn/runa
 
 A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through OpenAI/Anthropic APIs; fit checker, three compute modes, adaptive memory, OpenAI-compatible server.
 
@@ -17,7 +17,7 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 Plan: fix dist build-setup (mise install incl. zig, like CI) + install
 glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 (same commit, CI green), wait for Release + variants, verify
-`ketch install listepo/runa`.
+`ketch install pyrlyn/runa`.
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
@@ -391,7 +391,7 @@ skip extra fuzzers and `mockall` until a trait-heavy seam needs them.
 
 ### Runa audit — features
 
-Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo/apps/runa`; remote: `listepo/runa`.
+Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo/apps/runa`; remote: `pyrlyn/runa`.
 
 #### Crates today
 
@@ -438,7 +438,7 @@ Findings from the 2026-09-20 documentation audit (English).
 #### Adequacy (strong)
 
 - Indexed in `docs/README.md`: `getting-started.md`, `guide.md`, `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `profiles.md`, `versions.md`, `baselines.md`, `perf-nightly.md`, `kernels.md`, `release.md`, `release-1.0.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
-- Site at `https://listepo.github.io/runa/` (`site/`, homepage set on the GitHub repo).
+- Site at `https://pyrlyn.github.io/runa/` (`site/`, homepage set on the GitHub repo).
 - Research companions: `research.md`, `report.html`.
 
 #### Gaps

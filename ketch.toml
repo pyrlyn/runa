@@ -1,14 +1,14 @@
 # runa as a ketch package.
 #
-# Inference from github:listepo/runa already works; this file is what
-# `ketch registry push` sends to the registry (listepo/ketch-registry, folder
+# Inference from github:pyrlyn/runa already works; this file is what
+# `ketch registry push` sends to the registry (pyrlyn/ketch-registry, folder
 # `runa/`) and what docs / `ketch info` show.
-# Schema: listepo/ketch docs/MANIFESTS.md.
+# Schema: pyrlyn/ketch docs/MANIFESTS.md.
 
 name = "runa"
-source = "github:listepo/runa"
+source = "github:pyrlyn/runa"
 description = "Run AI models locally (GGUF via llama.cpp) or through the OpenAI and Anthropic APIs"
-homepage = "https://github.com/listepo/runa"
+homepage = "https://github.com/pyrlyn/runa"
 
 # Only the CLI. The payload is the `runa` executable cargo-dist packs at the
 # archive root; the `runa*` glob matches `runa` (Unix) and `runa.exe`
