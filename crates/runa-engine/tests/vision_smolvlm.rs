@@ -133,10 +133,7 @@ fn smolvlm_describe_shapes_png() {
     assert!(!c.text.is_empty(), "vision must emit text");
     assert!(u.prompt_tokens > 0 && u.generated_tokens > 0, "{u:?}");
     assert!(
-        matches!(
-            c.stop,
-            Some(StopReason::Eos | StopReason::MaxTokens)
-        ),
+        matches!(c.stop, Some(StopReason::Eos | StopReason::MaxTokens)),
         "{:?}",
         c.stop
     );
@@ -204,7 +201,10 @@ fn smolvlm_vision_without_mmproj_errors() {
         t_sec: None,
         source: VisionSource::Path(image),
     }];
-    let err = loaded.generate(req).err().expect("must fail without mmproj");
+    let err = loaded
+        .generate(req)
+        .err()
+        .expect("must fail without mmproj");
     let msg = err.to_string().to_lowercase();
     assert!(
         msg.contains("mmproj") || msg.contains("vision") || msg.contains("media"),
