@@ -24,8 +24,8 @@ All synthetic files are generated, not derived from upstream weights.
 | Qwen3-8B-Q4_K_M.gguf | 4.7G | unsloth/Qwen3-8B-GGUF | Qwen |
 | Qwen3-30B-A3B-Q4_K_M.gguf | 11G | unsloth/Qwen3-30B-A3B-GGUF | Qwen |
 | gpt-oss-20b-MXFP4.gguf | 11G | ggml-org/gpt-oss-20b-GGUF | Apache-2.0 |
-| SmolVLM-500M-Instruct-Q8_0.gguf | 417M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
-| mmproj-SmolVLM-500M-Instruct-Q8_0.gguf | 104M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
+| SmolVLM-256M-Instruct-Q4_K_M.gguf | ~119M | pierretokns/SmolVLM-256M-Instruct-GGUF (from HuggingFaceTB/SmolVLM-256M-Instruct) | Apache-2.0 |
+| mmproj-SmolVLM-256M-Instruct-f16.gguf | ~181M | pierretokns/SmolVLM-256M-Instruct-GGUF | Apache-2.0 |
 | shapes.png | 2.3K | synthetic | MIT |
 
 ## Audio clips (10, 1 sec each, 16kHz mono WAV, sine tones)

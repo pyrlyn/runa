@@ -9,6 +9,8 @@ lto = "thin"
 
 [workspace]
 members = ["crates/*"]
+# cargo-fuzz targets (own workspace, nightly only): fuzz/README.md.
+exclude = ["fuzz"]
 resolver = "3"
 
 [workspace.dependencies]
@@ -17,6 +19,6 @@ clap = "4"
 
 [workspace.package]
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 rust-version = "1.98"
 version = "0.1.0"

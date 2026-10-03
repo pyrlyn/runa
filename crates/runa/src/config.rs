@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Minimal `runa.toml` reader (plan D10, task P2.4 slice).
 //!
 //! Only the `[models.<name>]` alias table is read here:
@@ -824,6 +828,30 @@ fn lora_strings(
             "{origin}: {section} lora must be a string or array of strings"
         )),
     }
+}
+
+/// Fuzzing entry (`cargo fuzz`, fuzz/README.md): every TOML reader above
+/// on one config file's text, as `runa` does at startup. No env, no disk.
+#[cfg(fuzzing)]
+pub(crate) fn fuzz_config_text(text: &str) {
+    let origin = "fuzz.toml";
+    let _ = runa_cloud::reject_inline_secrets(text, origin);
+    let _ = defaults_threads_from_toml(text, origin);
+    let _ = max_load_from_toml(text, origin);
+    let _ = on_unfit_from_toml(text, origin);
+    let _ = think_from_toml(text, origin);
+    let _ = memory_from_toml(text, origin);
+    let _ = audio_route_from_toml(text, origin);
+    let _ = merge_mcp_toml(&mut std::collections::BTreeMap::new(), text, origin);
+    let _ = merge_aliases_toml(&mut AliasTable::default(), text, origin);
+    if let Ok((global, per_alias)) = lora_lists_from_toml(text, origin) {
+        let model_ref = per_alias.first().map(|a| a.0.clone()).unwrap_or_default();
+        let files = [(origin.to_owned(), global, per_alias)];
+        for (_, raw) in select_lora_raws(&files, &model_ref, &[]) {
+            let _ = parse_lora_spec(&raw);
+        }
+    }
+    let _ = OnUnfit::parse(text);
 }
 
 #[cfg(test)]

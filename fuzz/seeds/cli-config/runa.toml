@@ -1,0 +1,30 @@
+on_unfit = "cloud:openai:gpt-5"
+
+[defaults]
+threads = 8
+
+[system]
+max_load_percent = 80
+
+[think]
+mode = "budget"
+budget = 512
+show = true
+
+[memory]
+idle_secs = 60
+
+[audio]
+route = "asr"
+
+[model]
+lora = ["base.gguf:0.5"]
+
+[models.q]
+source = "hf:org/repo:Q4_K_M"
+lora = "q.gguf"
+
+[mcp.servers.fs]
+command = "npx"
+args = ["-y", "fs"]
+env = { A = "1" }

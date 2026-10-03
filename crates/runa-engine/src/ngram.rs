@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Prompt n-gram cache for speculative decoding (P5.6).
 //!
 //! Trigram → next-token map, updated as tokens are accepted. Drafts are

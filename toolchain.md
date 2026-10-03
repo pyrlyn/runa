@@ -11,8 +11,8 @@ Project programs and direct packages from manifests.
 | rustc | mise (pin rust) | Rust compiler | https://github.com/rust-lang/rust |
 | cargo | mise (pin rust) | Rust build and dependencies | https://github.com/rust-lang/cargo |
 | moon | mise | Monorepo tasks | https://github.com/moonrepo/moon |
-| ketch | see its README | Installs dunnage | https://github.com/listepo/ketch |
-| dunnage | ketch | `root:test-with-cleanup` compacts `target/` after a green pass | https://github.com/listepo/dunnage |
+| ketch | see its README | Installs swarfr | https://github.com/pyrlyn/ketch |
+| swarfr | ketch | `root:test-with-cleanup` compacts `target/` after a green pass | https://github.com/listepo/swarfr |
 | ffmpeg | mise | Audio/video fixtures | https://github.com/FFmpeg/FFmpeg |
 | python | mise | Scripts | https://github.com/python/cpython |
 | node | mise | JS runtime | https://github.com/nodejs/node |
@@ -24,7 +24,7 @@ Project programs and direct packages from manifests.
 
 | Package | Where | Source | Why here |
 | --- | --- | --- | --- |
-| dunnage | global | https://github.com/listepo/dunnage | Lossless `target/` cleanup after tests |
+| swarfr | global | https://github.com/listepo/swarfr | Lossless `target/` cleanup after tests |
 
 ## cargo
 

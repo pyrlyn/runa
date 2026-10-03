@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Compute-buffer estimator (P1.5).
 //!
 //! The compute buffer is the scratch memory ggml allocates during inference
@@ -74,7 +78,10 @@ pub fn estimate_compute_with_safety(
     let ffn_scratch = n_ubatch * ffn_dim * 2 * n_layer;
 
     // Softmax scratch: vocab slice for the output layer.
-    let vocab_slice = n_ubatch * desc.n_vocab * bpe / desc.n_embd; // scaled down
+    // `checked_div`: a hostile header can declare `embedding_length = 0`.
+    let vocab_slice = (n_ubatch * desc.n_vocab * bpe)
+        .checked_div(desc.n_embd)
+        .unwrap_or(0); // scaled down
 
     let raw = activations + matmul_scratch + attn_scratch + ffn_scratch + vocab_slice;
     let compute_bytes = ((raw as f64) * safety) as u64;

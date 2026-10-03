@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Background daemon (P9.1): keeps models warm between CLI calls, owns
 //! the adaptive [`MemoryManager`](runa_memory::MemoryManager), and serves
 //! `run` / `chat` over a Unix socket ([`daemon_proto::default_socket_path`]).

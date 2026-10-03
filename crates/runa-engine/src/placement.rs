@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Compute-mode placement (plan P2.1, D4).
 //!
 //! `--mode cpu|gpu|hybrid` maps to a [`Placement`]: layer count for the GPU

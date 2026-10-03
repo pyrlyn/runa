@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! ASR via whisper.cpp (`whisper-rs` 0.16.0) — plan D8 / P4.2.
 //!
 //! Models (`base`, `large-v3-turbo`) and the Silero VAD ggml are auto-pulled

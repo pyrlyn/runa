@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Ivan Tugay
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 # P13.3. The one place a release version is decided. Not wired to any GitHub
 # workflow of our own: this script stops at the pushed tag, and the
 # dist-generated `release.yml` (tag trigger) takes it from there.
