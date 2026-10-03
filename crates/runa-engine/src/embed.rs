@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Text embeddings via llama.cpp pooling (plan P6.1 `/v1/embeddings`).
 
 use llama_cpp_2::context::params::{LlamaContextParams, LlamaPoolingType};

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Native vision through mtmd (plan P4.6).
 //!
 //! Still images (`--image`) and sampled video frames (`--video`) become mtmd

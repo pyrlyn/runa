@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P2.8 prompt cache: llama.cpp KV/session state in LMDB (heed).
 //!
 //! Keys are SHA-256 of model path + placement + ctx + prompt token ids.
