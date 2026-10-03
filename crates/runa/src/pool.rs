@@ -9,7 +9,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use runa_core::BackendKind;
@@ -45,7 +45,7 @@ impl Warmup {
 
 pub(crate) fn warm_up(pool: &Mutex<ModelPool>, warm: &Warmup, tag: &str) {
     let t = Instant::now();
-    let r = catch_job(|| lock(pool).ensure_engine(&warm.model).map(drop));
+    let r = catch_job(|| ensure_engine(pool, &warm.model).map(drop));
     match &r {
         Ok(()) => eprintln!(
             "{tag}: {} ready in {:.1}s",
@@ -96,7 +96,7 @@ pub(crate) enum EngineJob {
     },
     Embed {
         input: String,
-        resp: oneshot::Sender<Result<Vec<f32>, String>>,
+        resp: oneshot::Sender<Result<(Vec<f32>, u32), String>>,
     },
     /// Idle tick (P10.5): the engine releases its prompt cache and keeps
     /// the model (`LoadedModel::on_idle`). Fire-and-forget: queued behind
@@ -121,6 +121,9 @@ pub(crate) struct ModelPool {
     config: LoadConfig,
     /// Last request per loaded engine, for the idle sweep (P10.5).
     last_used: HashMap<String, Instant>,
+    /// Models whose load is in flight. Waiters block on the condvar, not
+    /// on the pool mutex, so a multi-GB load does not stall other models.
+    loading: HashMap<String, Arc<LoadWait>>,
     /// Engines unused for this long get an `EngineJob::Idle`
     /// (prompt cache released, model kept). `Duration::MAX` disables.
     idle_timeout: Duration,
@@ -190,6 +193,7 @@ impl ModelPool {
             mode,
             config,
             last_used: HashMap::new(),
+            loading: HashMap::new(),
             idle_timeout: Duration::MAX,
             max_load_percent: None,
         })
@@ -395,13 +399,13 @@ impl ModelPool {
             .sum()
     }
 
-    pub(crate) fn ensure_engine(
-        &mut self,
-        id: &str,
-    ) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
-        if self.engines.contains_key(id) {
+    fn begin_load(&mut self, id: &str) -> Result<LoadPoll, String> {
+        if let Some(tx) = self.engines.get(id).cloned() {
             self.touch_lru(id);
-            return Ok(Arc::clone(self.engines.get(id).expect("contains_key")));
+            return Ok(LoadPoll::Ready(tx));
+        }
+        if let Some(wait) = self.loading.get(id) {
+            return Ok(LoadPoll::Wait(Arc::clone(wait)));
         }
         let path = self
             .specs
@@ -426,12 +430,101 @@ impl ModelPool {
                 return Err("internal error: backend was not resolved".into());
             }
         };
-        let tx = Arc::new(spawn_engine(path, kind, placement, self.config.clone())?);
-        self.engines.insert(id.to_owned(), Arc::clone(&tx));
-        self.touch_lru(id);
-        self.evict_if_needed();
-        Ok(tx)
+        self.loading
+            .insert(id.to_owned(), Arc::new(LoadWait::new()));
+        Ok(LoadPoll::Start(Box::new(LoadStart {
+            id: id.to_owned(),
+            path,
+            kind,
+            placement,
+            config: self.config.clone(),
+        })))
     }
+
+    fn complete_load(
+        &mut self,
+        id: &str,
+        outcome: Result<std::sync::mpsc::Sender<EngineJob>, String>,
+    ) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+        let wait = self.loading.remove(id);
+        let result = outcome.map(Arc::new);
+        if let Ok(tx) = &result {
+            self.engines.insert(id.to_owned(), Arc::clone(tx));
+            self.touch_lru(id);
+            self.evict_if_needed();
+        }
+        if let Some(wait) = wait {
+            wait.finish(result.clone());
+        }
+        result
+    }
+}
+
+struct LoadWait {
+    state: Mutex<Option<Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String>>>,
+    cv: Condvar,
+}
+
+impl LoadWait {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(None),
+            cv: Condvar::new(),
+        }
+    }
+
+    fn finish(&self, result: Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String>) {
+        *lock(&self.state) = Some(result);
+        self.cv.notify_all();
+    }
+
+    fn wait(&self) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+        let mut guard = lock(&self.state);
+        loop {
+            if let Some(result) = guard.clone() {
+                return result;
+            }
+            guard = self.cv.wait(guard).unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+}
+
+struct LoadStart {
+    id: String,
+    path: PathBuf,
+    kind: BackendKind,
+    placement: Placement,
+    config: LoadConfig,
+}
+
+enum LoadPoll {
+    Ready(Arc<std::sync::mpsc::Sender<EngineJob>>),
+    Wait(Arc<LoadWait>),
+    Start(Box<LoadStart>),
+}
+
+/// Resolve or load `id`. The pool mutex is not held across `spawn_engine`,
+/// so a load of one model does not block requests to models already loaded.
+pub(crate) fn ensure_engine(
+    pool: &Mutex<ModelPool>,
+    id: &str,
+) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+    let start = {
+        let mut guard = lock(pool);
+        match guard.begin_load(id)? {
+            LoadPoll::Ready(tx) => return Ok(tx),
+            LoadPoll::Wait(wait) => {
+                drop(guard);
+                return wait.wait();
+            }
+            LoadPoll::Start(start) => *start,
+        }
+    };
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        spawn_engine(start.path, start.kind, start.placement, start.config)
+    }))
+    .unwrap_or_else(|p| Err(format!("internal error: {}", panic_text(&*p))));
+    lock(pool).complete_load(&start.id, outcome)
 }
 
 pub(crate) fn spawn_engine(
@@ -542,7 +635,7 @@ pub(crate) async fn generate(
     let jobs = {
         let pool = Arc::clone(pool);
         let id = model_id.to_owned();
-        tokio::task::spawn_blocking(move || lock(&pool).ensure_engine(&id))
+        tokio::task::spawn_blocking(move || ensure_engine(&pool, &id))
             .await
             .map_err(|e| e.to_string())??
     };

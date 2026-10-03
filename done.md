@@ -1212,3 +1212,22 @@ Check (evidence): `cargo fmt --check` OK; `python3 scripts/lint-tasks.py docs/ta
 `scripts/test-with-fixture-cleanup.sh` (`moon run root:test-with-cleanup`) now runs `dunnage run target` after a green pass, before the fixture cleanup: lossless compression and dedupe of `./target` that never deletes and keeps mtimes, so nothing rebuilds. Exit code 2 (a build held the lock) counts as success; without dunnage the step prints an install hint, without `target/` it is skipped, and a failed test run still exits before it. dunnage is installed with `ketch install dunnage`; `toolchain.md` lists ketch and dunnage and gains a `ketch` package table; `AGENTS.md` and `README.md` describe the task.
 
 Check (evidence): `bash -n scripts/test-with-fixture-cleanup.sh` OK; the dunnage step run on its own exits 0 without `target/`, and `dunnage run --dry-run target` plans work on a real target.
+
+### P15.1. Fix the 2026-10-01 QA audit findings
+
+The find-only audit (PR 26) lists 20 confirmed bugs. Fix all of them
+in one change: clamp prefill batches to `n_ctx` and reject oversized
+prompts, send `HF_TOKEN` only to Hugging Face (or the configured hub
+host), lock the task registry across processes, validate agent names,
+surface registry I/O errors, reject local `image_url` paths before any
+stat, keep request payloads in 0600 temp files that are deleted on drop,
+map context overflow to HTTP 400, report `max_tokens` truncation, refuse
+a second daemon on a live socket, cap `fit` range bodies and check
+`Content-Range`, let later config files override `[memory]`/`[audio]`
+and reject bad `RUNA_MEMORY_*` values, stop the MCP tool loop at
+`max_rounds`, store models as `owner--name` with a legacy lookup, use a
+strict base64 decoder, honor `general.alignment`, count embedding
+tokens, reject unknown roles and `max_tokens: 0`, verify pull size
+before the sidecar, and drop the pool lock while a model loads.
+
+Check (evidence): `cargo test -p runa-memory` 18 passed; `cargo test -p runa-fit --lib` 82 passed and `cargo test -p runa-fit --test gguf` 14 passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa-engine --lib batch_is_clamped` passed; `cargo clippy -p runa -p runa-memory -p runa-fit -p runa-engine --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s).

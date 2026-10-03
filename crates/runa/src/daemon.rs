@@ -155,13 +155,9 @@ async fn serve(
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    // A stale socket from a dead daemon is ours to replace; a live one
-    // fails the bind below and the new daemon exits loudly.
-    if socket.exists() {
-        let _ = std::fs::remove_file(&socket);
-    }
-    let listener =
-        UnixListener::bind(&socket).map_err(|e| format!("bind {}: {e}", socket.display()))?;
+    // A live socket means another daemon is serving it. Only a refused
+    // connect (dead process, leftover path) is replaced.
+    let (listener, bound_id) = bind_daemon_socket(&socket)?;
     eprintln!("listening on {}", socket.display());
     // Requests that arrive meanwhile queue on the pool lock the warm-up holds.
     let (warm_pool, warm_state) = (Arc::clone(&pool), Arc::clone(&warm));
@@ -190,8 +186,47 @@ async fn serve(
             }
         });
     }
-    let _ = std::fs::remove_file(&socket);
+    remove_owned_socket(&socket, bound_id);
     Ok(())
+}
+
+#[cfg(unix)]
+fn socket_id(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.dev(), meta.ino()))
+}
+
+/// Bind `socket`, replacing it only when nothing is accepting connections.
+#[cfg(unix)]
+fn bind_daemon_socket(socket: &Path) -> Result<(UnixListener, (u64, u64)), String> {
+    if socket.exists() {
+        match std::os::unix::net::UnixStream::connect(socket) {
+            Ok(_) => {
+                return Err(format!("daemon already running on {}", socket.display()));
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::ConnectionRefused
+                    || e.kind() == std::io::ErrorKind::NotFound =>
+            {
+                let _ = std::fs::remove_file(socket);
+            }
+            Err(e) => return Err(format!("socket {}: {e}", socket.display())),
+        }
+    }
+    let listener =
+        UnixListener::bind(socket).map_err(|e| format!("bind {}: {e}", socket.display()))?;
+    let id = socket_id(socket)
+        .ok_or_else(|| format!("socket {}: bound but cannot stat", socket.display()))?;
+    Ok((listener, id))
+}
+
+/// Unlink the socket only when it is still the one this daemon bound.
+#[cfg(unix)]
+fn remove_owned_socket(socket: &Path, owned: (u64, u64)) {
+    if socket_id(socket) == Some(owned) {
+        let _ = std::fs::remove_file(socket);
+    }
 }
 
 /// Non-unix stub: the daemon speaks over a Unix socket.
@@ -300,7 +335,12 @@ async fn serve_request(
         }
         Err(e) => {
             eprintln!("daemon: error for {id}: {e}");
-            vec![DaemonEvent::Error { message: e }]
+            let message = if e.contains("context_length_exceeded") {
+                format!("bad request: {e}")
+            } else {
+                e
+            };
+            vec![DaemonEvent::Error { message }]
         }
     }
 }
@@ -593,5 +633,42 @@ mod tests {
             let events = serve_request(&pool, &mm, &stale).await;
             assert!(matches!(events[0], DaemonEvent::Error { .. }));
         });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn second_daemon_does_not_unlink_a_live_socket() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-sock-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("d.sock");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (listener, id) = bind_daemon_socket(&path).unwrap();
+            let err = bind_daemon_socket(&path).unwrap_err();
+            assert!(err.contains("already running"), "{err}");
+            assert!(path.exists());
+            drop(listener);
+            let (listener, id2) = bind_daemon_socket(&path).unwrap();
+            assert_ne!(id, id2);
+            remove_owned_socket(&path, id);
+            assert!(
+                path.exists(),
+                "a stale inode must not remove the new socket"
+            );
+            remove_owned_socket(&path, id2);
+            assert!(!path.exists());
+            drop(listener);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

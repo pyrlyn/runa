@@ -2852,7 +2852,7 @@ fn cmd_tasks(action: TaskAction) -> Result<(), String> {
     let reg = TaskRegistry::open(task_registry_path());
     match action {
         TaskAction::List {} => {
-            for id in reg.list_free() {
+            for id in reg.list_free().map_err(|e| e.to_string())? {
                 println!("{id}");
             }
             Ok(())

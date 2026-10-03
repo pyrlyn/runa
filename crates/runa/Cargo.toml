@@ -64,6 +64,10 @@ ratatui = "0.30.2"
 crossterm = "0.29"
 tui-textarea-2 = { version = "0.13", default-features = false, features = ["crossterm"] }
 unicode-width = "0.2"
+# Strict base64 for `data:` images and `input_audio` (reject padding junk).
+base64 = "0.22.1"
+# 0600 temp files deleted on drop for request payloads.
+tempfile = "3"
 
 [dev-dependencies]
 # P2.3 e2e CLI tests.

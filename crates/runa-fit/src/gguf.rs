@@ -340,12 +340,15 @@ impl Reader {
             });
         }
 
-        // The first tensor's data begins after padding the header/table up to
-        // a 64-byte alignment (ggml `GGUF_ALIGNMENT` = 32; total header is
-        // padded to that boundary). Compute it from the reader position.
-        const ALIGN: u64 = 32;
+        // Tensor data starts on `general.alignment` (power of two, default
+        // 32 — ggml's `GGUF_DEFAULT_ALIGNMENT`). A missing or unusable value
+        // keeps that default.
+        let align = match out.get_u64("general.alignment") {
+            Some(a) if a > 0 && a.is_power_of_two() && a <= (1 << 20) => a,
+            _ => 32,
+        };
         let pos = r.pos as u64;
-        out.data_start = pos.div_ceil(ALIGN) * ALIGN;
+        out.data_start = pos.div_ceil(align) * align;
 
         Ok(out)
     }

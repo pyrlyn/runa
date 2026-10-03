@@ -260,14 +260,19 @@ pub(crate) fn start(flags: &[String]) -> Result<Option<McpHub>, String> {
 /// appends them to its own history, generates, and returns the new calls.
 pub(crate) fn tool_loop(
     max_rounds: u32,
-    call: impl Fn(&ToolCall) -> String,
+    mut call: impl FnMut(&ToolCall) -> String,
     mut step: impl FnMut(&[(ToolCall, String)]) -> Result<Vec<ToolCall>, String>,
 ) -> Result<(), String> {
     let mut results = Vec::new();
-    for _ in 0..=max_rounds {
+    for round in 0..=max_rounds {
         let calls = step(&results)?;
         if calls.is_empty() {
             return Ok(());
+        }
+        // The budget is executions, not model steps. Stop before running
+        // the calls that would be the round past `max_rounds`.
+        if round == max_rounds {
+            break;
         }
         results = calls
             .into_iter()
@@ -373,5 +378,32 @@ mod tests {
     fn loop_stops_at_max_rounds() {
         let err = tool_loop(2, |_| String::new(), |_| Ok(vec![call("a")])).unwrap_err();
         assert!(err.contains("--max-tool-rounds"), "{err}");
+    }
+
+    #[test]
+    fn loop_does_not_run_tools_past_the_budget() {
+        let mut ran = 0u32;
+        let err = tool_loop(
+            2,
+            |_| {
+                ran += 1;
+                String::new()
+            },
+            |_| Ok(vec![call("a")]),
+        )
+        .unwrap_err();
+        assert!(err.contains("--max-tool-rounds"), "{err}");
+        assert_eq!(ran, 2);
+        ran = 0;
+        let err = tool_loop(
+            0,
+            |_| {
+                ran += 1;
+                String::new()
+            },
+            |_| Ok(vec![call("a")]),
+        )
+        .unwrap_err();
+        assert_eq!(ran, 0, "{err}");
     }
 }

@@ -302,6 +302,14 @@ impl LoadedModel {
         ngram: bool,
         draft_n: usize,
     ) -> Result<Generation<'_>, EngineError> {
+        let n_prompt = u32::try_from(prompt_tokens.len()).unwrap_or(u32::MAX);
+        let n_ctx = self.config().n_ctx;
+        if n_prompt >= n_ctx {
+            return Err(EngineError::ContextExceeded {
+                prompt_tokens: n_prompt,
+                n_ctx,
+            });
+        }
         let cache_hit =
             prefilled.is_some() || (use_cache && self.try_restore_prompt(&prompt_tokens));
         if !cache_hit {
@@ -526,7 +534,9 @@ impl Generation<'_> {
     }
 
     fn batch_size(&self) -> usize {
-        self.loaded.config().n_batch.max(1) as usize
+        let cfg = self.loaded.config();
+        let ctx = cfg.n_ctx.max(1);
+        cfg.n_batch.max(1).min(ctx) as usize
     }
 
     fn prefill_done(&self) -> bool {
@@ -631,7 +641,7 @@ impl Generation<'_> {
             let mut h = hist.clone();
             h.push(tok.0);
             let room = self.max_tokens.saturating_sub(self.generated + 1) as usize;
-            let cap = (self.loaded.config().n_batch as usize).saturating_sub(1);
+            let cap = self.batch_size().saturating_sub(1);
             for id in cache.draft(&h, room.min(self.draft_n).min(cap)) {
                 seq.push(LlamaToken::new(id));
             }
