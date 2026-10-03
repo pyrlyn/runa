@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use runa_kernels::{sample_token, softmax_f32, softmax_f32_reference};
 

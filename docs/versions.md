@@ -272,15 +272,15 @@ tap repo. Local: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
 
 ### ketch package (`ketch.toml`)
 
-The root `ketch.toml` is the [ketch](https://github.com/listepo/ketch) manifest
+The root `ketch.toml` is the [ketch](https://github.com/pyrlyn/ketch) manifest
 for this repo — the file `ketch registry push` offers to
-`listepo/ketch-registry` as `runa/ketch.toml`, and what `ketch info runa` shows
-once it is there. Inference from `github:listepo/runa` already works without
+`pyrlyn/ketch-registry` as `runa/ketch.toml`, and what `ketch info runa` shows
+once it is there. Inference from `github:pyrlyn/runa` already works without
 it; the manifest is what pins the asset choice.
 
 | Field | Value |
 |-------|-------|
-| `source` | `github:listepo/runa` |
+| `source` | `github:pyrlyn/runa` |
 | `bin` | `runa` (the root of the unwrapped cargo-dist archive) |
 | `[asset] include` | `*.tar.xz`, `*windows-msvc.zip` |
 | `[asset] exclude` | the GPU variants (`-metal`, `-vulkan`, `-cuda`), the shell / powershell / homebrew installers, `dist-manifest.json`, `*.sha256`, the source tarball |

@@ -76,3 +76,7 @@ predicates = "3.1.4"
 pretty_assertions = "1.4.1"
 assert_fs = "1.1.4"
 trycmd = "1.2.1"
+
+[lints.rust]
+# `cargo fuzz` compiles src/main.rs with `--cfg fuzzing` (fuzz/Cargo.toml).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Remote GGUF header fetch (plan P1.2, model refs D3).
 //!
 //! `runa fit` must answer *before* downloading anything, so the header

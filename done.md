@@ -1123,7 +1123,7 @@ Completed 2026-09-18 (Cline). Creator request: a ketch manifest in the
 project root, following the sibling convention (`apps/rtok/ketch.toml`,
 `apps/ketch/ketch.toml`).
 
-- New root `ketch.toml`: `name` / `source = "github:listepo/runa"` /
+- New root `ketch.toml`: `name` / `source = "github:pyrlyn/runa"` /
   `description` / `homepage`, `bin = [{ name = "runa" }]`, and an
   `[asset]` block — `include = ["*.tar.xz", "*windows-msvc.zip"]` plus
   `exclude` for the GPU variants (`-metal` / `-vulkan` / `-cuda`), the
@@ -1154,7 +1154,7 @@ three portable CPU archives are selectable, and the three GPU variants plus
 
 Limit: asset *scoring* cannot be exercised end to end yet — `gh release view`
 answers `release not found`, so no release exists to install from. The
-registry copy landed after this entry was written: `listepo/ketch-registry`
+registry copy landed after this entry was written: `pyrlyn/ketch-registry`
 PR #7 `add runa` (merged 2026-09-19 as `cb7b0f3`) carries `runa/ketch.toml`
 (the CLI `runa*` bin glob, portable CPU archives, GPU variants excluded); the
 CI assertion step was dropped from that PR before merge because the registry

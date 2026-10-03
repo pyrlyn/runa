@@ -253,6 +253,6 @@ jobs:
     steps:
       # The shared action skips new branches, bot and earlier auto-revert commits and pushes
       # touching .github/ (GITHUB_TOKEN cannot push workflow files). No re-apply PR, as before.
-      - uses: pyrlyn/infra/.github/actions/revert-on-failure@863d8960601216eec62d4aa78924f84ce61d72b9
+      - uses: pyrlyn/infra/.github/actions/revert-on-failure@0603d0ae610af9f792c5caf925041292a857e480
         with:
           reapply-pr: "false"
