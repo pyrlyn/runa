@@ -1,8 +1,9 @@
-# Gated pipeline from listepo/infra: Rust CI (ci-rust.yml), CodeQL, Semgrep and Snyk in
-# parallel behind `pipeline / gate`. ci-rust replaces the generic steps of ci.yml (fmt,
-# clippy -D warnings, check, `cargo test --workspace --lib`) on ci.yml's three targets;
-# ci.yml keeps everything runa-specific (fixtures, e2e, feature checks, moon, revert).
-# Inputs, secrets and permissions: listepo/infra docs/reusable-workflows.md.
+# Scans from pyrlyn/infra's config-driven ci.yml (.github/infra.yml): CodeQL, Semgrep, Snyk,
+# SonarCloud and actionlint in parallel behind `pipeline / gate`. Rust CI is not repeated here:
+# ci.yml runs it on the same pushes and pull requests (its job names are the required checks).
+# Draft pull requests skip every job, the gate included, until marked ready. Secrets are passed
+# explicitly by name, not with `secrets: inherit`.
+# Shared workflows: https://github.com/pyrlyn/infra/blob/main/docs/reusable-workflows.md
 name: pipeline
 
 on:
@@ -24,25 +25,13 @@ permissions:
 
 jobs:
   pipeline:
-    uses: listepo/infra/.github/workflows/pipeline.yml@189816ac5a375e18e0235044970efcbc40e3cabd
+    uses: pyrlyn/infra/.github/workflows/ci.yml@0603d0ae610af9f792c5caf925041292a857e480 # main
+    # The union every nested job asks for, validated up front even for disabled checks.
     permissions:
       contents: read
       security-events: write
-      actions: read
-    with:
-      rust: true
-      # Same targets as ci.yml; all native, so every entry runs the tests.
-      rust-matrix: >-
-        [
-        {"os": "macos-14", "target": "aarch64-apple-darwin"},
-        {"os": "ubuntu-22.04", "target": "x86_64-unknown-linux-gnu"},
-        {"os": "windows-2022", "target": "x86_64-pc-windows-msvc"}
-        ]
-      # Default features only: cuda/metal/mtmd/native and the NPU stubs are opt-in (and
-      # runa-engine's tests assert the default set); ci.yml checks the stub features.
-      rust-feature-args: ""
-      rust-test-command: cargo test --workspace --lib
-      # C/C++ is the vendored ggml-rpc and kernels; Python and JS are repo scripts.
-      codeql-languages: '["actions", "c-cpp", "javascript-typescript", "python", "rust"]'
+      pull-requests: read
+      actions: write
     secrets:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
