@@ -6,7 +6,7 @@ Local-first AI CLI: fit-check a GGUF before you download it, run locally via
 ggml / llama.cpp, or hit OpenAI and Anthropic — one binary, one thinking model,
 one OpenAI-compatible `serve`.
 
-**Website:** https://listepo.github.io/runa/
+**Website:** https://pyrlyn.github.io/runa/
 
 ## What it does
 
@@ -29,7 +29,7 @@ From a GitHub Release:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh
+  https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh
 ```
 
 Or Homebrew from the formula on that Release: `brew install ./runa.rb`.
@@ -137,7 +137,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | `crates/runa-cloud` | OpenAI + Anthropic adapters, price table |
 | `crates/runa-kernels` | Own kernels (Zig preferred); dispatch, refs, benches |
 | `docs/` | All documentation — start at [`docs/README.md`](docs/README.md) |
-| `site/` | Hugo site (`baseURL` → https://listepo.github.io/runa/) |
+| `site/` | Hugo site (`baseURL` → https://pyrlyn.github.io/runa/) |
 | `scripts/` | Registry lint, fixture guards, perf-regress, release helpers |
 
 Toolchain: `rust-toolchain.toml` + `mise.toml` (see
@@ -176,3 +176,8 @@ You can use this project under **any** of the following licenses, at your choice
 1. [GNU GPLv3](LICENSE): free for open source applications on any platform, including embedded systems.
 2. [Royalty-free License](LICENSE-ROYALTY-FREE.md): free for proprietary desktop, mobile, and web applications, as long as you disclose that your application uses this project. Embedded systems are not covered.
 3. [Commercial license](PRICING.md): for proprietary applications, including embedded systems, without the attribution requirement.
+
+<!-- license-sync:start -->
+Commercial use not covered by the GPLv3 or the Royalty-free License requires a separate paid
+license — see [PRICING.md](PRICING.md).
+<!-- license-sync:end -->

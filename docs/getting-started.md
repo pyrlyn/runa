@@ -4,7 +4,7 @@
 or through the OpenAI and Anthropic APIs. Thinking controls, tools, and
 `runa serve` work the same way on both sides.
 
-**Website:** https://listepo.github.io/runa/
+**Website:** https://pyrlyn.github.io/runa/
 
 ## Install
 
@@ -13,7 +13,7 @@ artifacts):
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh
+  https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh
 ```
 
 Or Homebrew from the formula on that Release: `brew install ./runa.rb`.
@@ -116,4 +116,5 @@ route = "auto"
 | [memory.md](memory.md) | Adaptive memory and task registry API |
 | [README.md](README.md) | Full docs index |
 
-License target: MIT OR Apache-2.0. No telemetry.
+License: GPL-3.0-or-later (or the royalty-free or commercial license, see the README).
+No telemetry.

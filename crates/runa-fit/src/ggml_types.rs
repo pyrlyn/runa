@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! ggml quant type block sizes and byte-per-element math.
 //!
 //! The fit checker (P1.3) needs the exact on-disk size of every tensor to
@@ -70,17 +74,19 @@ pub fn type_info(t: GgmlType) -> Option<TypeInfo> {
 }
 
 /// Number of elements in a tensor given its dimensions (product of dims).
+/// Saturates at `u64::MAX` for hostile headers instead of overflowing.
 pub fn n_elements(dims: &[u64]) -> u64 {
-    dims.iter().product()
+    dims.iter().fold(1u64, |n, &d| n.saturating_mul(d))
 }
 
 /// On-disk byte size of a tensor, computed exactly from its dims and type.
-/// Rounds up to whole blocks (ggml stores whole blocks).
+/// Rounds up to whole blocks (ggml stores whole blocks). `None` for an
+/// unknown type or a size that does not fit in `u64`.
 pub fn tensor_bytes(dims: &[u64], t: GgmlType) -> Option<u64> {
     let info = type_info(t)?;
-    let n = n_elements(dims);
+    let n = dims.iter().try_fold(1u64, |n, &d| n.checked_mul(d))?;
     let blocks = n.div_ceil(info.block_size as u64);
-    Some(blocks * info.bytes_per_block as u64)
+    blocks.checked_mul(info.bytes_per_block as u64)
 }
 
 #[cfg(test)]
@@ -119,6 +125,14 @@ mod tests {
         assert_eq!(b, 36);
         // exactly 32 elements -> 1 block.
         assert_eq!(tensor_bytes(&[32], GgmlType::Q4_0).unwrap(), 18);
+    }
+
+    #[test]
+    fn overflowing_dims_are_none_not_a_panic() {
+        // Fuzz reproducers: fuzz/regressions/gguf-header/*-overflow.
+        assert_eq!(tensor_bytes(&[u64::MAX, 2], GgmlType::F32), None);
+        assert_eq!(tensor_bytes(&[u64::MAX / 2], GgmlType::F32), None);
+        assert_eq!(n_elements(&[u64::MAX, 2]), u64::MAX);
     }
 
     #[test]

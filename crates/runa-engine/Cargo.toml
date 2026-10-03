@@ -82,3 +82,8 @@ tempfile = "3"
 [[example]]
 name = "describe"
 required-features = ["mtmd"]
+
+# Vision integration tests need mtmd (same gate as `describe` example).
+[[test]]
+name = "vision_smolvlm"
+required-features = ["mtmd"]

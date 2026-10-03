@@ -1,12 +1,14 @@
 # runa
 
-https://github.com/listepo/runa
+https://github.com/pyrlyn/runa
 
 A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through OpenAI/Anthropic APIs; fit checker, three compute modes, adaptive memory, OpenAI-compatible server.
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Muse Spark |
+| P14.3 | todo | medium | M | ready | — |
+| P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
 
@@ -15,10 +17,37 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 Plan: fix dist build-setup (mise install incl. zig, like CI) + install
 glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 (same commit, CI green), wait for Release + variants, verify
-`ketch install listepo/runa`.
+`ketch install pyrlyn/runa`.
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
+
+### P14.3. Add fast testing
+
+Plan: add a fast test path for local development and PR checks.
+
+Machine check: TBD.
+
+### P14.4. Add web dashboard
+
+Plan: add a web dashboard showing, in real time, with graphs:
+
+- token speed;
+- the in-flight request/response pairs;
+- the system load attributable to this app;
+- latency percentiles (p50, p95, p99);
+- errors: a counter and the most recent failures with tracebacks;
+- quotas and limits (tokens per minute, requests per second), showing whether
+  the app is hitting the ceiling;
+- warm daemon status: alive or not;
+- loaded models: how many and how much memory they use;
+- active MCP tools;
+- the request queue while the server is up;
+- reasoning budget: current spend.
+
+Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
+
+Machine check: TBD.
 
 ## Reference
 
@@ -334,7 +363,7 @@ Try      UD-Q2_K_XL (~82 GiB) still does not fit · Qwen3-30B-A3B Q4_K_M fits ·
 | mtmd lacks a model's audio/video path | mistral.rs feature or ASR route; `runa fit` prints `audio: via ASR` so the user knows |
 | Cloud API drift (Anthropic thinking params, OpenAI Responses changes) | adapters versioned per API date; recorded fixtures; live smoke tests behind an env flag |
 | Kernel work absorbs time without gains | hard gate ≥ 5 %; P5 time-boxed; scalar reference always shipped |
-| Licenses | llama.cpp MIT, whisper.cpp MIT, sherpa-onnx Apache-2.0, ffmpeg as a separate binary (LGPL/GPL, not linked); `runa` MIT OR Apache-2.0 |
+| Licenses | llama.cpp MIT, whisper.cpp MIT, sherpa-onnx Apache-2.0, ffmpeg as a separate binary (LGPL/GPL, not linked); `runa` GPL-3.0-or-later (or royalty-free / commercial) |
 | Silent behaviour differences vs llama-cli (templates, samplers) | golden tests at temperature 0 against `llama-cli` output for 5 models |
 | Memory thrash (shrink/grow oscillation on bursty load) | hysteresis: grow immediately, shrink only after a full `idle_timeout_s` of silence; transitions logged; soak test in P7.2 |
 | Stale task claims (agent dies holding `in progress`) | claims carry agent + `started_at`; takeover requires asking the owner (or human) first; CI lint surfaces claims older than 7 days |
@@ -362,7 +391,7 @@ skip extra fuzzers and `mockall` until a trait-heavy seam needs them.
 
 ### Runa audit — features
 
-Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo/apps/runa`; remote: `listepo/runa`.
+Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo/apps/runa`; remote: `pyrlyn/runa`.
 
 #### Crates today
 
@@ -409,7 +438,7 @@ Findings from the 2026-09-20 documentation audit (English).
 #### Adequacy (strong)
 
 - Indexed in `docs/README.md`: `getting-started.md`, `guide.md`, `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `profiles.md`, `versions.md`, `baselines.md`, `perf-nightly.md`, `kernels.md`, `release.md`, `release-1.0.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
-- Site at `https://listepo.github.io/runa/` (`site/`, homepage set on the GitHub repo).
+- Site at `https://pyrlyn.github.io/runa/` (`site/`, homepage set on the GitHub repo).
 - Research companions: `research.md`, `report.html`.
 
 #### Gaps

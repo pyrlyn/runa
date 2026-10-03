@@ -263,47 +263,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      # The shared action skips new branches, bot and earlier auto-revert commits and pushes
+      # touching .github/ (GITHUB_TOKEN cannot push workflow files). No re-apply PR, as before.
+      - uses: pyrlyn/infra/.github/actions/revert-on-failure@0603d0ae610af9f792c5caf925041292a857e480
         with:
-          fetch-depth: 0
-      - name: Revert commits from this push
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "No parent (new branch); skip revert"
-            exit 0
-          fi
-          subject=$(git log -1 --format=%s "$AFTER")
-          author=$(git log -1 --format=%an "$AFTER")
-          case "$subject" in
-            "ci: auto-revert"*) echo "Already an auto-revert; skip"; exit 0 ;;
-          esac
-          if [ "$author" = "github-actions[bot]" ]; then
-            echo "Last commit is from actions bot; skip"
-            exit 0
-          fi
-          # The GITHUB_TOKEN has no `workflows` permission, so a revert that
-          # touches `.github/` (e.g. a CI fix) is rejected on push. Leave
-          # those to a human instead of failing the job.
-          if git diff --name-only "$BEFORE" "$AFTER" -- .github/ | grep -q .; then
-            echo "Push touches .github/; skip auto-revert (needs human with workflows permission)"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          parent_count=$(git rev-list --parents -n 1 "$AFTER" | awk '{print NF}')
-          if [ "$parent_count" -gt 2 ]; then
-            git revert --no-edit -m 1 "$AFTER"
-          else
-            git revert --no-commit "$BEFORE".."$AFTER"
-            if git diff --cached --quiet; then
-              echo "Nothing to revert"
-              exit 0
-            fi
-            short=$(git rev-parse --short "$AFTER")
-            git commit -m "ci: auto-revert $short — main CI failed"
-          fi
-          git push origin HEAD:main
+          reapply-pr: "false"
