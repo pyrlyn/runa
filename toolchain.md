@@ -35,6 +35,7 @@ Project programs and direct packages from manifests.
 | assert_fs | local | https://crates.io/crates/assert_fs | e2e temp dirs with auto-cleanup (bench calibration DB). |
 | async-openai | local | https://crates.io/crates/async-openai | Rust dependency |
 | axum | local | https://crates.io/crates/axum | Rust dependency |
+| base64 | local | https://crates.io/crates/base64 | Strict `data:` / `input_audio` decoding |
 | chrono | local | https://crates.io/crates/chrono | Rust dependency |
 | clap | local | https://crates.io/crates/clap | CLI |
 | clap_mangen | local | https://crates.io/crates/clap_mangen | Rust dependency |

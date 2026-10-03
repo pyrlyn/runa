@@ -99,8 +99,10 @@ pub fn config_paths() -> Vec<PathBuf> {
 
 /// Read a config file and reject inline API keys (P3.8). Missing files are skipped.
 fn read_config_text(path: &std::path::Path) -> Result<Option<String>, String> {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return Ok(None);
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
     };
     runa_cloud::reject_inline_secrets(&text, &path.display().to_string())
         .map_err(|e| e.to_string())?;
@@ -501,44 +503,61 @@ pub(crate) fn resolve_audio_route(cli: Option<&str>) -> Result<AudioRoutePref, S
             return AudioRoutePref::parse(t);
         }
     }
-    for path in config_paths() {
-        let Some(text) = read_config_text(&path)? else {
-            continue;
-        };
-        if let Some(r) = audio_route_from_toml(&text, &path.display().to_string())? {
-            return Ok(r);
-        }
-    }
-    Ok(AudioRoutePref::Auto)
+    Ok(audio_route_from_files(&config_paths())?.unwrap_or(AudioRoutePref::Auto))
 }
 
 pub(crate) fn resolve_memory_policy() -> Result<runa_memory::MemoryPolicy, String> {
+    let mut p = memory_policy_from_files(&config_paths())?;
+    if let Some(n) = parse_env_u64("RUNA_MEMORY_IDLE_TIMEOUT_S")? {
+        p.idle_timeout_s = n;
+    }
+    if let Some(n) = parse_env_u64("RUNA_MEMORY_FLOOR_MIB")? {
+        p.floor_mib = n;
+    }
+    if let Some(n) = parse_env_u64("RUNA_MEMORY_MAX_GROWTH_MIB")? {
+        p.max_growth_mib = n;
+    }
+    Ok(p)
+}
+
+fn memory_policy_from_files(
+    paths: &[std::path::PathBuf],
+) -> Result<runa_memory::MemoryPolicy, String> {
     let mut p = runa_memory::MemoryPolicy::default();
-    for path in config_paths() {
-        let Some(text) = read_config_text(&path)? else {
+    for path in paths {
+        let Some(text) = read_config_text(path)? else {
             continue;
         };
         if let Some(parsed) = memory_from_toml(&text, &path.display().to_string())? {
             p = parsed;
-            break;
         }
     }
-    if let Ok(s) = std::env::var("RUNA_MEMORY_IDLE_TIMEOUT_S")
-        && let Ok(n) = s.parse()
-    {
-        p.idle_timeout_s = n;
-    }
-    if let Ok(s) = std::env::var("RUNA_MEMORY_FLOOR_MIB")
-        && let Ok(n) = s.parse()
-    {
-        p.floor_mib = n;
-    }
-    if let Ok(s) = std::env::var("RUNA_MEMORY_MAX_GROWTH_MIB")
-        && let Ok(n) = s.parse()
-    {
-        p.max_growth_mib = n;
-    }
     Ok(p)
+}
+
+fn audio_route_from_files(paths: &[std::path::PathBuf]) -> Result<Option<AudioRoutePref>, String> {
+    let mut found = None;
+    for path in paths {
+        let Some(text) = read_config_text(path)? else {
+            continue;
+        };
+        if let Some(r) = audio_route_from_toml(&text, &path.display().to_string())? {
+            found = Some(r);
+        }
+    }
+    Ok(found)
+}
+
+fn parse_env_u64(name: &str) -> Result<Option<u64>, String> {
+    match std::env::var(name) {
+        Err(_) => Ok(None),
+        Ok(s) if s.trim().is_empty() => Ok(None),
+        Ok(s) => s
+            .trim()
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|_| format!("{name}={s}: expected an integer")),
+    }
 }
 
 fn memory_from_toml(text: &str, origin: &str) -> Result<Option<runa_memory::MemoryPolicy>, String> {
@@ -1254,6 +1273,46 @@ source = "./tiny.gguf"
         let raws = select_lora_raws(&files, "other", &cli);
         let specs: Vec<&str> = raws.iter().map(|(_, s)| s.as_str()).collect();
         assert_eq!(specs, ["g.gguf", "c.gguf"]);
+    }
+
+    #[test]
+    fn later_config_file_overrides_memory_and_audio() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-cfg-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let user = dir.join("user.toml");
+        let project = dir.join("project.toml");
+        std::fs::write(
+            &user,
+            "[memory]\nidle_timeout_s = 111\n[audio]\nroute = \"asr\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &project,
+            "[memory]\nidle_timeout_s = 222\n[audio]\nroute = \"native\"\n",
+        )
+        .unwrap();
+        let policy = memory_policy_from_files(&[user.clone(), project.clone()]).unwrap();
+        assert_eq!(policy.idle_timeout_s, 222);
+        assert_eq!(
+            audio_route_from_files(&[user, project]).unwrap(),
+            Some(AudioRoutePref::Native)
+        );
+        let saved = std::env::var("RUNA_MEMORY_IDLE_TIMEOUT_S").ok();
+        unsafe { std::env::set_var("RUNA_MEMORY_IDLE_TIMEOUT_S", "ten") };
+        let err = parse_env_u64("RUNA_MEMORY_IDLE_TIMEOUT_S").unwrap_err();
+        assert!(err.contains("expected an integer"), "{err}");
+        match saved {
+            Some(v) => unsafe { std::env::set_var("RUNA_MEMORY_IDLE_TIMEOUT_S", v) },
+            None => unsafe { std::env::remove_var("RUNA_MEMORY_IDLE_TIMEOUT_S") },
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// P6.4: every parsed config key must appear in docs/config.md.

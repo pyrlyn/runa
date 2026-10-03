@@ -87,17 +87,20 @@ Cooperative claims over `docs/tasks.md` (file-backed). Row states:
 `free` | `in progress` (+ `agent`, `started_at`). Completion is tracked
 by checking the box in `plan.md`; the registry only tracks live claims.
 
-### `fn list_free(&self) -> Vec<String>`
+### `fn list_free(&self) -> Result<Vec<String>, ClaimError>`
 
 - Returns: IDs of all `free` tasks (e.g. `["P0.1", "P1.4", …]`), sorted
   by phase order.
-- Example: `for id in reg.list_free() { println!("{id}"); }`
+- Errors: `Io` when the registry file cannot be read. A missing file is
+  not an empty list.
+- Example: `for id in reg.list_free()? { println!("{id}"); }`
 
-### `fn status(&self, task_id: &str) -> Option<TaskStatus>`
+### `fn status(&self, task_id: &str) -> Result<Option<TaskStatus>, ClaimError>`
 
 - Params: `task_id` — e.g. `"P2.6"`.
-- Returns: `None` for unknown IDs; `Some(Free)` or
-  `Some(InProgress { agent, started_at })`.
+- Returns: `Ok(None)` for unknown IDs; `Ok(Some(Free))` or
+  `Ok(Some(InProgress { agent, started_at }))`.
+- Errors: `Io` when the registry file cannot be read.
 - Notes: read-only; use before asking about an `in-progress` task.
 
 ### `fn claim(&self, task_id: &str, agent: &str) -> Result<TaskClaim, ClaimError>`
@@ -108,7 +111,10 @@ by checking the box in `plan.md`; the registry only tracks live claims.
   becomes `in progress`.
 - Errors: `NotFound` (unknown ID); `AlreadyClaimed { agent, started_at }`
   when `in progress` — the caller must follow the ask-flow in
-  `AGENTS.md` §3–4 and retry only on explicit approval.
+  `AGENTS.md` §3–4 and retry only on explicit approval; `Io` when the
+  file cannot be read or written; `InvalidAgent` when `agent` is empty
+  or contains `|` or a control character. Claims take an OS file lock
+  and replace the file by rename, so two processes cannot both win.
 - Example: `reg.claim("P1.4", "fable")?; // do work …; reg.release("P1.4", "fable")?;`
 - Check: double-claim test — second `claim` fails with the owner's
   name + time, first holder unaffected.
@@ -118,7 +124,8 @@ by checking the box in `plan.md`; the registry only tracks live claims.
 - Effect: clears the row to `free` (agent/started emptied). Call on
   **every** stop or done, including failures and interrupts.
 - Errors: `NotFound` (unknown ID); `NotOwner { agent }` when another
-  agent holds it — ask, don't force.
+  agent holds it — ask, don't force; `Io` and `InvalidAgent` as on
+  `claim`.
 - Check: release test — row returns to `free` and re-claimable.
 
 ---

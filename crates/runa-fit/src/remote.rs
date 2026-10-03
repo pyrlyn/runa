@@ -236,11 +236,17 @@ impl Fetcher {
         self
     }
 
-    fn authed(&self, req: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
+    fn authed(
+        &self,
+        url: &str,
+        req: reqwest::blocking::RequestBuilder,
+    ) -> reqwest::blocking::RequestBuilder {
         let req = req.header(USER_AGENT, "runa-fit/0.1 (prefit-check)");
         match &self.token {
-            Some(t) => req.header(AUTHORIZATION, format!("Bearer {t}")),
-            None => req,
+            Some(t) if token_allowed(url, &self.hub_api_base) => {
+                req.header(AUTHORIZATION, format!("Bearer {t}"))
+            }
+            _ => req,
         }
     }
 
@@ -272,7 +278,10 @@ impl Fetcher {
     pub fn siblings_all(&self, repo: &str) -> Result<Vec<String>, RemoteError> {
         let url = format!("{}/{}", self.hub_api_base.trim_end_matches('/'), repo);
         let body = self
-            .authed(self.client.get(&url).header(ACCEPT, "application/json"))
+            .authed(
+                &url,
+                self.client.get(&url).header(ACCEPT, "application/json"),
+            )
             .send()
             .map_err(|e| RemoteError::Http {
                 url: url.clone(),
@@ -404,6 +413,7 @@ impl Fetcher {
         let end = want.saturating_sub(1).max(from);
         let resp = self
             .authed(
+                url,
                 self.client
                     .get(url)
                     .header(RANGE, format!("bytes={from}-{end}")),
@@ -414,34 +424,64 @@ impl Fetcher {
                 msg: e.to_string(),
             })?;
         let status = resp.status();
-        // Capture everything needed from the headers BEFORE consuming the
-        // body (`Response::bytes` takes ownership).
-        let total_hdr = content_total(resp.headers(), None);
-        let etag = resp
-            .headers()
+        let headers = resp.headers().clone();
+        let total_hdr = content_total(&headers, None);
+        let etag = headers
             .get("etag")
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
         if status == reqwest::StatusCode::PARTIAL_CONTENT {
-            let body = resp.bytes().map_err(|e| RemoteError::Http {
+            let start = content_range_start(headers.get("content-range")).ok_or_else(|| {
+                RemoteError::Http {
+                    url: url.to_owned(),
+                    msg: "206 without a usable Content-Range".into(),
+                }
+            })?;
+            if start != from {
+                return Err(RemoteError::Http {
+                    url: url.to_owned(),
+                    msg: format!("Content-Range starts at {start}, want {from}"),
+                });
+            }
+            let room = MAX_HEADER_BYTES.saturating_sub(from);
+            let cap = want.saturating_sub(from).min(room).max(1);
+            let body = read_body_capped(resp, cap).map_err(|e| RemoteError::Http {
                 url: url.to_owned(),
-                msg: e.to_string(),
+                msg: e,
             })?;
             return Ok(Chunk {
-                status: RangeStatus::Partial(body.to_vec()),
+                status: RangeStatus::Partial(body),
                 total: total_hdr,
                 etag,
             });
         }
         if status.is_success() {
-            let headers = resp.headers().clone();
-            let body = resp.bytes().map_err(|e| RemoteError::Http {
-                url: url.to_owned(),
-                msg: e.to_string(),
-            })?;
+            if let Some(len) = resp.content_length()
+                && len > MAX_HEADER_BYTES
+            {
+                return Err(RemoteError::HeaderIncomplete {
+                    fetched: from,
+                    detail: "server does not serve byte ranges".into(),
+                });
+            }
+            let body = match read_body_capped(resp, MAX_HEADER_BYTES) {
+                Ok(body) => body,
+                Err(e) if e.contains("exceeds") || e.contains("cap is") => {
+                    return Err(RemoteError::HeaderIncomplete {
+                        fetched: from,
+                        detail: "server does not serve byte ranges".into(),
+                    });
+                }
+                Err(e) => {
+                    return Err(RemoteError::Http {
+                        url: url.to_owned(),
+                        msg: e,
+                    });
+                }
+            };
             let total = content_total(&headers, Some(body.len() as u64));
             return Ok(Chunk {
-                status: RangeStatus::Whole(body.to_vec()),
+                status: RangeStatus::Whole(body),
                 total,
                 etag,
             });
@@ -477,7 +517,7 @@ impl Fetcher {
                 msg: e.to_string(),
             })?;
         let resp = self
-            .authed(client.get(url))
+            .authed(url, client.get(url))
             .send()
             .map_err(|e| RemoteError::Http {
                 url: url.to_owned(),
@@ -519,6 +559,55 @@ enum RangeStatus {
 
 /// Total file length from `Content-Range: bytes a-b/TOTAL`, falling back to
 /// a known value (e.g. a 200's `Content-Length` handled by the caller).
+/// `HF_TOKEN` goes only to huggingface.co (and its subdomains) or the
+/// configured hub API host. A `runa fit https://other-host/...` must not
+/// receive the user's Hugging Face credential.
+fn token_allowed(url: &str, hub_api_base: &str) -> bool {
+    let Some(host) = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.trim_end_matches('.').to_owned()))
+    else {
+        return false;
+    };
+    if is_hf_host(&host) {
+        return true;
+    }
+    reqwest::Url::parse(hub_api_base)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.eq_ignore_ascii_case(&host)))
+        .unwrap_or(false)
+}
+
+fn is_hf_host(host: &str) -> bool {
+    let host = host.trim_end_matches('.');
+    host.eq_ignore_ascii_case("huggingface.co")
+        || host.to_ascii_lowercase().ends_with(".huggingface.co")
+}
+
+fn content_range_start(value: Option<&reqwest::header::HeaderValue>) -> Option<u64> {
+    let rest = value?.to_str().ok()?.trim().strip_prefix("bytes ")?;
+    let (start, _) = rest.split_once('-')?;
+    start.parse().ok()
+}
+
+/// Stop after `cap` bytes. A `Content-Length` above the cap is rejected
+/// before the body is read, so a server that ignores `Range` cannot push
+/// a multi-gigabyte model into RAM.
+fn read_body_capped(resp: reqwest::blocking::Response, cap: u64) -> Result<Vec<u8>, String> {
+    if let Some(len) = resp.content_length()
+        && len > cap
+    {
+        return Err(format!("response is {len} bytes, cap is {cap}"));
+    }
+    let mut limited = resp.take(cap.saturating_add(1));
+    let mut buf = Vec::new();
+    limited.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    if buf.len() as u64 > cap {
+        return Err(format!("response exceeds {cap} bytes"));
+    }
+    Ok(buf)
+}
+
 fn content_total(headers: &reqwest::header::HeaderMap, fallback: Option<u64>) -> Option<u64> {
     headers
         .get("content-range")
@@ -780,5 +869,39 @@ mod tests {
             name.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
         );
+    }
+
+    #[test]
+    fn token_stays_on_huggingface_or_the_hub_host() {
+        assert!(token_allowed(
+            "https://huggingface.co/org/model/resolve/main/m.gguf",
+            "https://huggingface.co/api/models"
+        ));
+        assert!(token_allowed(
+            "https://cdn-lfs.huggingface.co/foo",
+            "https://huggingface.co/api/models"
+        ));
+        assert!(!token_allowed(
+            "http://127.0.0.1:9/evil/model.gguf",
+            "https://huggingface.co/api/models"
+        ));
+        assert!(token_allowed(
+            "http://127.0.0.1:9/api/models/org",
+            "http://127.0.0.1:9/api/models"
+        ));
+    }
+
+    #[test]
+    fn content_range_start_must_match_the_request() {
+        use reqwest::header::HeaderValue;
+        assert_eq!(
+            content_range_start(Some(&HeaderValue::from_static("bytes 0-99/1000"))),
+            Some(0)
+        );
+        assert_eq!(
+            content_range_start(Some(&HeaderValue::from_static("bytes 128-255/999"))),
+            Some(128)
+        );
+        assert_eq!(content_range_start(None), None);
     }
 }

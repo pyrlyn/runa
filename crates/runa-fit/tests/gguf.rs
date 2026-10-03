@@ -120,6 +120,33 @@ fn data_start_is_32_aligned() {
 }
 
 #[test]
+fn data_start_honors_general_alignment() {
+    fn put_u32(b: &mut Vec<u8>, v: u32) {
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    fn put_u64(b: &mut Vec<u8>, v: u64) {
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    fn put_str(b: &mut Vec<u8>, s: &str) {
+        put_u64(b, s.len() as u64);
+        b.extend_from_slice(s.as_bytes());
+    }
+    let mut b = Vec::new();
+    b.extend_from_slice(&GGUF_MAGIC);
+    put_u32(&mut b, 3);
+    put_u64(&mut b, 0);
+    put_u64(&mut b, 2);
+    put_str(&mut b, "general.name");
+    put_u32(&mut b, 8); // string
+    put_str(&mut b, "a");
+    put_str(&mut b, "general.alignment");
+    put_u32(&mut b, 4); // uint32
+    put_u32(&mut b, 64);
+    let r = Reader::parse(&b).unwrap();
+    assert_eq!(r.data_start, 128, "header end padded to alignment 64");
+}
+
+#[test]
 fn metadata_all_scalar_types() {
     // Hand-build a header with one KV pair per scalar type.
     let mut b = Vec::new();
