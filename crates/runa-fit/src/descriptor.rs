@@ -135,7 +135,7 @@ impl Descriptor {
         // head_dim: prefer explicit key, derive from n_embd/n_head.
         let head_dim = r
             .get_u64(&p("attention.key_length"))
-            .unwrap_or_else(|| n_embd / n_head);
+            .unwrap_or_else(|| n_embd.checked_div(n_head).unwrap_or(0));
 
         // vocab_size: try the direct key first; if absent, derive from tokenizer tokens array.
         let n_vocab = r.get_u64(&p("vocab_size")).unwrap_or_else(|| {
@@ -170,14 +170,20 @@ impl Descriptor {
             let bytes = tensor_bytes(&ti.dims, ti.ggml_type).unwrap_or(0);
             let group = classify_tensor(&ti.name);
             match group {
-                WeightGroup::Dense => weight_bytes_dense += bytes,
-                WeightGroup::Expert => weight_bytes_expert += bytes,
-                WeightGroup::EmbedOut => weight_bytes_embed_out += bytes,
+                WeightGroup::Dense => weight_bytes_dense = weight_bytes_dense.saturating_add(bytes),
+                WeightGroup::Expert => {
+                    weight_bytes_expert = weight_bytes_expert.saturating_add(bytes)
+                }
+                WeightGroup::EmbedOut => {
+                    weight_bytes_embed_out = weight_bytes_embed_out.saturating_add(bytes)
+                }
             }
             tensor_bytes_map.insert(ti.name.clone(), (bytes, group));
         }
 
-        let weight_bytes_total = weight_bytes_dense + weight_bytes_expert + weight_bytes_embed_out;
+        let weight_bytes_total = weight_bytes_dense
+            .saturating_add(weight_bytes_expert)
+            .saturating_add(weight_bytes_embed_out);
 
         Ok(Descriptor {
             arch,

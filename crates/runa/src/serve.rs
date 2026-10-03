@@ -1323,6 +1323,43 @@ pub(crate) fn model_specs_from_paths(
     Ok(out)
 }
 
+/// Fuzzing entry (`cargo fuzz`, fuzz/README.md): an HTTP request body
+/// through the same parsing the `/v1/chat/completions` and `/v1/messages`
+/// handlers do before touching a model. Bodies with `image_url` or
+/// `input_audio` parts are skipped: those write temp files and decode media.
+#[cfg(fuzzing)]
+pub(crate) fn fuzz_request_body(body: &[u8]) {
+    fn has_media(messages: &[IncomingMessage]) -> bool {
+        messages.iter().any(|m| match &m.content {
+            Some(IncomingContent::Parts(parts)) => parts
+                .iter()
+                .any(|p| p.image_url.is_some() || p.input_audio.is_some()),
+            _ => false,
+        })
+    }
+    if let Ok(b) = serde_json::from_slice::<ChatCompletionBody>(body) {
+        let _ = think_from_request(b.reasoning_effort.as_deref(), b.reasoning_budget_tokens);
+        if !has_media(&b.messages) {
+            let _ = messages_from_body(&b.messages);
+        }
+        let _ = schema_from_response_format(b.response_format.as_ref());
+        let _ = engine_tools(b.tools.unwrap_or_default(), b.tool_choice);
+    }
+    if let Ok(b) = serde_json::from_slice::<MessagesBody>(body) {
+        let _ = think_from_anthropic(b.thinking.as_ref());
+        if !has_media(&b.messages) {
+            let _ = messages_from_body(&b.messages);
+        }
+        if let Some(IncomingContent::Text(_)) = b.system.as_ref() {
+            let _ = content_text(b.system.as_ref(), &mut Vec::new(), &mut None);
+        }
+        let _ = anthropic_tools(b.tools.unwrap_or_default(), b.tool_choice.as_ref());
+    }
+    if let Ok(text) = std::str::from_utf8(body) {
+        let _ = b64_decode(text);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

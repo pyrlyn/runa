@@ -10,6 +10,10 @@
 //! `pull` → P2.4, `auto`/`on_unfit` → P2.5, `serve` → P3.9, `bench` → P2.10,
 //! cloud backends → P3. Model refs in P2.3 are local files; `hf:`/aliases
 //! need `runa pull` (P2.4) and error with a pointer instead of a download.
+// `cargo fuzz` builds this crate as libFuzzer targets (fuzz/Cargo.toml):
+// `fuzz_hooks` replaces `main`, leaving the command paths unused there.
+#![cfg_attr(fuzzing, no_main)]
+#![cfg_attr(fuzzing, allow(dead_code, unused_imports))]
 
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
@@ -35,6 +39,8 @@ mod daemon;
 mod daemon_proto;
 mod engine;
 mod fit;
+#[cfg(fuzzing)]
+mod fuzz_hooks;
 mod mcp;
 mod pool;
 mod pull;
@@ -328,6 +334,10 @@ enum TaskAction {
     },
 }
 
+#[cfg(fuzzing)]
+libfuzzer_sys::fuzz_target!(|data: &[u8]| fuzz_hooks::run(data));
+
+#[cfg(not(fuzzing))]
 fn main() {
     let cli = Cli::parse();
     if let Err(e) = config::reject_inline_in_config_files() {
