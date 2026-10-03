@@ -468,7 +468,8 @@ mod tests {
         match err {
             ClaimError::Io(msg) => {
                 assert!(msg.contains("cannot read"), "{msg}");
-                assert!(msg.contains("No such file"), "{msg}");
+                // Windows and Unix phrase a missing path differently; both are NotFound.
+                assert!(msg.contains("os error 2"), "{msg}");
             }
             other => panic!("expected io, got {other}"),
         }
