@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P1.2 integration tests: growing range fetch against a local HTTP server
 //! (std only, no extra dev-deps) serving a real fixture, plus a
 //! `RUNA_LIVE=1` smoke test against huggingface.co (plan check:

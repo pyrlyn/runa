@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! runa-media — media pipeline in Rust, encoders in C (plan D8): audio
 //! decode (`symphonia`/`hound`) → f32 mono 16 kHz (`rubato`), video via
 //! `ffmpeg-sidecar` → sampled frames, ASR bridge through `whisper-rs`.

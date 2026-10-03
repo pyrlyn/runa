@@ -1,0 +1,1 @@
+{"content": [{"type": "thinking", "thinking": "hm", "signature": "s"}, {"type": "text", "text": "hi"}, {"type": "tool_use", "id": "t", "name": "f", "input": {"a": 1}}], "stop_reason": "tool_use", "usage": {"input_tokens": 1, "output_tokens": 2}}

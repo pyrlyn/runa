@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P5.7: remind that `--features native` needs RUSTFLAGS for GGML_NATIVE.
 //!
 //! P9.4: warn when an NPU stub feature (`hexagon`, `openvino`) is on but its

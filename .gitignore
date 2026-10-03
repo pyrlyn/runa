@@ -16,10 +16,14 @@
 __pycache__/
 *.pyc
 
-# Downloaded real GGUF weights (P0.7). Keep header-only synthetics in git;
-# GitHub rejects files >100MB and these are pulled locally, not versioned.
-tests/fixtures/*.gguf
-!tests/fixtures/synthetic-*.gguf
+# Real GGUF weights: tracked via Git LFS (see .gitattributes). Header-only
+# synthetics stay as normal git blobs; large weights use LFS. Until the LFS
+# objects are committed, keep local downloads untracked with:
+#   git status --ignored
+# To add a new weight: ensure the *.gguf LFS pattern matches, then git add -f.
+# (Previously ignored entirely because GitHub rejects >100MB blobs.)
+# tests/fixtures/*.gguf
+# !tests/fixtures/synthetic-*.gguf
 
 # Docs site dependencies.
 site/node_modules/

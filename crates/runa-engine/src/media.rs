@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Native audio through mtmd (plan P4.3).
 //!
 //! PCM is 16 kHz mono f32 (same as `runa-media`). The mmproj is optional at
@@ -58,10 +62,11 @@ pub(crate) fn load_mtmd(
         n_threads: 4,
         media_marker: CString::new(mtmd_default_marker())
             .map_err(|_| EngineError::Media("media marker".into()))?,
-        image_min_tokens: -1,
-        image_max_tokens: -1,
     };
-    let ctx = MtmdContext::init_from_file(path, model, &params)
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| EngineError::Media(format!("non-utf8 mmproj path: {path:?}")))?;
+    let ctx = MtmdContext::init_from_file(path_str, model, &params)
         .map_err(|e| EngineError::Media(format!("mtmd init: {e:?}")))?;
     Ok(Some(ctx))
 }
