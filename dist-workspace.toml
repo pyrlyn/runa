@@ -24,11 +24,19 @@ ci = "github"
 # bare, and runa-kernels/build.rs shells out to `zig`) and warms the cargo
 # cache. Same file layout as rtok's .github/build-setup.yml.
 github-build-setup = "../build-setup.yml"
-# No PR or manual runs for the release workflow (the repo runs CI on
-# main/manual only): with `skip`, dist generates a tag-push-only trigger in
-# release.yml, so `dist generate --mode=ci --check` (CI) stays green without
-# hand edits to the generated file.
+# No PR runs for the release workflow (the repo runs CI on main/manual only),
+# so `dist generate --mode=ci --check` (CI) stays green without hand edits to
+# the generated file.
 pr-run-mode = "skip"
+# bump.yml (pyrlyn/infra) is the only way to a release and the only tagger: it
+# lands the version commit through a pull request merged by rebase once the
+# required checks are green, tags the commit that landed on main, creates a
+# draft GitHub Release with the CHANGELOG.md section, and dispatches this
+# workflow with `--ref <tag> -f tag=<tag>` (a tag pushed with GITHUB_TOKEN
+# starts no workflow). So: a workflow_dispatch trigger instead of a tag push,
+# and dist uploads to bump's release instead of creating one.
+dispatch-releases = true
+create-release = false
 installers = ["shell", "powershell", "homebrew"]
 tap = "listepo/homebrew-runa"
 targets = [

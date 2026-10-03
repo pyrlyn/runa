@@ -13,7 +13,7 @@ on:
 
 # P14.1: CI runs on push/merge to main and on ready (non-draft) PRs to main.
 # Draft PRs are skipped; `review` runs only via the `/review` comment workflow.
-# Manual release (patch/minor/major) is the separate `release-manual.yml` workflow.
+# Releases go through `bump.yml` (Actions -> Bump and release: a version PR this CI gates).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

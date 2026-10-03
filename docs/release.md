@@ -1,9 +1,26 @@
 # docs/release.md — how a release runs
 
-Two entry points choose the version: the local `scripts/release.sh` and the
-manual `release-manual.yml` workflow (Actions UI: `patch` | `minor` | `major`).
-Both stop at the pushed tag; the dist-generated `release.yml` (tag trigger)
-builds and publishes.
+There is one way to a release: the `bump.yml` workflow (Actions → Bump and
+release: `patch` | `minor` | `major`), which runs the shared pyrlyn/infra
+`bump.yml`. It is also the only thing that creates a `v*` tag:
+
+1. `scripts/release.sh <level> --local` makes one `release: v<version>` commit
+   on top of `main`; bump pushes it to `release/bump-v<version>` and opens a
+   pull request into `main` (with the org `RELEASE_PLZ_TOKEN`, so the pull
+   request's `ci.yml` runs).
+2. bump waits until every required check of the `protect-main` ruleset is
+   green, then merges the pull request **by rebase only**
+   (`gh pr merge --rebase --match-head-commit <tested head>`).
+3. It reads back the commit that landed on `main` (same tree as the tested
+   head, parent = the base it was built on), tags **that** commit, creates a
+   draft GitHub Release with the `CHANGELOG.md` section, and dispatches
+   `release.yml` and `release-variants.yml` with `--ref <tag> -f tag=<tag>`.
+4. Red checks, a timeout, a moved `main` it cannot rebuild on, or a failed
+   merge close the pull request and fail the run: no tag, no release.
+
+`dry-run` opens the pull request, waits for its checks and closes it.
+`release-untagged-head` releases an untagged version already on `main`
+(nothing to commit) after dispatching `ci.yml` on it and waiting for green.
 
 ## CI and review triggers (P14.1)
 
@@ -11,15 +28,16 @@ builds and publishes.
 |----------|---------|
 | `ci.yml` | `push` to `main` (merge included), `pull_request` to `main` when ready (not draft), manual `workflow_dispatch` |
 | `review.yml` | comment `/review` on an open, non-draft PR targeting `main` (ubuntu-only fast checks + report comment) |
-| `release-manual.yml` | manual `workflow_dispatch` with `level` (`patch`/`minor`/`major`) and optional `mode` (`--dry-run` / `--local`) |
+| `bump.yml` | manual `workflow_dispatch` with `level` (`patch`/`minor`/`major`), `dry-run`, `release-untagged-head` |
+| `release.yml`, `release-variants.yml` | `workflow_dispatch` with `tag`, started by `bump.yml` only |
 
 Draft PRs never run CI: `ci.yml` triggers on PR types including
 `ready_for_review` and both jobs skip while `draft == true`.
 `review.yml` re-checks draft/target via `gh pr view` before running.
 
-## The entry point
+## The version script
 
-`scripts/release.sh` is the one place a version is chosen:
+`scripts/release.sh` is the one place a version is chosen (bump runs it):
 
 ```bash
 bash scripts/release.sh [patch|minor|major] [--dry-run|--local]
@@ -32,12 +50,12 @@ raises it only when that version is already tagged. The first run publishes
 
 | Mode | What it does |
 |------|--------------|
-| *(none)* | Raise the version if it is already tagged, land one `release: v<version>` commit (`Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`), push the commit, push the `v<version>` tag |
+| *(none)* | Start the Bump workflow: `gh workflow run bump.yml -f level=<level>` |
 | `--dry-run` | Print `current X -> release vY` and change nothing |
-| `--local` | Make the version commit but neither push nor tag |
+| `--local` | Raise the version if it is already tagged and make one `release: v<version>` commit (`Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`); never pushes, never tags (what bump runs) |
 
-Pushing the tag is what starts the release: `release.yml` builds the three
-targets, creates the GitHub Release and uploads the artifacts to it.
+The script never pushes and never tags; a tag made by hand starts nothing
+(`release.yml` has no tag-push trigger).
 
 `Cargo.toml` here means the workspace root: `[workspace.package] version` is the
 single source, and every crate inherits it with `version.workspace = true`, so
@@ -48,16 +66,17 @@ commit itself is never listed in the notes it generates.
 
 ## The gate
 
-Before running the script (or dispatching `release-manual.yml`), the commit
-to release must be green in `ci.yml`. The release is the one build nobody
-can re-run — a broken binary on the releases page is installed before anyone
-notices. Neither entry point can gate itself, so this stays a human step:
-cut a release only from a commit whose CI is green.
+The release is the one build nobody can re-run — a broken binary on the
+releases page is installed before anyone notices. So the gate is built in:
+the version commit reaches `main` only through its pull request, after every
+required check of `protect-main` is green on it, and the tag is created only
+on the commit that landed.
 
 ## What a release produces
 
-A pushed tag (`vX.Y.Z`) is the release: `release.yml` builds, creates the
-GitHub Release and publishes. Targets and archives:
+`release.yml` (dispatched by bump on the tag) builds, uploads to bump's draft
+release and publishes it (dist `dispatch-releases = true`,
+`create-release = false`). Targets and archives:
 
 | Target | Runner | Archive |
 |--------|--------|---------|
@@ -98,6 +117,7 @@ mise install                                    # picks up the git-cliff pin
 bash scripts/release.sh patch --dry-run         # version that would be released
 mise exec -- git-cliff --tag v0.1.1 -o CHANGELOG.md
 bash scripts/release.sh patch --local           # version commit, no push, no tag
+bash scripts/release.sh patch                   # the real thing: starts bump.yml
 ```
 
 `--local` is the safe end-to-end check: it exercises the bump, the lockfile
