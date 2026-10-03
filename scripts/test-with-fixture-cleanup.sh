@@ -11,8 +11,8 @@
 # files: synthetic-*.gguf, audio/, video/, api/). Set RUNA_KEEP_FIXTURES=1
 # (or KEEP=1) to skip cleanup locally and avoid re-downloading weights.
 #
-# A pass also runs dunnage (`ketch install dunnage`) over ./target: lossless
-# compression and dedupe, never deletes; skipped when dunnage is missing.
+# A pass also runs swarfr (`ketch install swarfr`) over ./target: lossless
+# compression and dedupe, never deletes; skipped when swarfr is missing.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -25,11 +25,11 @@ if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 
-if ! command -v dunnage >/dev/null; then
-  echo "dunnage not found; install it with: ketch install dunnage" >&2
+if ! command -v swarfr >/dev/null; then
+  echo "swarfr not found; install it with: ketch install swarfr" >&2
 elif [ -d target ]; then
-  echo "tests passed; compacting target/ with dunnage"
-  dunnage run target || [ $? -eq 2 ]
+  echo "tests passed; compacting target/ with swarfr"
+  swarfr run target || [ $? -eq 2 ]
 fi
 
 if [ "${RUNA_KEEP_FIXTURES:-${KEEP:-0}}" = "1" ]; then
