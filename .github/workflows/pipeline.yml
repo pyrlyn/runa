@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   pipeline:
-    uses: pyrlyn/infra/.github/workflows/ci.yml@0603d0ae610af9f792c5caf925041292a857e480 # main
+    uses: pyrlyn/infra/.github/workflows/ci.yml@f231304c2539f5cd84aadf48c449540b33c6020d # main
     # The union every nested job asks for, validated up front even for disabled checks.
     permissions:
       contents: read
