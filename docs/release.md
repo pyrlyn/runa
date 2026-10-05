@@ -108,7 +108,7 @@ bash scripts/cargo-dist.sh plan
 |-----------|-----|
 | `macos-sign` | Needs the creator's Developer ID (`MACOS_CERTIFICATE` / `MACOS_CERTIFICATE_PWD`). Without certificates `macos-sign = true` would fail every release. |
 | `install-updater` | Stays `false`: rtok ships `rtok-update` beside its binary, runa ships no updater. Turning it on would publish an `*-update` artifact that does not exist. |
-| Homebrew publish job | `tap = "listepo/homebrew-runa"` is set and the formula is a Release asset, but `publish-jobs = ["homebrew"]` stays off until that tap repository exists. Until then: `brew install ./runa.rb` from the downloaded formula. |
+| Homebrew publish job | `tap = "pyrlyn/homebrew-tap"` (the shared tap rtok and ketch use) is set and the formula is a Release asset, but `publish-jobs = ["homebrew"]` stays off until runa's formula is wired into that tap. Until then: `brew install ./runa.rb` from the downloaded formula. |
 
 ## Trying it locally
 

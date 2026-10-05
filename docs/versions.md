@@ -267,8 +267,8 @@ with `--features native`) and `backends` (`cpu` plus any of `metal` / `cuda` /
 `vulkan` / `mtmd` compiled in). Tag `vX.Y.Z` runs `.github/workflows/release.yml`
 (cargo-dist 0.33 CPU archives + shell/powershell/homebrew installers). GPU
 variants: `.github/workflows/release-variants.yml`. Homebrew formula is on the
-GitHub Release; `brew install listepo/runa/runa` needs the `listepo/homebrew-runa`
-tap repo. Local: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
+GitHub Release; `brew install pyrlyn/tap/runa` needs the formula in the shared
+`pyrlyn/homebrew-tap` repo, which does not carry it yet. Local: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
 
 ### ketch package (`ketch.toml`)
 
