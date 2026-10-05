@@ -30,7 +30,7 @@ jobs:
       docs-only: ${{ steps.config.outputs.docs-only }}
     steps:
       - id: config
-        uses: pyrlyn/infra/.github/actions/config@f231304c2539f5cd84aadf48c449540b33c6020d # main
+        uses: pyrlyn/infra/.github/actions/config@f880dee803f157cd4268a503418b4ecaf4da7078 # main
 
   ci:
     name: ${{ matrix.os }} (${{ matrix.target }})
