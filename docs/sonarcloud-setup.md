@@ -1,6 +1,6 @@
 # SonarCloud OSS setup (runa)
 
-Maintainer guide for the SonarCloud job: pyrlyn/infra's `sonarcloud.yml`, run by its `ci.yml`
+Maintainer guide for the SonarCloud job: pyrlyn/ci's `sonarcloud.yml`, run by its `ci.yml`
 from `.github/workflows/pipeline.yml` and configured under `sonarcloud:` in `.github/infra.yml`;
 the scanner configuration is in `sonar-project.properties`.
 
@@ -113,7 +113,7 @@ token into the repository.
 
 ## References
 
-- Workflow: `.github/workflows/pipeline.yml` -> pyrlyn/infra `ci.yml` / `sonarcloud.yml`
+- Workflow: `.github/workflows/pipeline.yml` -> pyrlyn/ci `ci.yml` / `sonarcloud.yml`
 - Configuration: `.github/infra.yml` (`sonarcloud:`)
 - Scanner configuration: `sonar-project.properties`
 - [SonarQube Cloud documentation](https://docs.sonarsource.com/sonarqube-cloud/)

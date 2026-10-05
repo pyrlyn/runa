@@ -1,10 +1,10 @@
 # A failed dist Release run (dispatched by bump.yml on the version tag) opens or comments on a `release-failure`
-# issue that mentions and assigns @listepo, through pyrlyn/infra's notify-release-failure.yml.
+# issue that mentions and assigns @listepo, through pyrlyn/ci's notify-release-failure.yml.
 # GitHub cannot filter Actions notifications per workflow, so release workflows notify this
 # way and ordinary CI never does. A watcher rather than a job in release.yml: that file is
 # dist-generated and `dist plan` refuses an edited copy (no `allow-dirty` here).
 # workflow_run fires only from this file on the default branch.
-# Pinned to pyrlyn/infra ci/notify-release-failure; repin to its merge commit.
+# Pinned to pyrlyn/ci ci/notify-release-failure; repin to its merge commit.
 name: release-failure
 
 on:
@@ -22,7 +22,7 @@ jobs:
     permissions:
       actions: read # failed job names
       issues: write
-    uses: pyrlyn/infra/.github/workflows/notify-release-failure.yml@d709124d53dd4923eff8f594b3155842508b0049
+    uses: pyrlyn/ci/.github/workflows/notify-release-failure.yml@d709124d53dd4923eff8f594b3155842508b0049
     with:
       workflow: ${{ github.event.workflow_run.name }}
       ref: ${{ github.event.workflow_run.head_branch }}

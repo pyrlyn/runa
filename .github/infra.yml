@@ -1,9 +1,9 @@
-# Configuration for pyrlyn/infra's ci.yml, called from pipeline.yml (docs/config.md in
-# pyrlyn/infra). Rust CI stays in the local ci.yml (its job names are the required checks);
+# Configuration for pyrlyn/ci's ci.yml, called from pipeline.yml (docs/config.md in
+# pyrlyn/ci). Rust CI stays in the local ci.yml (its job names are the required checks);
 # this file turns on the scans and SonarCloud, which replaces the former sonarcloud.yml.
 version: 1
 
-# Docs-only pull requests (pyrlyn/infra docs/config.md, "Docs-only changes"): when every changed
+# Docs-only pull requests (pyrlyn/ci docs/config.md, "Docs-only changes"): when every changed
 # file is documentation, infra's scans are skipped and the gate counts them as passed; ci.yml's
 # `config` job reads the same verdict and turns the build/test matrix into no-ops (the required
 # `<os> (<target>)` checks still report), while `moon pipeline` still runs the registry lint
