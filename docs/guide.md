@@ -1,4 +1,4 @@
-# docs/guide.md — user guide: what each capability does, why, and how
+# User guide
 
 Copy-pasteable examples for the flags and behaviors. Unless noted,
 outputs below come from macOS CPU runs on the fixtures in

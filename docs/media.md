@@ -1,4 +1,4 @@
-# docs/media.md — audio, video, vision (D08)
+# Audio, video and vision
 
 Three routes, never mixed silently (D12):
 
