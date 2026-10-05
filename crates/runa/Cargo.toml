@@ -4,8 +4,8 @@ description = "Run AI models locally (GGUF via llama.cpp) or through the OpenAI 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-repository = "https://github.com/listepo/runa"
-homepage = "https://github.com/listepo/runa"
+repository = "https://github.com/pyrlyn/runa"
+homepage = "https://github.com/pyrlyn/runa"
 rust-version.workspace = true
 
 [features]
