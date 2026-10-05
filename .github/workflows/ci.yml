@@ -30,7 +30,7 @@ jobs:
       docs-only: ${{ steps.config.outputs.docs-only }}
     steps:
       - id: config
-        uses: pyrlyn/infra/.github/actions/config@db7297aaa550d41597f666394ca6465a09a6c1e5 # pyrlyn/infra#36 head; move to its merge commit
+        uses: pyrlyn/infra/.github/actions/config@f880dee803f157cd4268a503418b4ecaf4da7078 # main
 
   ci:
     name: ${{ matrix.os }} (${{ matrix.target }})
