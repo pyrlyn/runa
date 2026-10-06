@@ -4,8 +4,6 @@
 or through the OpenAI and Anthropic APIs. Thinking controls, tools, and
 `runa serve` work the same way on both sides.
 
-**Website:** https://pyrlyn.github.io/runa/
-
 ## Install
 
 From a GitHub Release (portable CPU archives; Metal / Vulkan / CUDA are extra

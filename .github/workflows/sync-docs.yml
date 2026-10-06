@@ -10,7 +10,7 @@
 #
 # Auth is a write-enabled deploy key on pyrlyn/landing only; its private half is this repo's
 # SITE_DEPLOY_KEY secret. GITHUB_TOKEN stays read-only. This workflow is independent of the
-# pipeline gate, releases and Pages: it never builds, tests or deploys this repository.
+# pipeline gate and releases: it never builds, tests or deploys this repository.
 #
 # On a v* tag or release the card's `version:` front matter is set from the tag (v1.2.3 ->
 # "1.2.3"), so the site shows the released version even before docs/site.md is bumped on main.

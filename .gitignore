@@ -24,6 +24,3 @@ __pycache__/
 # (Previously ignored entirely because GitHub rejects >100MB blobs.)
 # tests/fixtures/*.gguf
 # !tests/fixtures/synthetic-*.gguf
-
-# Docs site dependencies.
-site/node_modules/

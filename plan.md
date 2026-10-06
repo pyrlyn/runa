@@ -438,7 +438,7 @@ Findings from the 2026-09-20 documentation audit (English).
 #### Adequacy (strong)
 
 - Indexed in `docs/README.md`: `getting-started.md`, `guide.md`, `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `profiles.md`, `versions.md`, `baselines.md`, `perf-nightly.md`, `kernels.md`, `release.md`, `release-1.0.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
-- Site at `https://pyrlyn.github.io/runa/` (`site/`, homepage set on the GitHub repo).
+- GitHub Pages was removed; `docs/` is the documentation source (no `site/` tree, repo homepage unset).
 - Research companions: `research.md`, `report.html`.
 
 #### Gaps
@@ -446,7 +446,7 @@ Findings from the 2026-09-20 documentation audit (English).
 - **No Troubleshooting page** for install/release failures (exactly the pain of P14.2: red `v0.1.0` Release, missing mise/zig/glslc), GPU feature flags, daemon socket on Windows, MCP quoting, or HF pull errors.
 - **`docs/versions.md`**: GPU accel (Metal/CUDA/Vulkan) “not yet forwarded” into the default path — user-facing docs still undersell how to turn GPU on after a successful install.
 - **`docs/release.md` / `getting-started.md` assume a working GitHub Release installer** — today Release is red, so getting-started’s curl/Homebrew path is aspirational until P14.2 lands.
-- **Site content is thin** relative to `docs/guide.md` (risk of docs/site drift; only `_index.md`-style landing in `site/content`).
+- GitHub Pages / `site/` was removed; `docs/` is the documentation source (the old landing was only `_index.md`-style copy and could drift from `docs/guide.md`).
 - **Task-claim docs vs MCP**: `docs/tasks.md` / `memory.md` vs `docs/structured.md` MCP loop — easy for agents/users to confuse “tasks” (plan claims) with model tools; needs a one-line cross-link callout.
 - **No FAQ** covering cloud keys, `on_unfit=cloud:`, calibration DB location, or `--max-load-percent`.
 - **CHANGELOG** exists at repo root but is not linked prominently from `docs/README.md` / getting-started.
@@ -457,7 +457,7 @@ Findings from the 2026-09-20 documentation audit (English).
 2. Update getting-started with a “Release status” note until P14.2 is green (or point at local `cargo build --release`).
 3. Expand `versions.md` with a short “enable Metal/CUDA/Vulkan” recipe once features are forwarded.
 4. Cross-link tasks vs MCP in `tasks.md` and `structured.md`.
-5. Mirror key guide sections onto the Pages site or clearly defer to `docs/guide.md`.
+5. GitHub Pages was removed; keep `docs/guide.md` as the how-to source (do not reintroduce a parallel site).
 
 ### Runa audit — docs
 
@@ -465,7 +465,7 @@ Evaluation of `README.md`, `docs/`, `plan.md`, and `AGENTS.md` (2026-09-20, Engl
 
 #### Solid
 
-- **README.md** — clear product pitch, install paths, first commands, link to the site and deeper docs.
+- **README.md** — clear product pitch, install paths, first commands, and links to deeper docs.
 - **docs/** — strong index in `docs/README.md`; user path via `getting-started.md` + `guide.md`; reference depth in `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `versions.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
 - **plan.md** — decisions D1–D23, active-task table, task cards; now also carries features + documentation audit sections.
 - **AGENTS.md** — agent operating rules, crate map, claim protocol, kernel language (D23), tool/model routing — usable as the agent runbook.
@@ -482,7 +482,7 @@ Evaluation of `README.md`, `docs/`, `plan.md`, and `AGENTS.md` (2026-09-20, Engl
 
 - **getting-started / release.md** assume a green GitHub Release installer while **P14.2** still has `v0.1.0` Release red — curl/Homebrew paths are aspirational until that lands.
 - **versions.md** still says GPU accel is “not yet forwarded” to the default path — docs lag a turnkey GPU story vs Ollama.
-- **Site (`site/`)** is thinner than `docs/guide.md` — Pages vs repo docs can drift.
+- GitHub Pages / `site/` was removed; `docs/` is the documentation source (the old Pages landing was thinner than `docs/guide.md` and could drift).
 - **tasks.md vs MCP** — plan-claim “tasks” vs model tool loop in `structured.md` need an explicit cross-link to avoid agent confusion.
 
 ### Runa audit — tests
