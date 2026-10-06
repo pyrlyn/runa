@@ -140,7 +140,7 @@ Brand constants: `--runa-brand-charcoal` `#1C1412` · `--runa-brand-ember` `#E85
 - The wordmark's live text is `#1C1412`, so it is for light grounds only; there is no on-dark wordmark yet.
   No wordmark PNG: the wordmark is live text, so a raster depends on the installed font.
 - `docs/brand/` sets IBM Plex Sans for marketing copy; the base ships only IBM Plex Mono.
-- Nothing in runa imports this folder yet; `docs/brand/` and the Hugo site under `site/` keep their own copies.
+- Nothing in runa imports this folder yet; `docs/brand/` keeps its own copy.
 
 ## Preview
 

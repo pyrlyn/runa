@@ -2,7 +2,7 @@
 title: runa
 tagline: Local-first AI CLI — fit-check a GGUF before you download it, run it locally via ggml / llama.cpp, or hit OpenAI and Anthropic.
 repo: https://github.com/pyrlyn/runa
-homepage: https://pyrlyn.github.io/runa/
+homepage: https://github.com/pyrlyn/runa
 install: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh"
 install_alternatives:
   - 'brew install ./runa.rb'
@@ -116,7 +116,6 @@ runa media transcribe --model base --lang auto clip.wav
 ## Links
 
 - Repository: <https://github.com/pyrlyn/runa>
-- Website: <https://pyrlyn.github.io/runa/>
 - Documentation: <https://github.com/pyrlyn/runa/tree/main/docs>
 - Getting started: <https://github.com/pyrlyn/runa/blob/main/docs/getting-started.md>
 - Configuration reference: <https://github.com/pyrlyn/runa/blob/main/docs/config.md>
