@@ -201,7 +201,7 @@ All synthetic files are generated, not derived from upstream weights.
 | qwen2-0_5b-instruct-q4_0.gguf | 337M | Qwen/Qwen2-0.5B-Instruct-GGUF (TheBloke) | Qwen |
 | Qwen3-8B-Q4_K_M.gguf | 4.7G | unsloth/Qwen3-8B-GGUF | Qwen |
 | Qwen3-30B-A3B-Q4_K_M.gguf | ~6M header-only (real tensor infos; weights truncated) | unsloth/Qwen3-30B-A3B-GGUF | Qwen |
-| gpt-oss-20b-MXFP4.gguf | 11G | ggml-org/gpt-oss-20b-GGUF | Apache-2.0 |
+| gpt-oss-20b-MXFP4.gguf | ~26M tiny loadable (real Harmony chat_template + minimal tensors) | custom from ggml-org/gpt-oss-20b-GGUF tokenizer | Apache-2.0 |
 | SmolVLM-500M-Instruct-Q8_0.gguf | 417M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
 | mmproj-SmolVLM-500M-Instruct-Q8_0.gguf | 104M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
 | shapes.png | 2.3K | synthetic | MIT |
