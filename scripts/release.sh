@@ -14,7 +14,7 @@
 #   --dry-run  print the version that would be released and change nothing
 #   --local    make the version commit and stop (what bump.yml runs)
 #
-# This script never pushes and never tags. bump.yml (pyrlyn/infra) pushes the
+# This script never pushes and never tags. bump.yml (pyrlyn/ci) pushes the
 # commit to `release/bump-vX.Y.Z`, opens a pull request, rebase-merges it once
 # every required check is green, tags the commit that landed on main, creates a
 # draft release and dispatches release.yml and release-variants.yml on the tag.

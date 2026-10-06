@@ -1,7 +1,7 @@
 # docs/release.md — how a release runs
 
 There is one way to a release: the `bump.yml` workflow (Actions → Bump and
-release: `patch` | `minor` | `major`), which runs the shared pyrlyn/infra
+release: `patch` | `minor` | `major`), which runs the shared pyrlyn/ci
 `bump.yml`. It is also the only thing that creates a `v*` tag:
 
 1. `scripts/release.sh <level> --local` makes one `release: v<version>` commit
