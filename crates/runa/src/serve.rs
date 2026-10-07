@@ -29,15 +29,16 @@ use base64::Engine;
 use futures::{FutureExt, Stream, stream};
 use runa_core::{BackendKind, Effort, ThinkConfig, ThinkOverrides};
 use runa_engine::{
-    ChatMessage, GenEvent, GenerateRequest, LoadConfig, Mode, Placement, SamplingConfig,
-    StopReason, ToolCall, VisionFrame, VisionSource,
+    ChatMessage, GenEvent, GenerateRequest, LoadConfig, SamplingConfig, StopReason, ToolCall,
+    VisionFrame, VisionSource,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
-use crate::pool::{EngineJob, ModelPool, Streamed, Warmup, lock, panic_text};
 use runa_memory::MemoryManager;
+use runa_pool::pool::{lock, panic_text};
+use runa_pool::{EngineJob, ModelPool, Placer, Streamed, Warmup};
 
 /// CLI bundle for `runa serve` (P6.1).
 pub(crate) struct ServeOpts {
@@ -53,7 +54,7 @@ pub(crate) struct ServeOpts {
     /// LoRA adapters applied to every served model (P8.5).
     pub loras: Vec<runa_engine::LoraSpec>,
     /// CLI placement overrides (`--device/--tensor-split/--main-gpu/--rpc`).
-    pub overrides: crate::pool::PlacementOverrides,
+    pub overrides: crate::placer::PlacementOverrides,
     /// Worker threads for every gguf load (P10.2).
     pub threads: Option<i32>,
     /// CLI `--max-load-percent` for the startup cap check (warn-only).
@@ -68,10 +69,8 @@ pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
     if opts.parallel == 0 {
         return Err("serve: --parallel must be >= 1".into());
     }
-    let placement_base = match crate::parse_mode_choice(&opts.mode)? {
-        crate::ModeChoice::Fixed(m) => Placement::from_mode(m),
-        crate::ModeChoice::Auto => Placement::from_mode(Mode::Cpu),
-    };
+    let placer =
+        crate::placer::local_placer(&opts.mode, opts.overrides.clone(), opts.max_load_percent)?;
     let config = LoadConfig {
         n_ctx: opts.ctx,
         loras: opts.loras,
@@ -83,21 +82,17 @@ pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
         .unwrap_or_else(|| opts.models.len().min(opts.parallel).max(1));
     let default_id = opts.models[0].0.clone();
     let backend = opts.backend;
-    let overrides = opts.overrides.clone();
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(listen(
         &opts.host,
         opts.port,
         opts.models,
         backend,
-        placement_base,
-        overrides,
-        opts.mode,
+        placer,
         config,
         default_id,
         opts.parallel,
         max_loaded,
-        opts.max_load_percent,
     ))
 }
 
@@ -107,14 +102,11 @@ async fn listen(
     port: u16,
     models: Vec<(String, PathBuf)>,
     backend: BackendKind,
-    placement_base: Placement,
-    overrides: crate::pool::PlacementOverrides,
-    mode: String,
+    placer: Placer,
     config: LoadConfig,
     default_id: String,
     parallel: usize,
     max_loaded: usize,
-    max_load_percent: Option<u8>,
 ) -> Result<(), String> {
     let progress = Arc::new(AtomicU32::new(0));
     // Single slot by design: only the startup warm-up reports it, so later LRU reload overwrites go unread.
@@ -122,9 +114,7 @@ async fn listen(
         progress: Some(Arc::clone(&progress)),
         ..config
     };
-    let pool = ModelPool::new(models, backend, placement_base, mode, config, max_loaded)?
-        .with_overrides(overrides)
-        .with_max_load_percent(max_load_percent);
+    let pool = ModelPool::new(models, backend, config, max_loaded, placer)?;
     let models: Arc<[String]> = pool.model_ids().into();
     let policy = crate::config::resolve_memory_policy()?;
     let tick_secs = policy
@@ -165,8 +155,8 @@ async fn listen(
     eprintln!("listening on http://{bound}");
     // Requests that arrive meanwhile queue on the pool lock the warm-up holds.
     let (pool, warm) = (Arc::clone(&state.pool), Arc::clone(&state.warm));
-    tokio::task::spawn_blocking(move || crate::pool::warm_up(&pool, &warm, "serve"));
-    tokio::spawn(crate::pool::report_progress(
+    tokio::task::spawn_blocking(move || runa_pool::pool::warm_up(&pool, &warm, "serve"));
+    tokio::spawn(runa_pool::pool::report_progress(
         Arc::clone(&state.warm),
         "serve",
     ));
@@ -177,7 +167,7 @@ async fn listen(
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(tick_secs));
         loop {
             tick.tick().await;
-            crate::pool::idle_tick(&tick_pool, &tick_mm, "serve").await;
+            runa_pool::pool::idle_tick(&tick_pool, &tick_mm, "serve").await;
         }
     });
     axum::serve(listener, app).await.map_err(|e| e.to_string())
@@ -229,7 +219,7 @@ async fn with_engine(
     let id = model_id.to_owned();
     tokio::task::spawn_blocking(move || {
         let resolved = lock(&pool).resolve_id(Some(&id))?;
-        crate::pool::ensure_engine(&pool, &resolved)
+        runa_pool::pool::ensure_engine(&pool, &resolved)
     })
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -333,7 +323,9 @@ async fn chat_completions(
         let enc = ChatEncoder::new(&model_id);
         return stream_reply(&jobs, req, enc, (permit, temps)).await;
     }
-    let events = generate_events(&jobs, req).await.map_err(engine_status)?;
+    let events = runa_pool::generate_on(&jobs, req)
+        .await
+        .map_err(engine_status)?;
     let _keep_temps = temps;
     Ok(Json(non_stream_body(&model_id, &events)).into_response())
 }
@@ -399,7 +391,9 @@ async fn anthropic_messages(
         let enc = AnthropicEncoder::new(&model_id);
         return stream_reply(&jobs, req, enc, (permit, temps)).await;
     }
-    let events = generate_events(&jobs, req).await.map_err(engine_status)?;
+    let events = runa_pool::generate_on(&jobs, req)
+        .await
+        .map_err(engine_status)?;
     let _keep_temps = temps;
     Ok(Json(anthropic_message_body(&model_id, &events)).into_response())
 }
@@ -539,19 +533,6 @@ fn checked_max_tokens(explicit: Option<u32>) -> Result<u32, String> {
     }
 }
 
-async fn generate_events(
-    jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
-    req: GenerateRequest,
-) -> Result<Vec<GenEvent>, String> {
-    let (resp, rx) = oneshot::channel();
-    jobs.send(EngineJob::Generate {
-        req: Box::new(req),
-        resp,
-    })
-    .map_err(|_| "engine thread stopped".to_string())?;
-    rx.await.map_err(|e| e.to_string())?
-}
-
 async fn embed_vector(
     jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
     input: &str,
@@ -642,12 +623,7 @@ async fn stream_reply<E: SseEncoder>(
     mut enc: E,
     guards: StreamGuards,
 ) -> Result<Response, (StatusCode, String)> {
-    let (tx, mut rx) = mpsc::channel(STREAM_BACKLOG);
-    jobs.send(EngineJob::GenerateStream {
-        req: Box::new(req),
-        tx,
-    })
-    .map_err(|_| engine_status("engine thread stopped".into()))?;
+    let mut rx = runa_pool::generate_stream_on(jobs, req, STREAM_BACKLOG).map_err(engine_status)?;
     // The prompt length comes first, but errors such as an oversized prompt
     // surface after it, so wait for the first real event before answering.
     let mut input_tokens = None;
@@ -1558,6 +1534,7 @@ mod tests {
     use super::*;
     use futures::StreamExt;
     use runa_core::ThinkMode;
+    use tokio::sync::mpsc;
 
     #[test]
     fn effort_and_budget_fields() {

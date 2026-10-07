@@ -23,7 +23,7 @@ hexagon = ["runa-engine/hexagon"]
 openvino = ["runa-engine/openvino"]
 mtmd = ["runa-engine/mtmd"]
 # P9.2: mistral.rs backend for safetensors dirs (`--backend mistral`).
-mistralrs = ["runa-engine/mistralrs"]
+mistralrs = ["runa-engine/mistralrs", "runa-pool/mistralrs"]
 # P9.3: real ggml RPC backend (vendored b7709 `ggml-rpc.cpp` in runa-engine).
 # Enables `--rpc` registration in `load()`; without it `--rpc` fails
 # explicitly with `Unsupported`. Default builds stay GGUF-local.
@@ -43,6 +43,8 @@ runa-fit = { path = "../runa-fit" }
 runa-memory = { path = "../runa-memory" }
 # P2.3 run/chat CLI on the engine wrapper.
 runa-engine = { path = "../runa-engine" }
+# P16.2 engine wrapper + model pool, shared with embedders of local inference.
+runa-pool = { path = "../runa-pool" }
 # P3.8 secrets (env / keyring / reject inline keys).
 runa-cloud = { path = "../runa-cloud" }
 runa-media = { path = "../runa-media" }

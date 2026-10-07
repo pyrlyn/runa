@@ -314,7 +314,7 @@ JSON text, mirroring how the ggml backend surfaces unrequested tool markup.
   for safetensors refs, and `runa fit` refuses mistral directories —
   both with an explicit message.
 - `serve` resolves the backend per model (`Auto` detects); the pool thread
-  holds `LocalEngine` (`run`/`chat` share the enum in `runa/src/engine.rs`);
+  holds `LocalEngine` (`run`/`chat` share the enum in `runa-pool/src/engine.rs`);
   `/v1/embeddings` on a mistral model errors explicitly (gguf only).
 
 ## P9.1 (`runa daemon` background service)

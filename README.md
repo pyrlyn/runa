@@ -130,6 +130,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | `crates/runa` | CLI: config, TUI, serve, daemon, MCP, pull, bench, fit |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode` |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling, mtmd |
+| `crates/runa-pool` | Engine dispatch and model pool, usable in-process without the binary |
 | `crates/runa-fit` | GGUF header, hardware probe, estimator, calibration DB |
 | `crates/runa-memory` | Adaptive memory + task-claim registry |
 | `crates/runa-media` | Audio/video decode, frame sampling, ASR (`whisper-rs`) |

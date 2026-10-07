@@ -115,6 +115,7 @@ runa/
 │   ├── runa/                  # binary: clap CLI, figment config, output, server (axum)
 │   ├── runa-core/             # Backend trait, Request/Event types, ThinkConfig, Mode, errors
 │   ├── runa-engine/           # llama-cpp-2 wrapper: load, placement, sampling loop, mtmd, state save
+│   ├── runa-pool/             # engine dispatch + model pool, embeddable without the binary
 │   ├── runa-fit/              # gguf header (local/remote), hw probe, estimator, planner, calibration db
 │   ├── runa-media/            # audio/video decode, resample, frame sampling, ASR bridge (whisper-rs)
 │   ├── runa-cloud/            # openai (async-openai) + anthropic (reqwest+SSE) adapters, price table
@@ -396,9 +397,10 @@ Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo
 
 #### Crates today
 
-- `crates/runa` — CLI binary: clap surface in `main.rs`, plus `serve.rs`, `daemon.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `pool.rs`.
+- `crates/runa` — CLI binary: clap surface in `main.rs`, plus `serve.rs`, `daemon.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `placer.rs`.
 - `crates/runa-core` — `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors (no engine dependency).
 - `crates/runa-engine` — `llama-cpp-2` wrapper: load, placement, sampling, mtmd, state save; features such as `rpc`.
+- `crates/runa-pool` — `LocalEngine` backend dispatch and `ModelPool` behind serve/daemon; a library so another program can embed local inference (P16.2).
 - `crates/runa-fit` — GGUF header (local/HTTP range), hardware probe, estimator, planner, calibration DB (must not depend on the engine, D5).
 - `crates/runa-cloud` — OpenAI + Anthropic adapters, price table (`docs/prices.toml`).
 - `crates/runa-media` — audio/video decode, resample, frames, whisper-rs ASR.
