@@ -37,15 +37,16 @@ mod cloud;
 mod config;
 mod daemon;
 mod daemon_proto;
-mod engine;
 mod fit;
 #[cfg(fuzzing)]
 mod fuzz_hooks;
 mod mcp;
-mod pool;
+mod placer;
 mod pull;
 mod serve;
 mod tui;
+
+use runa_pool::engine;
 
 /// Run AI models locally or through the OpenAI and Anthropic APIs.
 #[derive(Debug, Parser)]
@@ -476,7 +477,7 @@ fn main() {
                     // Parsed here so a typo fails fast at startup, before
                     // binding the port; applied in `placement_for` on top of
                     // both fixed and `auto` placements (never dropped).
-                    let overrides = pool::PlacementOverrides {
+                    let overrides = placer::PlacementOverrides {
                         devices: device
                             .as_deref()
                             .map(parse_device_list)

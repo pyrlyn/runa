@@ -494,6 +494,12 @@ pub struct Generation<'m> {
 }
 
 impl Generation<'_> {
+    /// Prompt length in tokens, known before the first event; `Usage` reports
+    /// the same number at the end.
+    pub fn prompt_len(&self) -> u32 {
+        u32::try_from(self.prompt_tokens.len()).unwrap_or(u32::MAX)
+    }
+
     /// Convenience: run to completion, concatenating text.
     pub fn collect_text(mut self) -> Result<(String, Usage, StopReason), EngineError> {
         let mut text = String::new();

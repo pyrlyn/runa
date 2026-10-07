@@ -73,9 +73,10 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 
 | Path | Responsibility |
 |------|----------------|
-| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `pool.rs`, `cloud.rs` |
+| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `placer.rs`, `cloud.rs` |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors. No engine dependency |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling loop, mtmd, state save; vendored patches behind features (`rpc`, `hexagon`/`openvino` stubs) |
+| `crates/runa-pool` | `LocalEngine` (backend dispatch) and `ModelPool` behind serve/daemon, as a library: another program embeds local inference through it (P16.2). Placement is injected (`Placer`), so it needs no config or fit code |
 | `crates/runa-fit` | GGUF header (local file / HTTP range), hardware probe, estimator, placement planner, calibration DB. Must not depend on the engine (D5) |
 | `crates/runa-memory` | `MemoryManager` (D17) + `TaskRegistry` (D18) |
 | `crates/runa-media` | Audio/video decode, resample, frame sampling, ASR bridge (`whisper-rs`) |

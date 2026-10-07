@@ -26,19 +26,19 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use base64::Engine;
-use futures::{FutureExt, stream};
+use futures::{FutureExt, Stream, stream};
 use runa_core::{BackendKind, Effort, ThinkConfig, ThinkOverrides};
 use runa_engine::{
-    ChatMessage, GenEvent, GenerateRequest, LoadConfig, Mode, Placement, SamplingConfig, ToolCall,
+    ChatMessage, GenEvent, GenerateRequest, LoadConfig, SamplingConfig, StopReason, ToolCall,
     VisionFrame, VisionSource,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::sync::SemaphorePermit;
-use tokio::sync::{Semaphore, oneshot};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
-use crate::pool::{EngineJob, ModelPool, Warmup, lock, panic_text};
 use runa_memory::MemoryManager;
+use runa_pool::pool::{lock, panic_text};
+use runa_pool::{EngineJob, ModelPool, Placer, Streamed, Warmup};
 
 /// CLI bundle for `runa serve` (P6.1).
 pub(crate) struct ServeOpts {
@@ -54,7 +54,7 @@ pub(crate) struct ServeOpts {
     /// LoRA adapters applied to every served model (P8.5).
     pub loras: Vec<runa_engine::LoraSpec>,
     /// CLI placement overrides (`--device/--tensor-split/--main-gpu/--rpc`).
-    pub overrides: crate::pool::PlacementOverrides,
+    pub overrides: crate::placer::PlacementOverrides,
     /// Worker threads for every gguf load (P10.2).
     pub threads: Option<i32>,
     /// CLI `--max-load-percent` for the startup cap check (warn-only).
@@ -69,10 +69,8 @@ pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
     if opts.parallel == 0 {
         return Err("serve: --parallel must be >= 1".into());
     }
-    let placement_base = match crate::parse_mode_choice(&opts.mode)? {
-        crate::ModeChoice::Fixed(m) => Placement::from_mode(m),
-        crate::ModeChoice::Auto => Placement::from_mode(Mode::Cpu),
-    };
+    let placer =
+        crate::placer::local_placer(&opts.mode, opts.overrides.clone(), opts.max_load_percent)?;
     let config = LoadConfig {
         n_ctx: opts.ctx,
         loras: opts.loras,
@@ -84,21 +82,17 @@ pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
         .unwrap_or_else(|| opts.models.len().min(opts.parallel).max(1));
     let default_id = opts.models[0].0.clone();
     let backend = opts.backend;
-    let overrides = opts.overrides.clone();
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(listen(
         &opts.host,
         opts.port,
         opts.models,
         backend,
-        placement_base,
-        overrides,
-        opts.mode,
+        placer,
         config,
         default_id,
         opts.parallel,
         max_loaded,
-        opts.max_load_percent,
     ))
 }
 
@@ -108,14 +102,11 @@ async fn listen(
     port: u16,
     models: Vec<(String, PathBuf)>,
     backend: BackendKind,
-    placement_base: Placement,
-    overrides: crate::pool::PlacementOverrides,
-    mode: String,
+    placer: Placer,
     config: LoadConfig,
     default_id: String,
     parallel: usize,
     max_loaded: usize,
-    max_load_percent: Option<u8>,
 ) -> Result<(), String> {
     let progress = Arc::new(AtomicU32::new(0));
     // Single slot by design: only the startup warm-up reports it, so later LRU reload overwrites go unread.
@@ -123,9 +114,7 @@ async fn listen(
         progress: Some(Arc::clone(&progress)),
         ..config
     };
-    let pool = ModelPool::new(models, backend, placement_base, mode, config, max_loaded)?
-        .with_overrides(overrides)
-        .with_max_load_percent(max_load_percent);
+    let pool = ModelPool::new(models, backend, config, max_loaded, placer)?;
     let models: Arc<[String]> = pool.model_ids().into();
     let policy = crate::config::resolve_memory_policy()?;
     let tick_secs = policy
@@ -166,8 +155,8 @@ async fn listen(
     eprintln!("listening on http://{bound}");
     // Requests that arrive meanwhile queue on the pool lock the warm-up holds.
     let (pool, warm) = (Arc::clone(&state.pool), Arc::clone(&state.warm));
-    tokio::task::spawn_blocking(move || crate::pool::warm_up(&pool, &warm, "serve"));
-    tokio::spawn(crate::pool::report_progress(
+    tokio::task::spawn_blocking(move || runa_pool::pool::warm_up(&pool, &warm, "serve"));
+    tokio::spawn(runa_pool::pool::report_progress(
         Arc::clone(&state.warm),
         "serve",
     ));
@@ -178,7 +167,7 @@ async fn listen(
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(tick_secs));
         loop {
             tick.tick().await;
-            crate::pool::idle_tick(&tick_pool, &tick_mm, "serve").await;
+            runa_pool::pool::idle_tick(&tick_pool, &tick_mm, "serve").await;
         }
     });
     axum::serve(listener, app).await.map_err(|e| e.to_string())
@@ -212,8 +201,9 @@ struct AppState {
     mm: Arc<MemoryManager>,
 }
 
-async fn acquire_parallel(st: &AppState) -> Result<SemaphorePermit<'_>, (StatusCode, String)> {
-    st.parallel.acquire().await.map_err(|_| {
+/// Owned so a streaming reply can hold the slot until its last event.
+async fn acquire_parallel(st: &AppState) -> Result<OwnedSemaphorePermit, (StatusCode, String)> {
+    Arc::clone(&st.parallel).acquire_owned().await.map_err(|_| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             "server shutting down".into(),
@@ -229,7 +219,7 @@ async fn with_engine(
     let id = model_id.to_owned();
     tokio::task::spawn_blocking(move || {
         let resolved = lock(&pool).resolve_id(Some(&id))?;
-        crate::pool::ensure_engine(&pool, &resolved)
+        runa_pool::pool::ensure_engine(&pool, &resolved)
     })
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -286,7 +276,7 @@ async fn chat_completions(
     State(st): State<AppState>,
     Json(body): Json<ChatCompletionBody>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
-    let _permit = acquire_parallel(&st).await?;
+    let permit = acquire_parallel(&st).await?;
     // P10.5: real work arrived — hold off the idle sweep.
     st.mm.touch();
     let think = think_from_request(
@@ -330,16 +320,12 @@ async fn chat_completions(
         .unwrap_or_else(|| st.default_id.clone());
     let jobs = with_engine(&st.pool, &model_id).await?;
     if body.stream.unwrap_or(false) {
-        let events = generate_events(&jobs, req).await.map_err(engine_status)?;
-        let _keep_temps = temps;
-        let sse = stream_chunks(&model_id, &events);
-        return Ok(Sse::new(stream::iter(
-            sse.into_iter().map(Ok::<_, std::convert::Infallible>),
-        ))
-        .keep_alive(KeepAlive::default())
-        .into_response());
+        let enc = ChatEncoder::new(&model_id);
+        return stream_reply(&jobs, req, enc, (permit, temps)).await;
     }
-    let events = generate_events(&jobs, req).await.map_err(engine_status)?;
+    let events = runa_pool::generate_on(&jobs, req)
+        .await
+        .map_err(engine_status)?;
     let _keep_temps = temps;
     Ok(Json(non_stream_body(&model_id, &events)).into_response())
 }
@@ -348,7 +334,7 @@ async fn anthropic_messages(
     State(st): State<AppState>,
     Json(body): Json<MessagesBody>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
-    let _permit = acquire_parallel(&st).await?;
+    let permit = acquire_parallel(&st).await?;
     // P10.5: real work arrived — hold off the idle sweep.
     st.mm.touch();
     let think =
@@ -402,16 +388,12 @@ async fn anthropic_messages(
         .unwrap_or_else(|| st.default_id.clone());
     let jobs = with_engine(&st.pool, &model_id).await?;
     if body.stream.unwrap_or(false) {
-        let events = generate_events(&jobs, req).await.map_err(engine_status)?;
-        let _keep_temps = temps;
-        let sse = anthropic_stream_chunks(&model_id, &events);
-        return Ok(Sse::new(stream::iter(
-            sse.into_iter().map(Ok::<_, std::convert::Infallible>),
-        ))
-        .keep_alive(KeepAlive::default())
-        .into_response());
+        let enc = AnthropicEncoder::new(&model_id);
+        return stream_reply(&jobs, req, enc, (permit, temps)).await;
     }
-    let events = generate_events(&jobs, req).await.map_err(engine_status)?;
+    let events = runa_pool::generate_on(&jobs, req)
+        .await
+        .map_err(engine_status)?;
     let _keep_temps = temps;
     Ok(Json(anthropic_message_body(&model_id, &events)).into_response())
 }
@@ -551,19 +533,6 @@ fn checked_max_tokens(explicit: Option<u32>) -> Result<u32, String> {
     }
 }
 
-async fn generate_events(
-    jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
-    req: GenerateRequest,
-) -> Result<Vec<GenEvent>, String> {
-    let (resp, rx) = oneshot::channel();
-    jobs.send(EngineJob::Generate {
-        req: Box::new(req),
-        resp,
-    })
-    .map_err(|_| "engine thread stopped".to_string())?;
-    rx.await.map_err(|e| e.to_string())?
-}
-
 async fn embed_vector(
     jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
     input: &str,
@@ -597,16 +566,24 @@ fn openai_tool_calls(calls: &[ToolCall], indexed: bool) -> Value {
 }
 
 fn openai_finish(events: &[GenEvent]) -> &'static str {
-    if has_tool_calls(events) {
+    openai_finish_reason(has_tool_calls(events), last_done(events))
+}
+
+fn openai_finish_reason(tool_calls: bool, stop: Option<&StopReason>) -> &'static str {
+    if tool_calls {
         return "tool_calls";
     }
-    match events.iter().rev().find_map(|e| match e {
-        GenEvent::Done(reason) => Some(reason),
-        _ => None,
-    }) {
-        Some(runa_engine::StopReason::MaxTokens) => "length",
+    match stop {
+        Some(StopReason::MaxTokens) => "length",
         _ => "stop",
     }
+}
+
+fn last_done(events: &[GenEvent]) -> Option<&StopReason> {
+    events.iter().rev().find_map(|e| match e {
+        GenEvent::Done(reason) => Some(reason),
+        _ => None,
+    })
 }
 
 fn has_tool_calls(events: &[GenEvent]) -> bool {
@@ -615,35 +592,172 @@ fn has_tool_calls(events: &[GenEvent]) -> bool {
         .any(|e| matches!(e, GenEvent::ToolCalls(c) if !c.is_empty()))
 }
 
-fn stream_chunks(model: &str, events: &[GenEvent]) -> Vec<Event> {
-    let id = completion_id();
-    let mut out = Vec::new();
-    for ev in events {
+/// Slots in the channel between the engine thread and the SSE body. Small
+/// on purpose: when the client reads slowly the engine blocks on a full
+/// channel instead of buffering the reply.
+const STREAM_BACKLOG: usize = 8;
+
+/// Turns engine events into the SSE events of one endpoint, one at a time.
+trait SseEncoder: Send + 'static {
+    /// `input_tokens` is the prompt length when the backend reports it
+    /// before the first token.
+    fn start(&mut self, input_tokens: Option<u32>) -> Vec<Event>;
+    fn push(&mut self, ev: GenEvent) -> Vec<Event>;
+    fn finish(&mut self) -> Vec<Event>;
+    /// The engine failed after the response had started; the status line is
+    /// already sent, so the failure travels as an event.
+    fn error(&mut self, msg: &str) -> Vec<Event>;
+}
+
+/// Everything a streamed reply keeps alive until its last event: the
+/// `--parallel` slot and the `data:` payload temp files.
+type StreamGuards = (OwnedSemaphorePermit, Vec<tempfile::NamedTempFile>);
+
+/// Stream one generation as SSE. Engine start-up failures (for example an
+/// oversized prompt) still answer with an HTTP status, because the first
+/// engine event is awaited before the response is built. Dropping the body
+/// (client disconnect) drops the receiver, which cancels the generation.
+async fn stream_reply<E: SseEncoder>(
+    jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
+    req: GenerateRequest,
+    mut enc: E,
+    guards: StreamGuards,
+) -> Result<Response, (StatusCode, String)> {
+    let mut rx = runa_pool::generate_stream_on(jobs, req, STREAM_BACKLOG).map_err(engine_status)?;
+    // The prompt length comes first, but errors such as an oversized prompt
+    // surface after it, so wait for the first real event before answering.
+    let mut input_tokens = None;
+    let first = loop {
+        match rx.recv().await {
+            Some(Ok(Streamed::Prompt(n))) => input_tokens = Some(n),
+            other => break other,
+        }
+    };
+    let mut queue: std::collections::VecDeque<Event> = enc.start(input_tokens).into();
+    let mut open = true;
+    match first {
+        Some(Ok(Streamed::Event(ev))) => queue.extend(enc.push(ev)),
+        Some(Ok(Streamed::Prompt(_))) => {}
+        Some(Err(e)) => return Err(engine_status(e)),
+        None => open = false,
+    }
+    let body = stream::unfold(
+        (rx, enc, queue, open, guards),
+        |(mut rx, mut enc, mut queue, mut open, guards)| async move {
+            loop {
+                if let Some(ev) = queue.pop_front() {
+                    return Some((
+                        Ok::<_, std::convert::Infallible>(ev),
+                        (rx, enc, queue, open, guards),
+                    ));
+                }
+                if !open {
+                    return None;
+                }
+                match rx.recv().await {
+                    Some(Ok(Streamed::Event(ev))) => queue.extend(enc.push(ev)),
+                    Some(Ok(Streamed::Prompt(_))) => {}
+                    Some(Err(e)) => {
+                        queue.extend(enc.error(&e));
+                        open = false;
+                    }
+                    None => {
+                        queue.extend(enc.finish());
+                        open = false;
+                    }
+                }
+            }
+        },
+    );
+    Ok(sse_response(body))
+}
+
+fn sse_response(
+    body: impl Stream<Item = Result<Event, std::convert::Infallible>> + Send + 'static,
+) -> Response {
+    Sse::new(body)
+        .keep_alive(KeepAlive::default())
+        .into_response()
+}
+
+/// OpenAI `chat.completion.chunk` stream.
+struct ChatEncoder {
+    id: String,
+    model: String,
+    tool_calls: bool,
+    stop: Option<StopReason>,
+}
+
+impl ChatEncoder {
+    fn new(model: &str) -> Self {
+        ChatEncoder {
+            id: completion_id(),
+            model: model.to_owned(),
+            tool_calls: false,
+            stop: None,
+        }
+    }
+
+    fn chunk(&self, delta: Value, finish: Option<&str>) -> Event {
+        let body = json!({
+            "id": self.id,
+            "object": "chat.completion.chunk",
+            "model": self.model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]
+        });
+        Event::default().data(body.to_string())
+    }
+}
+
+impl SseEncoder for ChatEncoder {
+    fn start(&mut self, _input_tokens: Option<u32>) -> Vec<Event> {
+        Vec::new()
+    }
+
+    fn push(&mut self, ev: GenEvent) -> Vec<Event> {
         let delta = match ev {
             GenEvent::Text(t) if !t.is_empty() => json!({"content": t}),
             GenEvent::Reasoning(t) if !t.is_empty() => json!({"reasoning_content": t}),
             GenEvent::ToolCalls(c) if !c.is_empty() => {
-                json!({"tool_calls": openai_tool_calls(c, true)})
+                self.tool_calls = true;
+                json!({"tool_calls": openai_tool_calls(&c, true)})
             }
-            _ => continue,
+            GenEvent::Done(reason) => {
+                self.stop = Some(reason);
+                return Vec::new();
+            }
+            _ => return Vec::new(),
         };
-        let body = json!({
-            "id": id,
-            "object": "chat.completion.chunk",
-            "model": model,
-            "choices": [{"index": 0, "delta": delta, "finish_reason": null}]
-        });
-        out.push(Event::default().data(body.to_string()));
+        vec![self.chunk(delta, None)]
     }
-    let finish = openai_finish(events);
-    let done = json!({
-        "id": id,
-        "object": "chat.completion.chunk",
-        "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]
-    });
-    out.push(Event::default().data(done.to_string()));
-    out.push(Event::default().data("[DONE]"));
+
+    fn finish(&mut self) -> Vec<Event> {
+        let finish = openai_finish_reason(self.tool_calls, self.stop.as_ref());
+        vec![
+            self.chunk(json!({}), Some(finish)),
+            Event::default().data("[DONE]"),
+        ]
+    }
+
+    fn error(&mut self, msg: &str) -> Vec<Event> {
+        let body = json!({"error": {"message": msg, "type": "server_error"}});
+        vec![Event::default().data(body.to_string())]
+    }
+}
+
+/// The whole reply as SSE events, in order (unit tests).
+#[cfg(test)]
+fn stream_chunks(model: &str, events: &[GenEvent]) -> Vec<Event> {
+    encode_all(ChatEncoder::new(model), events)
+}
+
+#[cfg(test)]
+fn encode_all<E: SseEncoder>(mut enc: E, events: &[GenEvent]) -> Vec<Event> {
+    let mut out = enc.start(None);
+    for ev in events {
+        out.extend(enc.push(ev.clone()));
+    }
+    out.extend(enc.finish());
     out
 }
 
@@ -988,14 +1102,15 @@ fn anthropic_message_body(model: &str, events: &[GenEvent]) -> Value {
 }
 
 fn anthropic_stop(events: &[GenEvent], calls: &[ToolCall]) -> &'static str {
-    if !calls.is_empty() {
+    anthropic_stop_reason(!calls.is_empty(), last_done(events))
+}
+
+fn anthropic_stop_reason(tool_calls: bool, stop: Option<&StopReason>) -> &'static str {
+    if tool_calls {
         return "tool_use";
     }
-    match events.iter().rev().find_map(|e| match e {
-        GenEvent::Done(reason) => Some(reason),
-        _ => None,
-    }) {
-        Some(runa_engine::StopReason::MaxTokens) => "max_tokens",
+    match stop {
+        Some(StopReason::MaxTokens) => "max_tokens",
         _ => "end_turn",
     }
 }
@@ -1014,44 +1129,65 @@ fn sse(name: &str, data: Value) -> Event {
     Event::default().event(name).data(data.to_string())
 }
 
-fn anthropic_stream_chunks(model: &str, events: &[GenEvent]) -> Vec<Event> {
-    let id = format!("msg-{}", completion_id().trim_start_matches("chatcmpl-"));
-    let mut out = Vec::new();
-    let (input_tokens, output_tokens) = events
-        .iter()
-        .find_map(|e| match e {
-            GenEvent::Usage(u) => Some((u.prompt_tokens, u.generated_tokens)),
-            _ => None,
-        })
-        .unwrap_or_default();
-    let start = json!({
-        "type": "message_start",
-        "message": {
-            "id": id,
-            "type": "message",
-            "role": "assistant",
-            "model": model,
-            "content": [],
-            "stop_reason": null,
-            "usage": {"input_tokens": input_tokens, "output_tokens": 0}
+/// Anthropic message stream. `message_start` carries the prompt length the
+/// engine reports up front (0 for a backend that only counts at the end);
+/// the final counts arrive in the closing `message_delta`.
+struct AnthropicEncoder {
+    id: String,
+    model: String,
+    /// Index of the content block being written.
+    idx: u32,
+    /// Kind of the open content block; each run of thinking / text deltas
+    /// is one block, every tool call is its own.
+    open: Option<&'static str>,
+    tool_calls: bool,
+    stop: Option<StopReason>,
+    usage: (u32, u32),
+}
+
+impl AnthropicEncoder {
+    fn new(model: &str) -> Self {
+        AnthropicEncoder {
+            id: format!("msg-{}", completion_id().trim_start_matches("chatcmpl-")),
+            model: model.to_owned(),
+            idx: 0,
+            open: None,
+            tool_calls: false,
+            stop: None,
+            usage: (0, 0),
         }
-    });
-    out.push(sse("message_start", start));
-    // Each run of thinking / text deltas is one content block; every tool
-    // call is its own block with the arguments in one `input_json_delta`.
-    let mut idx = 0u32;
-    let mut open: Option<&str> = None;
-    let mut calls: &[ToolCall] = &[];
-    let stop = |out: &mut Vec<Event>, idx: &mut u32, open: &mut Option<&str>| {
-        if open.take().is_some() {
+    }
+
+    fn close_block(&mut self, out: &mut Vec<Event>) {
+        if self.open.take().is_some() {
             out.push(sse(
                 "content_block_stop",
-                json!({"type": "content_block_stop", "index": *idx}),
+                json!({"type": "content_block_stop", "index": self.idx}),
             ));
-            *idx += 1;
+            self.idx += 1;
         }
-    };
-    for ev in events {
+    }
+}
+
+impl SseEncoder for AnthropicEncoder {
+    fn start(&mut self, input_tokens: Option<u32>) -> Vec<Event> {
+        let start = json!({
+            "type": "message_start",
+            "message": {
+                "id": self.id,
+                "type": "message",
+                "role": "assistant",
+                "model": self.model,
+                "content": [],
+                "stop_reason": null,
+                "usage": {"input_tokens": input_tokens.unwrap_or(0), "output_tokens": 0}
+            }
+        });
+        vec![sse("message_start", start)]
+    }
+
+    fn push(&mut self, ev: GenEvent) -> Vec<Event> {
+        let mut out = Vec::new();
         let (kind, block, delta) = match ev {
             GenEvent::Reasoning(t) if !t.is_empty() => (
                 "thinking",
@@ -1064,58 +1200,72 @@ fn anthropic_stream_chunks(model: &str, events: &[GenEvent]) -> Vec<Event> {
                 json!({"type": "text_delta", "text": t}),
             ),
             GenEvent::ToolCalls(c) => {
-                calls = c;
-                stop(&mut out, &mut idx, &mut open);
-                for call in c {
+                self.tool_calls = !c.is_empty();
+                self.close_block(&mut out);
+                for call in &c {
                     let mut block = tool_use_block(call);
                     block["input"] = json!({});
                     out.push(sse(
                         "content_block_start",
-                        json!({"type": "content_block_start", "index": idx, "content_block": block}),
+                        json!({"type": "content_block_start", "index": self.idx, "content_block": block}),
                     ));
                     out.push(sse(
                         "content_block_delta",
                         json!({
                             "type": "content_block_delta",
-                            "index": idx,
+                            "index": self.idx,
                             "delta": {"type": "input_json_delta", "partial_json": call.arguments}
                         }),
                     ));
-                    open = Some("tool_use");
-                    stop(&mut out, &mut idx, &mut open);
+                    self.open = Some("tool_use");
+                    self.close_block(&mut out);
                 }
-                continue;
+                return out;
             }
-            _ => continue,
+            GenEvent::Usage(u) => {
+                self.usage = (u.prompt_tokens, u.generated_tokens);
+                return out;
+            }
+            GenEvent::Done(reason) => {
+                self.stop = Some(reason);
+                return out;
+            }
+            _ => return out,
         };
-        if open != Some(kind) {
-            stop(&mut out, &mut idx, &mut open);
+        if self.open != Some(kind) {
+            self.close_block(&mut out);
             out.push(sse(
                 "content_block_start",
-                json!({"type": "content_block_start", "index": idx, "content_block": block}),
+                json!({"type": "content_block_start", "index": self.idx, "content_block": block}),
             ));
-            open = Some(kind);
+            self.open = Some(kind);
         }
         out.push(sse(
             "content_block_delta",
-            json!({"type": "content_block_delta", "index": idx, "delta": delta}),
+            json!({"type": "content_block_delta", "index": self.idx, "delta": delta}),
         ));
+        out
     }
-    stop(&mut out, &mut idx, &mut open);
-    out.push(sse(
-        "message_delta",
-        json!({
-            "type": "message_delta",
-            "delta": {"stop_reason": anthropic_stop(events, calls)},
-            "usage": {"output_tokens": output_tokens}
-        }),
-    ));
-    out.push(
-        Event::default()
-            .event("message_stop")
-            .data(json!({"type": "message_stop"}).to_string()),
-    );
-    out
+
+    fn finish(&mut self) -> Vec<Event> {
+        let mut out = Vec::new();
+        self.close_block(&mut out);
+        out.push(sse(
+            "message_delta",
+            json!({
+                "type": "message_delta",
+                "delta": {"stop_reason": anthropic_stop_reason(self.tool_calls, self.stop.as_ref())},
+                "usage": {"input_tokens": self.usage.0, "output_tokens": self.usage.1}
+            }),
+        ));
+        out.push(sse("message_stop", json!({"type": "message_stop"})));
+        out
+    }
+
+    fn error(&mut self, msg: &str) -> Vec<Event> {
+        let body = json!({"type": "error", "error": {"type": "api_error", "message": msg}});
+        vec![sse("error", body)]
+    }
 }
 
 /// Parsed request body: chat messages plus optional media (vision frames,
@@ -1382,7 +1532,9 @@ pub(crate) fn fuzz_request_body(body: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
     use runa_core::ThinkMode;
+    use tokio::sync::mpsc;
 
     #[test]
     fn effort_and_budget_fields() {
@@ -1573,5 +1725,169 @@ mod tests {
         let raw = b"hello";
         let enc = runa_media::wav_base64(raw);
         assert_eq!(b64_decode(&enc).unwrap(), raw);
+    }
+
+    /// A scripted engine thread behind the same job protocol as the real
+    /// one: `script` runs on the engine side with the stream sender.
+    fn fake_engine(
+        script: impl Fn(&mpsc::Sender<Result<Streamed, String>>) + Send + 'static,
+    ) -> Arc<std::sync::mpsc::Sender<EngineJob>> {
+        let (jobs, rx) = std::sync::mpsc::channel::<EngineJob>();
+        std::thread::spawn(move || {
+            while let Ok(job) = rx.recv() {
+                if let EngineJob::GenerateStream { tx, .. } = job {
+                    script(&tx);
+                }
+            }
+        });
+        Arc::new(jobs)
+    }
+
+    fn ev(e: GenEvent) -> Result<Streamed, String> {
+        Ok(Streamed::Event(e))
+    }
+
+    async fn start_stream(
+        jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
+        enc: impl SseEncoder,
+    ) -> Result<Response, (StatusCode, String)> {
+        let permit = Arc::new(Semaphore::new(1)).acquire_owned().await.unwrap();
+        stream_reply(jobs, GenerateRequest::default(), enc, (permit, Vec::new())).await
+    }
+
+    async fn start_chat_stream(
+        jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
+    ) -> Result<Response, (StatusCode, String)> {
+        start_stream(jobs, ChatEncoder::new("m")).await
+    }
+
+    async fn next_text(
+        body: &mut (impl Stream<Item = Result<axum::body::Bytes, axum::Error>> + Unpin),
+    ) -> String {
+        let chunk = body
+            .next()
+            .await
+            .expect("stream ended")
+            .expect("body error");
+        String::from_utf8(chunk.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn first_token_reaches_the_client_before_generation_ends() {
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = Arc::clone(&done);
+        let jobs = fake_engine(move |tx| {
+            tx.blocking_send(ev(GenEvent::Text("first".into())))
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            tx.blocking_send(ev(GenEvent::Text("second".into())))
+                .unwrap();
+            tx.blocking_send(ev(GenEvent::Done(StopReason::Eos)))
+                .unwrap();
+            flag.store(true, Ordering::SeqCst);
+        });
+        let started = std::time::Instant::now();
+        let resp = start_chat_stream(&jobs).await.unwrap();
+        let mut body = resp.into_body().into_data_stream();
+        let first = next_text(&mut body).await;
+        assert!(first.contains(r#""content":"first""#), "{first}");
+        assert!(started.elapsed() < std::time::Duration::from_millis(400));
+        assert!(
+            !done.load(Ordering::SeqCst),
+            "generation ended before the first token arrived"
+        );
+        let mut rest = String::new();
+        while let Some(chunk) = body.next().await {
+            rest.push_str(std::str::from_utf8(&chunk.unwrap()).unwrap());
+        }
+        assert!(started.elapsed() >= std::time::Duration::from_millis(600));
+        assert!(rest.contains(r#""content":"second""#), "{rest}");
+        assert!(rest.contains(r#""finish_reason":"stop""#) && rest.ends_with("data: [DONE]\n\n"));
+    }
+
+    #[tokio::test]
+    async fn dropping_the_body_cancels_generation_and_a_slow_reader_throttles_it() {
+        let sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (count, stopped) = (Arc::clone(&sent), Arc::clone(&cancelled));
+        let jobs = fake_engine(move |tx| {
+            for _ in 0..1000 {
+                if tx.blocking_send(ev(GenEvent::Text("t".into()))).is_err() {
+                    stopped.store(true, Ordering::SeqCst);
+                    return;
+                }
+                count.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        let resp = start_chat_stream(&jobs).await.unwrap();
+        let mut body = resp.into_body().into_data_stream();
+        next_text(&mut body).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let ahead = sent.load(Ordering::SeqCst);
+        assert!(
+            ahead <= STREAM_BACKLOG + 4,
+            "engine ran {ahead} events ahead of the reader"
+        );
+        drop(body);
+        for _ in 0..100 {
+            if cancelled.load(Ordering::SeqCst) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("generation was not cancelled after the client left");
+    }
+
+    #[tokio::test]
+    async fn engine_errors_keep_their_status_before_the_stream_and_become_events_after() {
+        let early = fake_engine(|tx| {
+            tx.blocking_send(Err("context_length_exceeded".into()))
+                .unwrap();
+        });
+        let err = start_chat_stream(&early).await.unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+
+        let late = fake_engine(|tx| {
+            tx.blocking_send(ev(GenEvent::Text("ok".into()))).unwrap();
+            tx.blocking_send(Err("boom".into())).unwrap();
+        });
+        let resp = start_chat_stream(&late).await.unwrap();
+        let mut body = resp.into_body().into_data_stream();
+        let mut all = String::new();
+        while let Some(chunk) = body.next().await {
+            all.push_str(std::str::from_utf8(&chunk.unwrap()).unwrap());
+        }
+        assert!(
+            all.contains(r#""content":"ok""#) && all.contains("boom"),
+            "{all}"
+        );
+        assert!(!all.contains("[DONE]"), "{all}");
+    }
+
+    #[tokio::test]
+    async fn anthropic_message_start_carries_the_prompt_length() {
+        let jobs = fake_engine(|tx| {
+            tx.blocking_send(Ok(Streamed::Prompt(42))).unwrap();
+            tx.blocking_send(ev(GenEvent::Text("hi".into()))).unwrap();
+        });
+        let resp = start_stream(&jobs, AnthropicEncoder::new("m"))
+            .await
+            .unwrap();
+        let mut body = resp.into_body().into_data_stream();
+        let first = next_text(&mut body).await;
+        assert!(first.starts_with("event: message_start"), "{first}");
+        assert!(first.contains(r#""input_tokens":42"#), "{first}");
+    }
+
+    #[test]
+    fn anthropic_stream_keeps_block_order() {
+        let events = vec![
+            GenEvent::Reasoning("plan".into()),
+            GenEvent::Text("ok".into()),
+            GenEvent::Done(StopReason::Eos),
+        ];
+        let out = encode_all(AnthropicEncoder::new("m"), &events);
+        // message_start, (block start, delta, stop) x2, message_delta, message_stop
+        assert_eq!(out.len(), 9);
     }
 }
