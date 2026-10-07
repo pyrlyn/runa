@@ -36,7 +36,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 
-use crate::pool::{EngineJob, ModelPool, Warmup, lock, panic_text};
+use crate::pool::{EngineJob, ModelPool, Streamed, Warmup, lock, panic_text};
 use runa_memory::MemoryManager;
 
 /// CLI bundle for `runa serve` (P6.1).
@@ -618,7 +618,9 @@ const STREAM_BACKLOG: usize = 8;
 
 /// Turns engine events into the SSE events of one endpoint, one at a time.
 trait SseEncoder: Send + 'static {
-    fn start(&mut self) -> Vec<Event>;
+    /// `input_tokens` is the prompt length when the backend reports it
+    /// before the first token.
+    fn start(&mut self, input_tokens: Option<u32>) -> Vec<Event>;
     fn push(&mut self, ev: GenEvent) -> Vec<Event>;
     fn finish(&mut self) -> Vec<Event>;
     /// The engine failed after the response had started; the status line is
@@ -646,10 +648,20 @@ async fn stream_reply<E: SseEncoder>(
         tx,
     })
     .map_err(|_| engine_status("engine thread stopped".into()))?;
-    let mut queue: std::collections::VecDeque<Event> = enc.start().into();
+    // The prompt length comes first, but errors such as an oversized prompt
+    // surface after it, so wait for the first real event before answering.
+    let mut input_tokens = None;
+    let first = loop {
+        match rx.recv().await {
+            Some(Ok(Streamed::Prompt(n))) => input_tokens = Some(n),
+            other => break other,
+        }
+    };
+    let mut queue: std::collections::VecDeque<Event> = enc.start(input_tokens).into();
     let mut open = true;
-    match rx.recv().await {
-        Some(Ok(ev)) => queue.extend(enc.push(ev)),
+    match first {
+        Some(Ok(Streamed::Event(ev))) => queue.extend(enc.push(ev)),
+        Some(Ok(Streamed::Prompt(_))) => {}
         Some(Err(e)) => return Err(engine_status(e)),
         None => open = false,
     }
@@ -667,7 +679,8 @@ async fn stream_reply<E: SseEncoder>(
                     return None;
                 }
                 match rx.recv().await {
-                    Some(Ok(ev)) => queue.extend(enc.push(ev)),
+                    Some(Ok(Streamed::Event(ev))) => queue.extend(enc.push(ev)),
+                    Some(Ok(Streamed::Prompt(_))) => {}
                     Some(Err(e)) => {
                         queue.extend(enc.error(&e));
                         open = false;
@@ -721,7 +734,7 @@ impl ChatEncoder {
 }
 
 impl SseEncoder for ChatEncoder {
-    fn start(&mut self) -> Vec<Event> {
+    fn start(&mut self, _input_tokens: Option<u32>) -> Vec<Event> {
         Vec::new()
     }
 
@@ -764,7 +777,7 @@ fn stream_chunks(model: &str, events: &[GenEvent]) -> Vec<Event> {
 
 #[cfg(test)]
 fn encode_all<E: SseEncoder>(mut enc: E, events: &[GenEvent]) -> Vec<Event> {
-    let mut out = enc.start();
+    let mut out = enc.start(None);
     for ev in events {
         out.extend(enc.push(ev.clone()));
     }
@@ -1140,9 +1153,9 @@ fn sse(name: &str, data: Value) -> Event {
     Event::default().event(name).data(data.to_string())
 }
 
-/// Anthropic message stream. `message_start` goes out before the engine has
-/// counted anything, so its `input_tokens` is 0; the real counts arrive in
-/// the closing `message_delta`.
+/// Anthropic message stream. `message_start` carries the prompt length the
+/// engine reports up front (0 for a backend that only counts at the end);
+/// the final counts arrive in the closing `message_delta`.
 struct AnthropicEncoder {
     id: String,
     model: String,
@@ -1181,7 +1194,7 @@ impl AnthropicEncoder {
 }
 
 impl SseEncoder for AnthropicEncoder {
-    fn start(&mut self) -> Vec<Event> {
+    fn start(&mut self, input_tokens: Option<u32>) -> Vec<Event> {
         let start = json!({
             "type": "message_start",
             "message": {
@@ -1191,7 +1204,7 @@ impl SseEncoder for AnthropicEncoder {
                 "model": self.model,
                 "content": [],
                 "stop_reason": null,
-                "usage": {"input_tokens": 0, "output_tokens": 0}
+                "usage": {"input_tokens": input_tokens.unwrap_or(0), "output_tokens": 0}
             }
         });
         vec![sse("message_start", start)]
@@ -1740,7 +1753,7 @@ mod tests {
     /// A scripted engine thread behind the same job protocol as the real
     /// one: `script` runs on the engine side with the stream sender.
     fn fake_engine(
-        script: impl Fn(&mpsc::Sender<Result<GenEvent, String>>) + Send + 'static,
+        script: impl Fn(&mpsc::Sender<Result<Streamed, String>>) + Send + 'static,
     ) -> Arc<std::sync::mpsc::Sender<EngineJob>> {
         let (jobs, rx) = std::sync::mpsc::channel::<EngineJob>();
         std::thread::spawn(move || {
@@ -1753,12 +1766,22 @@ mod tests {
         Arc::new(jobs)
     }
 
+    fn ev(e: GenEvent) -> Result<Streamed, String> {
+        Ok(Streamed::Event(e))
+    }
+
+    async fn start_stream(
+        jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
+        enc: impl SseEncoder,
+    ) -> Result<Response, (StatusCode, String)> {
+        let permit = Arc::new(Semaphore::new(1)).acquire_owned().await.unwrap();
+        stream_reply(jobs, GenerateRequest::default(), enc, (permit, Vec::new())).await
+    }
+
     async fn start_chat_stream(
         jobs: &Arc<std::sync::mpsc::Sender<EngineJob>>,
     ) -> Result<Response, (StatusCode, String)> {
-        let permit = Arc::new(Semaphore::new(1)).acquire_owned().await.unwrap();
-        let enc = ChatEncoder::new("m");
-        stream_reply(jobs, GenerateRequest::default(), enc, (permit, Vec::new())).await
+        start_stream(jobs, ChatEncoder::new("m")).await
     }
 
     async fn next_text(
@@ -1777,12 +1800,12 @@ mod tests {
         let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = Arc::clone(&done);
         let jobs = fake_engine(move |tx| {
-            tx.blocking_send(Ok(GenEvent::Text("first".into())))
+            tx.blocking_send(ev(GenEvent::Text("first".into())))
                 .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(600));
-            tx.blocking_send(Ok(GenEvent::Text("second".into())))
+            tx.blocking_send(ev(GenEvent::Text("second".into())))
                 .unwrap();
-            tx.blocking_send(Ok(GenEvent::Done(StopReason::Eos)))
+            tx.blocking_send(ev(GenEvent::Done(StopReason::Eos)))
                 .unwrap();
             flag.store(true, Ordering::SeqCst);
         });
@@ -1812,7 +1835,7 @@ mod tests {
         let (count, stopped) = (Arc::clone(&sent), Arc::clone(&cancelled));
         let jobs = fake_engine(move |tx| {
             for _ in 0..1000 {
-                if tx.blocking_send(Ok(GenEvent::Text("t".into()))).is_err() {
+                if tx.blocking_send(ev(GenEvent::Text("t".into()))).is_err() {
                     stopped.store(true, Ordering::SeqCst);
                     return;
                 }
@@ -1848,7 +1871,7 @@ mod tests {
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
 
         let late = fake_engine(|tx| {
-            tx.blocking_send(Ok(GenEvent::Text("ok".into()))).unwrap();
+            tx.blocking_send(ev(GenEvent::Text("ok".into()))).unwrap();
             tx.blocking_send(Err("boom".into())).unwrap();
         });
         let resp = start_chat_stream(&late).await.unwrap();
@@ -1862,6 +1885,21 @@ mod tests {
             "{all}"
         );
         assert!(!all.contains("[DONE]"), "{all}");
+    }
+
+    #[tokio::test]
+    async fn anthropic_message_start_carries_the_prompt_length() {
+        let jobs = fake_engine(|tx| {
+            tx.blocking_send(Ok(Streamed::Prompt(42))).unwrap();
+            tx.blocking_send(ev(GenEvent::Text("hi".into()))).unwrap();
+        });
+        let resp = start_stream(&jobs, AnthropicEncoder::new("m"))
+            .await
+            .unwrap();
+        let mut body = resp.into_body().into_data_stream();
+        let first = next_text(&mut body).await;
+        assert!(first.starts_with("event: message_start"), "{first}");
+        assert!(first.contains(r#""input_tokens":42"#), "{first}");
     }
 
     #[test]

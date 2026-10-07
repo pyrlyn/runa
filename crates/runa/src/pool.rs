@@ -89,6 +89,15 @@ pub(crate) fn catch_job<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, S
         .unwrap_or_else(|p| Err(format!("internal error: {}", panic_text(&*p))))
 }
 
+/// One item on a streaming generation channel.
+#[derive(Debug)]
+pub(crate) enum Streamed {
+    /// Prompt length in tokens, sent once before the first event by
+    /// backends that know it up front.
+    Prompt(u32),
+    Event(GenEvent),
+}
+
 pub(crate) enum EngineJob {
     Generate {
         req: Box<GenerateRequest>,
@@ -99,7 +108,7 @@ pub(crate) enum EngineJob {
     /// cancels the generation. An `Err` item ends the stream.
     GenerateStream {
         req: Box<GenerateRequest>,
-        tx: tokio::sync::mpsc::Sender<Result<GenEvent, String>>,
+        tx: tokio::sync::mpsc::Sender<Result<Streamed, String>>,
     },
     Embed {
         input: String,
@@ -540,7 +549,7 @@ fn run_generation(
     engine: &mut crate::engine::LocalEngine,
     used: &mut bool,
     req: GenerateRequest,
-    mut emit: impl FnMut(Result<GenEvent, String>) -> bool,
+    mut emit: impl FnMut(Result<Streamed, String>) -> bool,
 ) -> Result<(), String> {
     // The ggml backend reuses one context per thread: drop KV cells between
     // requests (P3.9). The mistral backend is stateless (no-op there).
@@ -548,8 +557,14 @@ fn run_generation(
         engine.clear_kv();
     }
     *used = true;
-    for item in engine.generate(req)? {
-        let item = item.map_err(|e| e.to_string());
+    let (prompt_len, events) = engine.generate_counted(req)?;
+    if let Some(n) = prompt_len
+        && !emit(Ok(Streamed::Prompt(n)))
+    {
+        return Ok(());
+    }
+    for item in events {
+        let item = item.map(Streamed::Event).map_err(|e| e.to_string());
         let failed = item.is_err();
         if !emit(item) || failed {
             break;
@@ -594,10 +609,11 @@ pub(crate) fn spawn_engine(
                         let mut failed = None;
                         let out = catch_job(|| {
                             run_generation(&mut engine, &mut used, *req, |item| match item {
-                                Ok(ev) => {
+                                Ok(Streamed::Event(ev)) => {
                                     events.push(ev);
                                     true
                                 }
+                                Ok(Streamed::Prompt(_)) => true,
                                 Err(e) => {
                                     failed = Some(e);
                                     false

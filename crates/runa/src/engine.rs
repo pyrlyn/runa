@@ -17,6 +17,8 @@ use runa_engine::{
     ChatMessage, EngineError, GenEvent, GenerateRequest, LoadConfig, LoadedModel, Placement, load,
 };
 
+type EventStream<'a> = Box<dyn Iterator<Item = Result<GenEvent, EngineError>> + 'a>;
+
 /// A loaded local model behind either backend.
 pub(crate) enum LocalEngine {
     Gguf(LoadedModel),
@@ -49,19 +51,29 @@ impl LocalEngine {
     }
 
     /// Stream one generation from either backend.
-    pub(crate) fn generate(
+    pub(crate) fn generate(&mut self, req: GenerateRequest) -> Result<EventStream<'_>, String> {
+        self.generate_counted(req).map(|(_, events)| events)
+    }
+
+    /// Like [`Self::generate`], plus the prompt length in tokens when the
+    /// backend knows it up front (the mistral backend reports it only in
+    /// `Usage`, at the end).
+    pub(crate) fn generate_counted(
         &mut self,
         req: GenerateRequest,
-    ) -> Result<Box<dyn Iterator<Item = Result<GenEvent, EngineError>> + '_>, String> {
+    ) -> Result<(Option<u32>, EventStream<'_>), String> {
         match self {
             LocalEngine::Gguf(loaded) => loaded
                 .generate(req)
-                .map(|g| Box::new(g) as Box<dyn Iterator<Item = _> + '_>)
+                .map(|g| {
+                    let n = g.prompt_len();
+                    (Some(n), Box::new(g) as Box<dyn Iterator<Item = _> + '_>)
+                })
                 .map_err(|e| e.to_string()),
             #[cfg(feature = "mistralrs")]
             LocalEngine::Mistral(model) => model
                 .generate(req)
-                .map(|g| Box::new(g) as Box<dyn Iterator<Item = _> + '_>)
+                .map(|g| (None, Box::new(g) as Box<dyn Iterator<Item = _> + '_>))
                 .map_err(|e| e.to_string()),
         }
     }
