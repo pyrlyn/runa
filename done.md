@@ -1253,3 +1253,32 @@ generation instead of buffering it), keep the non-streaming JSON path and
 the event order unchanged, and add a timed test with a slow fake engine.
 
 Check (evidence): `cargo test -p runa --bin runa` 113 passed (includes `first_token_reaches_the_client_before_generation_ends` and `anthropic_message_start_carries_the_prompt_length`); `cargo test -p runa-engine --lib` 52 passed; `cargo test -p runa --test e2e serve_ -- --test-threads=1` 5 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean. The Anthropic `message_start` reports 0 input tokens on the mistral backend, which only counts them at the end.
+
+### P16.2. Library target for in-process local inference
+
+Completed 2026-10-07.
+
+runa is bin-only (`serve`, `pool` and `mcp` are `pub(crate)`). Expose a
+library crate (for example `runa-serve`) so another program, aulo's
+daemon `aulod` (its task T1.20), can embed local inference without a
+second process.
+
+Plan: the bin's module tree is also the `cargo fuzz` root (`fuzz/Cargo.toml`
+compiles `main.rs` directly), so a lib target inside `crates/runa` would
+need `main.rs` moved. Instead extract `engine.rs` and `pool.rs` into a new
+crate `crates/runa-pool` (the code moves, it is not copied) and make the
+bin depend on it. The pool reached `main.rs` only through placement
+(`auto_placement`, `preflight_grow`, fit check), so placement becomes an
+injected `Placer` (`Arc<dyn Fn(&Path, &LoadConfig) -> Result<Placement>>`):
+the bin keeps today's policy in `crates/runa/src/placer.rs`, embedders pass
+`fixed_placer(..)` or their own. Add `ModelPool::attach_engine` (custom
+backend or test double) and `generate_stream`. No CLI behaviour change.
+Verify with an integration test in `crates/runa-pool/tests/` that builds
+the pool through the public API and drains a generation from a fake engine
+thread, then fmt, clippy `--all-targets`, `cargo test -p runa --bin runa`
+and the registry lint.
+
+Machine check: a test outside the runa binary calls the pool through the
+library.
+
+Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_placer`, `generate_on`, `generate_stream_on`); `cargo test -p runa-pool` 6 unit + 3 integration (`tests/embed.rs`) passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa --test e2e -- --test-threads=1 serve_ daemon` 7 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean; `cargo check -p runa --features mistralrs` passed. The nightly fuzz crate was not built.
