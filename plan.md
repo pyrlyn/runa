@@ -9,8 +9,7 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
-| P16.1 | in progress | medium | M | ready | Claude Code / claude-sonnet-5-5 |
-| P16.2 | todo | low | M | blocked by P16.1 | — |
+| P16.2 | todo | low | M | ready | — |
 
 ## Tasks
 
@@ -527,22 +526,6 @@ Findings from the 2026-09-20 tests-only audit (English).
 - **trycmd vs assert_cmd split** is intentional (`trycmd.rs` docs) but leaves most CLI error strings without golden files.
 - **Ignored network tests** can rot silently (`remote.rs` `#[ignore]`).
 - **Windows untested at runtime** — regressions in path/quoting/daemon will only show on contributor machines.
-
-### P16.1. Stream tokens as they are generated
-
-`runa serve` builds the whole reply before replaying it as SSE
-(`serve.rs` `generate_events`), so time to first token equals generation
-time. Stream each GenEvent to the client as the engine produces it.
-Requested by aulo (its task T1.19): a voice agent needs the first
-sentence before the reply is finished.
-
-Machine check: a test with a timer shows the first token reaches the
-client before generation ends.
-
-Plan: replace the collect-then-replay path in `serve.rs` with a channel from
-the generation task to the SSE body (bounded, so a slow client slows
-generation instead of buffering it), keep the non-streaming JSON path and
-the event order unchanged, and add a timed test with a slow fake engine.
 
 ### P16.2. Library target for in-process local inference
 
