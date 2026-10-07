@@ -7,7 +7,6 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Muse Spark |
-| P14.3 | in progress | medium | M | ready | Grok 4.7 P14.3 |
 | P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
@@ -21,22 +20,6 @@ glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
-
-### P14.3. Add fast testing
-
-Plan: `cargo test --workspace --lib` is the cheap slice CI already runs
-before the qwen2 download and serve e2e. Weight downloads and model loads
-live in integration tests (`runa` e2e/bench/pull, `runa-engine`
-generate/load/vision, `runa-fit` remote). Wire `moon run root:test-fast`
-(`scripts/test-fast.sh`) to `--workspace --lib`, `cargo test -p runa --bin runa`
-(the package has no lib target), plus integration tests that stay
-deterministic without a GGUF download or a GPU (`runa-fit` gguf +
-fuzz_regressions, `runa-cloud` openai, `runa-pool` embed). Document it
-beside `moon run :test` and `moon run root:test-with-cleanup`. Leave the
-required CI jobs in place; note the local command on the existing `--lib`
-step.
-
-Machine check: `moon run root:test-fast`
 
 ### P14.4. Add web dashboard
 

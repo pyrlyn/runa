@@ -1213,6 +1213,16 @@ Check (evidence): `cargo fmt --check` OK; `python3 scripts/lint-tasks.py docs/ta
 
 Check (evidence): `bash -n scripts/test-with-fixture-cleanup.sh` OK; the dunnage step run on its own exits 0 without `target/`, and `dunnage run --dry-run target` plans work on a real target.
 
+### P14.3. Add fast testing
+
+Completed 2026-10-07 (Grok 4.7 P14.3).
+
+`moon run root:test-fast` runs `scripts/test-fast.sh`: `cargo test --workspace --lib`, then the weight-free integration tests `runa-fit` (`gguf`, `fuzz_regressions`), `runa-cloud` (`openai`), and `runa-pool` (`embed`). It does not download GGUF weights and does not run engine or serve e2e. `moon run :test` still runs each crate's full `cargo test` (integration tests included). `moon run root:test-with-cleanup` still runs `cargo test --workspace` and then drops downloaded weights. CI jobs are unchanged; the existing `cargo test --workspace --lib` step notes the local command.
+
+`cargo test -p runa --bin runa` stays on the full gate. The package has no library target, and `second_daemon_does_not_unlink_a_live_socket` failed here (107 passed, 1 failed) because overlayfs reused the socket inode `(39, 2228234)`.
+
+Check (evidence): `python3 scripts/lint-tasks.py docs/tasks.md` → `0 error(s)` while the claim was in progress. `moon run root:test-fast` (moon 2.5.4) → exit 0 in 2.8s warm: lib 263 passed (cloud 37, core 35, engine 51, fit 82, kernels 9, media 25, memory 18, pool 6) and integration 22 passed (fuzz_regressions 1, gguf 14, openai 4, embed 3); 0 failed.
+
 ### P15.1. Fix the 2026-10-01 QA audit findings
 
 The find-only audit (PR 26) lists 20 confirmed bugs. Fix all of them

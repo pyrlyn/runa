@@ -43,7 +43,7 @@ tasks:
     options:
       cache: false
   test-fast:
-    description: 'unit tests plus weight-free integration tests (no GGUF download, no engine e2e)'
+    description: 'library tests plus weight-free integration tests (no GGUF download, no engine e2e)'
     command: 'bash scripts/test-fast.sh'
     options:
       cache: false
