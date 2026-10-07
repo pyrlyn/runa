@@ -9,7 +9,7 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
-| P16.2 | todo | low | M | ready | — |
+| P16.2 | in progress | low | M | ready | Claude Code / claude-sonnet-5-5 |
 
 ## Tasks
 
@@ -533,6 +533,21 @@ runa is bin-only (`serve`, `pool` and `mcp` are `pub(crate)`). Expose a
 library crate (for example `runa-serve`) so another program, aulo's
 daemon `aulod` (its task T1.20), can embed local inference without a
 second process.
+
+Plan: the bin's module tree is also the `cargo fuzz` root (`fuzz/Cargo.toml`
+compiles `main.rs` directly), so a lib target inside `crates/runa` would
+need `main.rs` moved. Instead extract `engine.rs` and `pool.rs` into a new
+crate `crates/runa-pool` (the code moves, it is not copied) and make the
+bin depend on it. The pool reached `main.rs` only through placement
+(`auto_placement`, `preflight_grow`, fit check), so placement becomes an
+injected `Placer` (`Arc<dyn Fn(&Path, &LoadConfig) -> Result<Placement>>`):
+the bin keeps today's policy in `crates/runa/src/placer.rs`, embedders pass
+`fixed_placer(..)` or their own. Add `ModelPool::attach_engine` (custom
+backend or test double) and `generate_stream`. No CLI behaviour change.
+Verify with an integration test in `crates/runa-pool/tests/` that builds
+the pool through the public API and drains a generation from a fake engine
+thread, then fmt, clippy `--all-targets`, `cargo test -p runa --bin runa`
+and the registry lint.
 
 Machine check: a test outside the runa binary calls the pool through the
 library.
