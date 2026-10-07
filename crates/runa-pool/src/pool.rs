@@ -218,6 +218,28 @@ impl ModelPool {
         &self.order
     }
 
+    /// Engines currently resident, with an approximate weight size in bytes.
+    ///
+    /// A file spec contributes its length. A directory spec (safetensors)
+    /// contributes the sum of the regular files sitting directly in that
+    /// directory. This is the on-disk weight size, not process RSS.
+    pub fn loaded_weight_bytes(&self) -> Vec<(String, u64)> {
+        let mut out: Vec<(String, u64)> = self
+            .engines
+            .keys()
+            .map(|id| {
+                let bytes = self
+                    .specs
+                    .get(id)
+                    .map(|path| Self::weight_bytes(path))
+                    .unwrap_or(0);
+                (id.clone(), bytes)
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
     pub fn resolve_id(&self, model: Option<&str>) -> Result<String, String> {
         let id = model
             .map(str::trim)
@@ -257,6 +279,27 @@ impl ModelPool {
         self.specs.insert(id.clone(), path.to_owned());
         self.order.push(id.clone());
         Ok(id)
+    }
+
+    fn weight_bytes(path: &Path) -> u64 {
+        let Ok(meta) = std::fs::metadata(path) else {
+            return 0;
+        };
+        if meta.is_file() {
+            return meta.len();
+        }
+        if !meta.is_dir() {
+            return 0;
+        }
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return 0;
+        };
+        entries
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.metadata().ok())
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+            .fold(0u64, u64::saturating_add)
     }
 
     fn touch_lru(&mut self, id: &str) {

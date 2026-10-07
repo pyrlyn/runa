@@ -9,6 +9,10 @@
 # cargo-dist packaged apps (P6.3).
 /dist/
 
+# Serve dashboard toolchain (P14.4). The Vite build under dashboard/dist
+# is committed so `include_str!` compiles without node.
+/dashboard/node_modules/
+
 # LMDB prompt-cache / test DBs if they land in-tree.
 *.mdb
 

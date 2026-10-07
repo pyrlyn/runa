@@ -56,7 +56,7 @@ hf-hub = { version = "=1.0.0", features = ["blocking"] }
 sha2 = "=0.11.0"
 # P2.4 minimal config ([models] aliases; full figment layering later).
 toml = "=1.1.5"
-axum = { version = "0.8", features = ["json", "http1", "tokio", "multipart"] }
+axum = { version = "0.8", features = ["json", "http1", "tokio", "multipart", "ws"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "process", "signal", "sync", "time"] }
 futures = "0.3.34"
 # P8.3 MCP client (stdio servers) for the run/chat tool loop.

@@ -736,3 +736,15 @@ decides (plan D12 — loud, never blocking).
   daemon owns placement and knows no per-request cap) and is
   rejected on `--backend mistral` (never warned there, so never
   silently accepted).
+
+## P14.4 — serve dashboard model residency
+
+### `fn ModelPool::loaded_weight_bytes(&self) -> Vec<(String, u64)>`
+
+- Returns: one `(id, bytes)` pair per engine currently resident, sorted by
+  id. `bytes` is the spec file length, or for a directory spec the sum of
+  the regular files directly inside that directory.
+- Example: `lock(&pool).loaded_weight_bytes()`.
+- Notes: approximate on-disk weight size, not process RSS. The serve
+  dashboard (`docs/dashboard.md`) publishes this list. Empty when nothing
+  is loaded.
