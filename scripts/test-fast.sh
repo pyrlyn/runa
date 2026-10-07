@@ -5,10 +5,11 @@
 
 # Fast tests for local development and PR checks (P14.3).
 #
-# Library unit tests, plus integration tests that stay deterministic
-# without a weight download or a GPU. This does not replace
-# `moon run :test` (per-crate `cargo test`, integration tests included)
-# or `moon run root:test-with-cleanup` (full `cargo test --workspace`,
+# Library unit tests, the bin-only `runa` crate's unit tests, and
+# integration tests that stay deterministic without a weight download
+# or a GPU. This does not replace `moon run :test` (per-crate
+# `cargo test`, integration tests included) or
+# `moon run root:test-with-cleanup` (full `cargo test --workspace`,
 # then fixture cleanup).
 #
 # Left on the full gate — they load a model or require the git-ignored
@@ -18,11 +19,14 @@
 #   runa-fit --test remote
 # CLI harnesses that link the full binary without loading weights
 # (doctor, trycmd, media, secrets, security, cloud) stay there too.
+# `cargo test -p runa --bin runa` is the crate's unit tests, not those
+# harnesses. `--lib` skips them because the package has no library target.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 cargo test --workspace --lib
+cargo test -p runa --bin runa
 cargo test -p runa-fit --test gguf --test fuzz_regressions
 cargo test -p runa-cloud --test openai
 cargo test -p runa-pool --test embed

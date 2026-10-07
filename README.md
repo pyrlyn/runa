@@ -146,7 +146,7 @@ Toolchain: `rust-toolchain.toml` + `mise.toml` (see
 
 ```sh
 mise install                      # toolchain from mise.toml
-moon run root:test-fast           # library tests plus weight-free integration tests
+moon run root:test-fast           # unit tests plus weight-free integration tests
 moon run :test                    # cargo test per crate, including integration tests
 moon run root:lint-tasks          # registry lint over docs/tasks.md
 moon run root:test-with-cleanup   # full workspace test, then drop downloaded weights and compact target/

@@ -28,8 +28,9 @@ Plan: `cargo test --workspace --lib` is the cheap slice CI already runs
 before the qwen2 download and serve e2e. Weight downloads and model loads
 live in integration tests (`runa` e2e/bench/pull, `runa-engine`
 generate/load/vision, `runa-fit` remote). Wire `moon run root:test-fast`
-(`scripts/test-fast.sh`) to `--workspace --lib` plus integration tests that
-stay deterministic without a GGUF download or a GPU (`runa-fit` gguf +
+(`scripts/test-fast.sh`) to `--workspace --lib`, `cargo test -p runa --bin runa`
+(the package has no lib target), plus integration tests that stay
+deterministic without a GGUF download or a GPU (`runa-fit` gguf +
 fuzz_regressions, `runa-cloud` openai, `runa-pool` embed). Document it
 beside `moon run :test` and `moon run root:test-with-cleanup`. Leave the
 required CI jobs in place; note the local command on the existing `--lib`
