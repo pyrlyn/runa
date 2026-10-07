@@ -9,6 +9,8 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
+| P16.1 | todo | medium | M | ready | — |
+| P16.2 | todo | low | M | blocked by P16.1 | — |
 
 ## Tasks
 
@@ -526,3 +528,23 @@ Findings from the 2026-09-20 tests-only audit (English).
 - **Ignored network tests** can rot silently (`remote.rs` `#[ignore]`).
 - **Windows untested at runtime** — regressions in path/quoting/daemon will only show on contributor machines.
 
+### P16.1. Stream tokens as they are generated
+
+`runa serve` builds the whole reply before replaying it as SSE
+(`serve.rs` `generate_events`), so time to first token equals generation
+time. Stream each GenEvent to the client as the engine produces it.
+Requested by aulo (its task T1.19): a voice agent needs the first
+sentence before the reply is finished.
+
+Machine check: a test with a timer shows the first token reaches the
+client before generation ends.
+
+### P16.2. Library target for in-process local inference
+
+runa is bin-only (`serve`, `pool` and `mcp` are `pub(crate)`). Expose a
+library crate (for example `runa-serve`) so another program, aulo's
+daemon `aulod` (its task T1.20), can embed local inference without a
+second process.
+
+Machine check: a test outside the runa binary calls the pool through the
+library.
