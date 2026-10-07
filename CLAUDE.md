@@ -102,6 +102,7 @@ Run these before requesting a merge or closing a task. They mirror
 | Format | `cargo fmt --all -- --check` |
 | Lint | `cargo clippy --workspace -- -D warnings` |
 | Build | `cargo build --workspace` |
+| Fast tests | `moon run root:test-fast` (library tests plus weight-free integration tests; no GGUF download, no engine e2e) |
 | Tests | `cargo test --workspace --lib`, then `moon run :test` for the full set |
 | Registry lint | `moon run root:lint-tasks` (or `python3 scripts/lint-tasks.py docs/tasks.md`) |
 | Memory crate | `cargo test -p runa-memory` (claim/release/double-claim, P7.4) |
