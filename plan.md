@@ -9,7 +9,7 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
-| P16.1 | todo | medium | M | ready | — |
+| P16.1 | in progress | medium | M | ready | Claude Code / claude-sonnet-5-5 |
 | P16.2 | todo | low | M | blocked by P16.1 | — |
 
 ## Tasks
@@ -538,6 +538,11 @@ sentence before the reply is finished.
 
 Machine check: a test with a timer shows the first token reaches the
 client before generation ends.
+
+Plan: replace the collect-then-replay path in `serve.rs` with a channel from
+the generation task to the SSE body (bounded, so a slow client slows
+generation instead of buffering it), keep the non-streaming JSON path and
+the event order unchanged, and add a timed test with a slow fake engine.
 
 ### P16.2. Library target for in-process local inference
 
