@@ -94,6 +94,13 @@ pub(crate) enum EngineJob {
         req: Box<GenerateRequest>,
         resp: oneshot::Sender<Result<Vec<GenEvent>, String>>,
     },
+    /// P16.1: the same generation, delivered event by event. The channel is
+    /// bounded, so a slow reader slows the engine; a dropped receiver
+    /// cancels the generation. An `Err` item ends the stream.
+    GenerateStream {
+        req: Box<GenerateRequest>,
+        tx: tokio::sync::mpsc::Sender<Result<GenEvent, String>>,
+    },
     Embed {
         input: String,
         resp: oneshot::Sender<Result<(Vec<f32>, u32), String>>,
@@ -527,6 +534,30 @@ pub(crate) fn ensure_engine(
     lock(pool).complete_load(&start.id, outcome)
 }
 
+/// Drive one generation, handing each item to `emit`; `emit` returns
+/// `false` to stop early (the client is gone), and an `Err` item ends it.
+fn run_generation(
+    engine: &mut crate::engine::LocalEngine,
+    used: &mut bool,
+    req: GenerateRequest,
+    mut emit: impl FnMut(Result<GenEvent, String>) -> bool,
+) -> Result<(), String> {
+    // The ggml backend reuses one context per thread: drop KV cells between
+    // requests (P3.9). The mistral backend is stateless (no-op there).
+    if *used {
+        engine.clear_kv();
+    }
+    *used = true;
+    for item in engine.generate(req)? {
+        let item = item.map_err(|e| e.to_string());
+        let failed = item.is_err();
+        if !emit(item) || failed {
+            break;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn spawn_engine(
     path: PathBuf,
     kind: BackendKind,
@@ -559,20 +590,31 @@ pub(crate) fn spawn_engine(
             while let Ok(job) = rx.recv() {
                 match job {
                     EngineJob::Generate { req, resp } => {
+                        let mut events = Vec::new();
+                        let mut failed = None;
                         let out = catch_job(|| {
-                            // The ggml backend reuses one context per thread:
-                            // drop KV cells between requests (P3.9). The
-                            // mistral backend is stateless (no-op there).
-                            if used {
-                                engine.clear_kv();
-                            }
-                            used = true;
-                            let generation = engine.generate(*req).map_err(|e| e.to_string())?;
-                            generation
-                                .collect::<Result<Vec<_>, _>>()
-                                .map_err(|e| e.to_string())
+                            run_generation(&mut engine, &mut used, *req, |item| match item {
+                                Ok(ev) => {
+                                    events.push(ev);
+                                    true
+                                }
+                                Err(e) => {
+                                    failed = Some(e);
+                                    false
+                                }
+                            })
                         });
-                        let _ = resp.send(out);
+                        let _ = resp.send(out.and_then(|()| failed.map_or(Ok(events), Err)));
+                    }
+                    EngineJob::GenerateStream { req, tx } => {
+                        let out = catch_job(|| {
+                            run_generation(&mut engine, &mut used, *req, |item| {
+                                tx.blocking_send(item).is_ok()
+                            })
+                        });
+                        if let Err(e) = out {
+                            let _ = tx.blocking_send(Err(e));
+                        }
                     }
                     EngineJob::Embed { input, resp } => {
                         let out = catch_job(|| match &mut engine {
