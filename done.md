@@ -1282,3 +1282,39 @@ Machine check: a test outside the runa binary calls the pool through the
 library.
 
 Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_placer`, `generate_on`, `generate_stream_on`); `cargo test -p runa-pool` 6 unit + 3 integration (`tests/embed.rs`) passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa --test e2e -- --test-threads=1 serve_ daemon` 7 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean; `cargo check -p runa --features mistralrs` passed. The nightly fuzz crate was not built.
+
+## P17. Audit follow-ups
+
+### P17.1. Fix 2026-10-08 roadmap audit findings
+
+Completed 2026-10-08 (Cursor Grok 4.6). Land the confirmed, still-open
+audit items without the large architecture splits.
+
+- `moon ci` uses moon 2.5.4’s real CLI (affected is built in). The old
+  `--affected --remote=false || echo` never ran tasks and always
+  succeeded; the moon job fetches full history so affected detection
+  can see `main`.
+- Workflows get `permissions: contents: read`.
+- `prices.toml` later-wins overlay (user file after shipped
+  `docs/prices.toml`; models not named stay).
+- `[memory]` later files overlay only the keys they set.
+- Home paths use `$HOME` then `$USERPROFILE` (Windows).
+- Whisper `base` / `large-v3-turbo` pinned by SHA-256 + size (HF
+  `x-linked-etag` / `x-linked-size`, 2026-10-08); downloads size-capped;
+  Silero VAD optional with a cap only (Hub path 404s; no invented hash).
+- Parakeet stub says "not available yet"; empty `parakeet` feature
+  removed.
+- Sidecar write failures log a warning; `docs_lint` man pages go to a
+  tempdir; serve/engine panics answer generic `"internal error"`;
+  `MemoryManager` recovers poisoned mutexes.
+- Unused `raw-cpuid` / `rayon` dropped from the CLI crate and lockfile.
+- `runa-core` crate docs no longer claim a `Backend` trait.
+
+Check (evidence): `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors
+(P14.2 stale-claim warning only); `cargo test -p runa-cloud --lib` 39
+passed; `cargo test -p runa-memory` 18 passed; `cargo test -p runa-media
+--lib` 28 passed; `cargo test -p runa --bin runa` 109 passed (1
+pre-existing flake: `second_daemon_does_not_unlink_a_live_socket` inode
+reuse); `cargo fmt --all -- --check` clean; `cargo clippy --workspace --
+-D warnings` clean. GitHub Actions on `4d0349f` (PR #62): 24 checks
+green, including `moon pipeline (K5, D22)`.
