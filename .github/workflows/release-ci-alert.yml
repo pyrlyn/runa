@@ -1,12 +1,10 @@
 name: release-ci-alert
 
-# CI failure notifications for release pull requests only. When one of the workflows below
-# fails on a release PR, one comment per failed workflow and commit (updated on a re-run)
-# mentions @listepo with the failed jobs and steps (linked) and the tail of each failed job's
-# log. Failures on any other pull request post nothing.
-# A release pull request is one whose head branch starts with `release-plz-` (or pyrlyn's
-# `release/bump-`), that has the `release` label, or whose title starts with `chore: release`,
-# `chore(release)` or `release: v`.
+# CI failure notifications for release pull requests only, from the shared pyrlyn/ci
+# release-ci-alert.yml. When one of the workflows below fails on a release PR, one comment per
+# failed workflow and commit (updated on a re-run) mentions @listepo with the failed jobs and
+# steps and the tail of each failed job's log. Failures on any other pull request post nothing.
+# Inputs and permissions: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
 on:
   workflow_run:
     workflows: [pipeline, ci, license-check]
@@ -27,143 +25,8 @@ jobs:
       contains(fromJSON('["pull_request", "pull_request_target"]'),
       github.event.workflow_run.event)
       && contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       actions: read
       contents: read
       pull-requests: write
-    steps:
-      - name: Comment on a failed release pull request
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          MAINTAINER: listepo
-          TAIL_LINES: "30"
-        with:
-          script: |
-            // Comment on a release pull request whose CI failed: failed jobs, steps and log tails,
-            // mentioning the maintainer. Pull requests that are not release PRs get nothing.
-            // Env: MAINTAINER, TAIL_LINES.
-            const maintainer = process.env.MAINTAINER || 'listepo';
-            const tailLines = Number(process.env.TAIL_LINES || '30');
-            const { owner, repo } = context.repo;
-            const run = context.payload.workflow_run;
-            if (!run) {
-              core.info('Not a workflow_run event; nothing to do.');
-              return;
-            }
-            if (!['pull_request', 'pull_request_target'].includes(run.event)) {
-              core.info(`Run event ${run.event}: only pull request runs are reported.`);
-              return;
-            }
-            if (!['failure', 'timed_out'].includes(run.conclusion)) {
-              core.info(`Run conclusion ${run.conclusion}: nothing to report.`);
-              return;
-            }
-
-            // The pull request(s) of the run: the event payload, else every open PR with this head SHA.
-            const repoId = context.payload.repository.id;
-            let numbers = (run.pull_requests || [])
-              .filter((x) => x.base && x.base.repo && x.base.repo.id === repoId).map((x) => x.number);
-            if (!numbers.length) {
-              const open = await github.paginate(github.rest.pulls.list, {
-                owner, repo, state: 'open', per_page: 100,
-              });
-              numbers = open.filter((x) => x.head.sha === run.head_sha).map((x) => x.number);
-            }
-            if (!numbers.length) {
-              core.info(`No open pull request for ${run.head_sha}.`);
-              return;
-            }
-
-            // Release PR: release-plz branch, pyrlyn bump branch, `release` label or a release title.
-            function releaseReason(pr) {
-              if (/^release-plz-/.test(pr.head.ref)) return `head branch ${pr.head.ref}`;
-              if (/^release\/bump-/.test(pr.head.ref)) return `head branch ${pr.head.ref}`;
-              if (pr.labels.some((l) => l.name.toLowerCase() === 'release')) return 'label release';
-              if (/^(chore: release|chore\(release\)|release: v?\d)/i.test(pr.title)) return 'title';
-              return '';
-            }
-
-            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
-              owner, repo, run_id: run.id, attempt_number: run.run_attempt || 1, per_page: 100,
-            });
-            const bad = (x) => ['failure', 'timed_out'].includes(x.conclusion);
-            const failed = jobs.filter(bad);
-            const cancelled = jobs.filter((j) => j.conclusion === 'cancelled').length;
-
-            async function logTail(job) {
-              try {
-                const res = await github.rest.actions.downloadJobLogsForWorkflowRun({
-                  owner, repo, job_id: job.id,
-                });
-                const text = typeof res.data === 'string' ? res.data : Buffer.from(res.data).toString('utf8');
-                const lines = text.split(/\r?\n/).map((l) => l.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, ''));
-                let end = lines.length - 1;
-                for (let i = lines.length - 1; i >= 0; i -= 1) {
-                  if (lines[i].startsWith('##[error]')) {
-                    end = i;
-                    break;
-                  }
-                }
-                return lines.slice(Math.max(0, end - tailLines + 1), end + 1).join('\n')
-                  .replace(/~~~~/g, '~ ~ ~ ~').replace(/<!--/g, '< !--').slice(-3000);
-              } catch (e) {
-                return `(log not available: ${e.message})`;
-              }
-            }
-
-            const parts = [];
-            for (const job of failed.slice(0, 10)) {
-              const steps = (job.steps || []).filter(bad)
-                .map((s) => `  - step ${s.number}: \`${s.name}\` ([log](${job.html_url}#step:${s.number}:1))`);
-              parts.push(`- [${job.name}](${job.html_url}) (\`${job.conclusion}\`)`, ...steps);
-            }
-            if (failed.length > 10) parts.push(`- ... and ${failed.length - 10} more failed jobs`);
-            if (!failed.length) parts.push('- (no failed job listed; see the run)');
-            const tails = [];
-            for (const job of failed.slice(0, 5)) {
-              tails.push(`<details><summary>Log tail: ${job.name}</summary>`, '', '~~~~text',
-                await logTail(job), '~~~~', '', '</details>');
-            }
-
-            const marker = `<!-- release-ci-alert: ${run.workflow_id}/${run.head_sha} -->`;
-            for (const number of numbers) {
-              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-              const why = releaseReason(pr);
-              if (!why) {
-                core.info(`#${number} is not a release pull request; no notification.`);
-                continue;
-              }
-              const body = [
-                `@${maintainer} CI failed on this release pull request (${why}).`,
-                '',
-                `- Workflow: [${run.name} #${run.run_number}](${run.html_url}), attempt ${run.run_attempt},`
-                  + ` conclusion \`${run.conclusion}\``,
-                `- Commit: \`${run.head_sha.slice(0, 12)}\` on \`${pr.head.ref}\``,
-                cancelled ? `- Cancelled after the failure: ${cancelled} job(s)` : '',
-                '',
-                '### Failed jobs',
-                '',
-                ...parts,
-                '',
-                ...tails,
-                '',
-                marker,
-              ].join('\n').slice(0, 65000);
-              const comments = await github.paginate(github.rest.issues.listComments, {
-                owner, repo, issue_number: number, per_page: 100,
-              });
-              const old = comments.find(
-                (c) => c.user && c.user.type === 'Bot' && (c.body || '').includes(marker),
-              );
-              if (old) {
-                await github.rest.issues.updateComment({ owner, repo, comment_id: old.id, body });
-                core.info(`#${number}: updated ${old.html_url}`);
-              } else {
-                const { data } = await github.rest.issues.createComment({
-                  owner, repo, issue_number: number, body,
-                });
-                core.info(`#${number}: commented ${data.html_url}`);
-              }
-            }
+    uses: pyrlyn/ci/.github/workflows/release-ci-alert.yml@c875cd763ad0c4abbd936e480be5752330d3b66b # main 2026-10-07
