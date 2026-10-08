@@ -231,7 +231,7 @@ adapter is our own `reqwest` + SSE client (D9) — no SDK pin involved.
 
 | Crate | Plan task |
 |-------|-----------|
-| `sherpa-onnx` (Parakeet; official Rust binding — **not** `sherpa-rs`, archived 2026-06) | P4.2 |
+| `sherpa-onnx` (Parakeet; official Rust binding — **not** `sherpa-rs`, archived 2026-06). Empty `parakeet` cargo feature removed; `transcribe_parakeet` returns "not available yet" until a later task wires the crate. | P4.2 |
 | `ffmpeg-sidecar` | P4.5 |
 | `hf-hub` | P2.4 |
 | `axum` | P3.9 |

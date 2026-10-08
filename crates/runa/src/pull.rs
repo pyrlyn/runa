@@ -35,11 +35,15 @@ pub fn data_dir() -> PathBuf {
     {
         return PathBuf::from(xdg).join("runa");
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home)
-        .join(".local")
-        .join("share")
-        .join("runa")
+    #[cfg(windows)]
+    if let Ok(local) = std::env::var("LOCALAPPDATA")
+        && !local.is_empty()
+    {
+        return PathBuf::from(local).join("runa");
+    }
+    crate::config::home_dir()
+        .map(|h| h.join(".local").join("share").join("runa"))
+        .unwrap_or_else(|| PathBuf::from(".").join("runa"))
 }
 
 /// Local model store.
@@ -178,7 +182,12 @@ fn write_sidecar(dest: &Path, size: u64, sha256: &str) {
         "{{\"size\":{size},\"sha256\":{},\"verified_at\":{now}}}",
         serde_json::Value::String(sha256.to_owned())
     );
-    let _ = fs::write(sidecar_for(dest), meta);
+    if let Err(e) = fs::write(sidecar_for(dest), meta) {
+        eprintln!(
+            "warning: verification sidecar {}: {e}",
+            sidecar_for(dest).display()
+        );
+    }
 }
 
 fn mtime_secs(path: &Path) -> Option<u64> {

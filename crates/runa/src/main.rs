@@ -1108,8 +1108,8 @@ fn default_prompt_cache_dir() -> PathBuf {
     {
         return PathBuf::from(p).join("runa").join("kv");
     }
-    match std::env::var_os("HOME") {
-        Some(home) => PathBuf::from(home).join(".cache").join("runa").join("kv"),
+    match config::home_dir() {
+        Some(home) => home.join(".cache").join("runa").join("kv"),
         None => std::env::temp_dir().join("runa-kv"),
     }
 }
@@ -2086,8 +2086,8 @@ fn cmd_chat(
     let config = Config::builder().auto_add_history(true).build();
     let mut rl: Editor<(), FileHistory> =
         Editor::with_config(config).map_err(|e| format!("readline: {e}"))?;
-    if let Some(home) = std::env::var_os("HOME") {
-        let hist = PathBuf::from(home).join(".runa_history");
+    if let Some(home) = config::home_dir() {
+        let hist = home.join(".runa_history");
         let _ = rl.load_history(&hist);
     }
     let mut session = Session {
@@ -2151,8 +2151,8 @@ fn cmd_chat(
             }
         }
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        let hist = PathBuf::from(home).join(".runa_history");
+    if let Some(home) = config::home_dir() {
+        let hist = home.join(".runa_history");
         let _ = rl.save_history(&hist);
     }
     Ok(())
@@ -3137,8 +3137,8 @@ mod docs_lint {
         let s = String::from_utf8(buf).expect("utf8 man");
         assert!(s.contains("runa"), "{s}");
         assert!(s.contains("SUBCOMMANDS"), "{s}");
-        let docs = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs");
-        std::fs::write(docs.join("runa.1"), &s).expect("write runa.1");
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("runa.1"), &s).expect("write runa.1");
         let run = cmd.find_subcommand("run").expect("run subcommand").clone();
         let mut run_buf = Vec::new();
         clap_mangen::Man::new(run)
@@ -3149,7 +3149,7 @@ mod docs_lint {
             run_s.contains("audio") && run_s.contains("route"),
             "{run_s}"
         );
-        std::fs::write(docs.join("runa-run.1"), &run_s).expect("write runa-run.1");
+        std::fs::write(dir.path().join("runa-run.1"), &run_s).expect("write runa-run.1");
     }
 }
 

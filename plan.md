@@ -9,6 +9,7 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
+| P17.1 | in progress | high | M | ready | Cursor Grok 4.6 |
 
 ## Tasks
 
@@ -27,6 +28,19 @@ ketch install runa works.
 Plan: add a fast test path for local development and PR checks.
 
 Machine check: TBD.
+
+### P17.1. Fix 2026-10-08 roadmap audit findings
+
+Plan: land the confirmed, still-open audit items without the large
+architecture splits: moon CI must not swallow failures; prices and
+`[memory]` merge later-wins; Windows `HOME`/`USERPROFILE`; whisper
+sha256 + size cap; parakeet stub message; sidecar/`docs_lint`/panic
+leak/lock poison; unused `raw-cpuid`/`rayon`; CI `permissions:`.
+
+Machine check: `python3 scripts/lint-tasks.py docs/tasks.md`;
+`cargo test -p runa-cloud --lib`; `cargo test -p runa-memory`;
+`cargo test -p runa-media --lib`; `cargo test -p runa --bin runa`;
+`cargo fmt --all -- --check`; `cargo clippy --workspace -- -D warnings`.
 
 ### P14.4. Add web dashboard
 

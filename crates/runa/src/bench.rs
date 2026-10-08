@@ -103,8 +103,8 @@ pub(crate) fn default_calibration_path() -> PathBuf {
     {
         return PathBuf::from(p);
     }
-    match std::env::var_os("HOME") {
-        Some(home) => PathBuf::from(home).join(".runa").join("calibration.json"),
+    match crate::config::home_dir() {
+        Some(home) => home.join(".runa").join("calibration.json"),
         None => std::env::temp_dir().join("runa-calibration.json"),
     }
 }

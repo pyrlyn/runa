@@ -4,17 +4,20 @@
 
 //! ASR via whisper.cpp (`whisper-rs` 0.16.0) — plan D8 / P4.2.
 //!
-//! Models (`base`, `large-v3-turbo`) and the Silero VAD ggml are auto-pulled
-//! into `~/.local/share/runa/models/whisper/`. Energy VAD chunks audio when
-//! the Silero file is not present. Language defaults to auto-detect.
+//! Models (`base`, `large-v3-turbo`) are auto-pulled into
+//! `~/.local/share/runa/models/whisper/` and checked against pinned SHA-256
+//! and size (Hugging Face `x-linked-etag` / `x-linked-size`, 2026-10-08).
+//! Silero VAD is optional, size-capped, and skipped when missing; energy
+//! VAD chunks audio then. Language defaults to auto-detect.
 //!
-//! Parakeet-TDT lives behind `--features parakeet` (`sherpa-onnx`). Do not
-//! use the archived `sherpa-rs` crate.
+//! Parakeet-TDT is not available yet (no `sherpa-onnx` in this tree).
 
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Once;
+
+use sha2::{Digest, Sha256};
 
 use thiserror::Error;
 use whisper_rs::{
@@ -25,6 +28,21 @@ use crate::audio::TARGET_SAMPLE_RATE;
 
 const HF_REPO: &str = "ggerganov/whisper.cpp";
 const SILERO_FILE: &str = "ggml-silero-v5.1.2.bin";
+/// Hugging Face `x-linked-etag` / `x-linked-size` on
+/// `ggerganov/whisper.cpp` `resolve/main` (HEAD 2026-10-08).
+const BASE_SHA256: &str = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe";
+const BASE_SIZE: u64 = 147_951_465;
+const TURBO_SHA256: &str = "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69";
+const TURBO_SIZE: u64 = 1_624_555_275;
+/// Silero VAD ggml is optional; the Hub path 404s today. Cap only — no
+/// invented hash.
+const SILERO_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+struct Artifact<'a> {
+    sha256: Option<&'a str>,
+    size: Option<u64>,
+    max_bytes: u64,
+}
 
 static WHISPER_LOG: Once = Once::new();
 
@@ -59,6 +77,21 @@ impl WhisperKind {
     pub fn hf_url(self) -> String {
         hf_resolve_url(self.file_name())
     }
+
+    fn artifact(self) -> Artifact<'static> {
+        match self {
+            Self::Base => Artifact {
+                sha256: Some(BASE_SHA256),
+                size: Some(BASE_SIZE),
+                max_bytes: BASE_SIZE,
+            },
+            Self::LargeV3Turbo => Artifact {
+                sha256: Some(TURBO_SHA256),
+                size: Some(TURBO_SIZE),
+                max_bytes: TURBO_SIZE,
+            },
+        }
+    }
 }
 
 fn hf_resolve_url(file: &str) -> String {
@@ -72,7 +105,17 @@ pub fn data_dir() -> PathBuf {
     {
         return PathBuf::from(xdg).join("runa");
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    #[cfg(windows)]
+    if let Ok(local) = std::env::var("LOCALAPPDATA")
+        && !local.is_empty()
+    {
+        return PathBuf::from(local).join("runa");
+    }
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("USERPROFILE").ok().filter(|s| !s.is_empty()))
+        .unwrap_or_else(|| ".".into());
     PathBuf::from(home)
         .join(".local")
         .join("share")
@@ -252,28 +295,172 @@ pub fn whisper_hf_url(file: &str) -> String {
     hf_resolve_url(file)
 }
 
-/// Ensure `kind` (and Silero VAD) exist on disk. No-op when already present.
+/// Ensure `kind` (and Silero VAD) exist on disk. No-op when already present
+/// and the pinned size + SHA-256 match.
 pub fn ensure_whisper_model(kind: WhisperKind, pull: bool) -> Result<PathBuf, AsrError> {
     let dir = whisper_dir();
     fs::create_dir_all(&dir)?;
     let dest = dir.join(kind.file_name());
-    if dest.is_file() && dest.metadata()?.len() > 1_000_000 {
+    let art = kind.artifact();
+    if dest.is_file() && artifact_ok(&dest, &art) {
+        maybe_pull_silero(&dir, pull);
         return Ok(dest);
     }
     if !pull {
         return Err(AsrError::ModelMissing(dest.display().to_string()));
     }
-    download_file(&kind.hf_url(), &dest)?;
-    let vad = dir.join(SILERO_FILE);
-    if !vad.is_file() {
-        let _ = download_file(&hf_resolve_url(SILERO_FILE), &vad);
+    if dest.is_file() {
+        let _ = fs::remove_file(&dest);
     }
+    download_file(&kind.hf_url(), &dest, &art)?;
+    maybe_pull_silero(&dir, true);
     Ok(dest)
 }
 
-fn download_file(url: &str, dest: &Path) -> Result<(), AsrError> {
+fn maybe_pull_silero(dir: &Path, pull: bool) {
+    if !pull {
+        return;
+    }
+    let vad = dir.join(SILERO_FILE);
+    let silero = Artifact {
+        sha256: None,
+        size: None,
+        max_bytes: SILERO_MAX_BYTES,
+    };
+    if vad.is_file() && artifact_ok(&vad, &silero) {
+        return;
+    }
+    let _ = download_file(&hf_resolve_url(SILERO_FILE), &vad, &silero);
+}
+
+fn sidecar_for(dest: &Path) -> PathBuf {
+    dest.with_extension("verified")
+}
+
+fn sidecar_matches(dest: &Path, size: u64, sha256: &str) -> bool {
+    let Ok(raw) = fs::read_to_string(sidecar_for(dest)) else {
+        return false;
+    };
+    let size_s = size.to_string();
+    let mut lines = raw.lines();
+    lines.next() == Some(size_s.as_str()) && lines.next() == Some(sha256)
+}
+
+fn write_sidecar(dest: &Path, size: u64, sha256: &str) {
+    let body = format!("{size}\n{sha256}\n");
+    if let Err(e) = fs::write(sidecar_for(dest), body) {
+        eprintln!(
+            "warning: verification sidecar {}: {e}",
+            sidecar_for(dest).display()
+        );
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    s
+}
+
+fn sha256_file(path: &Path) -> Result<String, AsrError> {
+    let mut f = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(sha256_hex(&hasher.finalize()))
+}
+
+fn artifact_ok(path: &Path, art: &Artifact<'_>) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    let len = meta.len();
+    if len > art.max_bytes || len < 1_000 {
+        return false;
+    }
+    if let Some(size) = art.size
+        && len != size
+    {
+        return false;
+    }
+    let Some(expected) = art.sha256 else {
+        return true;
+    };
+    if sidecar_matches(path, len, expected) {
+        return true;
+    }
+    match sha256_file(path) {
+        Ok(actual) if actual == expected => {
+            write_sidecar(path, len, expected);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn copy_capped<R: Read, W: Write>(
+    url: &str,
+    src: &mut R,
+    dest: &mut W,
+    art: &Artifact<'_>,
+) -> Result<(u64, String), AsrError> {
+    let mut hasher = Sha256::new();
+    let mut written = 0u64;
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = src
+            .read(&mut buf)
+            .map_err(|e| AsrError::Download(url.into(), e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        written += n as u64;
+        if written > art.max_bytes {
+            return Err(AsrError::Download(
+                url.into(),
+                format!("exceeded {} bytes", art.max_bytes),
+            ));
+        }
+        hasher.update(&buf[..n]);
+        dest.write_all(&buf[..n])
+            .map_err(|e| AsrError::Download(url.into(), e.to_string()))?;
+    }
+    if written < 1_000 {
+        return Err(AsrError::Download(url.into(), "empty download".into()));
+    }
+    if let Some(size) = art.size
+        && written != size
+    {
+        return Err(AsrError::Download(
+            url.into(),
+            format!("size {written} != {size}"),
+        ));
+    }
+    let actual = sha256_hex(&hasher.finalize());
+    if let Some(expected) = art.sha256
+        && actual != expected
+    {
+        return Err(AsrError::Download(
+            url.into(),
+            format!("sha256 mismatch (got {actual})"),
+        ));
+    }
+    Ok((written, actual))
+}
+
+fn download_file(url: &str, dest: &Path, art: &Artifact<'_>) -> Result<(), AsrError> {
     let part = dest.with_extension("bin.part");
-    let mut resp = reqwest::blocking::Client::builder()
+    let resp = reqwest::blocking::Client::builder()
         .user_agent("runa/0.1")
         .build()
         .map_err(|e| AsrError::Download(url.into(), e.to_string()))?
@@ -281,17 +468,43 @@ fn download_file(url: &str, dest: &Path) -> Result<(), AsrError> {
         .send()
         .and_then(|r| r.error_for_status())
         .map_err(|e| AsrError::Download(url.into(), e.to_string()))?;
-    let mut f = File::create(&part)?;
-    resp.copy_to(&mut f)
-        .map_err(|e| AsrError::Download(url.into(), e.to_string()))?;
-    f.flush()?;
-    drop(f);
-    fs::rename(&part, dest)?;
-    if dest.metadata()?.len() < 1_000 {
-        let _ = fs::remove_file(dest);
-        return Err(AsrError::Download(url.into(), "empty download".into()));
+    if let Some(len) = resp.content_length() {
+        if len > art.max_bytes {
+            return Err(AsrError::Download(
+                url.into(),
+                format!("content-length {len} exceeds {} bytes", art.max_bytes),
+            ));
+        }
+        if let Some(size) = art.size
+            && len != size
+        {
+            return Err(AsrError::Download(
+                url.into(),
+                format!("content-length {len} != {size}"),
+            ));
+        }
     }
-    Ok(())
+    let mut resp = resp;
+    let mut f = File::create(&part)?;
+    match copy_capped(url, &mut resp, &mut f, art) {
+        Ok((written, actual)) => {
+            f.flush()?;
+            drop(f);
+            fs::rename(&part, dest)?;
+            if let Some(expected) = art.sha256 {
+                write_sidecar(dest, written, expected);
+            } else {
+                write_sidecar(dest, written, &actual);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            drop(f);
+            let _ = fs::remove_file(&part);
+            let _ = fs::remove_file(dest);
+            Err(e)
+        }
+    }
 }
 
 fn quiet_whisper_logs() {
@@ -437,15 +650,13 @@ pub fn transcribe_file(path: &Path, opts: &AsrOptions) -> Result<Transcript, Asr
     engine.transcribe(&decoded.samples, opts)
 }
 
-/// Parakeet-TDT via official `sherpa-onnx` (feature `parakeet`).
+/// Parakeet-TDT is not available yet (no `sherpa-onnx` in this tree).
 ///
-/// The archived `sherpa-rs` crate is not used. Enable `--features parakeet`
-/// and pass a directory with encoder/decoder/joiner/tokens; until that
-/// feature is wired the call is an explicit error (D12: no silent fallback).
+/// Explicit error (D12: no silent fallback).
 pub fn transcribe_parakeet(samples: &[f32], model_dir: &Path) -> Result<Transcript, AsrError> {
     let _ = samples;
     Err(AsrError::Parakeet(format!(
-        "rebuild runa-media with --features parakeet (official sherpa-onnx; not sherpa-rs); model dir {}",
+        "not available yet; model dir {}",
         model_dir.display()
     )))
 }
@@ -518,6 +729,89 @@ mod tests {
     fn parakeet_without_feature_is_explicit() {
         let err = transcribe_parakeet(&[], Path::new("/nope")).unwrap_err();
         assert!(matches!(err, AsrError::Parakeet(_)));
+        assert!(err.to_string().contains("not available yet"), "{err}");
+    }
+
+    #[test]
+    fn whisper_pins_match_hf_linked_etag() {
+        assert_eq!(BASE_SHA256.len(), 64);
+        assert_eq!(TURBO_SHA256.len(), 64);
+        assert_eq!(WhisperKind::Base.artifact().size, Some(BASE_SIZE));
+        assert_eq!(WhisperKind::LargeV3Turbo.artifact().size, Some(TURBO_SIZE));
+        assert_eq!(WhisperKind::Base.artifact().sha256, Some(BASE_SHA256));
+    }
+
+    #[test]
+    fn copy_capped_rejects_oversize_and_hashes() {
+        let art = Artifact {
+            sha256: None,
+            size: None,
+            max_bytes: 16,
+        };
+        let data = vec![0u8; 32];
+        let mut src = std::io::Cursor::new(&data);
+        let mut dest = Vec::new();
+        let err = copy_capped("mem://oversize", &mut src, &mut dest, &art).unwrap_err();
+        assert!(err.to_string().contains("exceeded"), "{err}");
+
+        let known = b"abc";
+        let art = Artifact {
+            sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            size: Some(3),
+            max_bytes: 3,
+        };
+        // copy_capped rejects files under 1000 bytes ("empty download").
+        let err = copy_capped(
+            "mem://abc",
+            &mut std::io::Cursor::new(known.as_slice()),
+            &mut Vec::new(),
+            &art,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("empty download"), "{err}");
+
+        let payload = vec![b'a'; 1_000];
+        let mut hasher = Sha256::new();
+        hasher.update(&payload);
+        let hex = sha256_hex(&hasher.finalize());
+        let art = Artifact {
+            sha256: Some(hex.as_str()),
+            size: Some(1_000),
+            max_bytes: 1_000,
+        };
+        let (n, actual) = copy_capped(
+            "mem://a1000",
+            &mut std::io::Cursor::new(payload.clone()),
+            &mut Vec::new(),
+            &art,
+        )
+        .unwrap();
+        assert_eq!(n, 1_000);
+        assert_eq!(actual, hex);
+        let art_bad = Artifact {
+            sha256: Some(BASE_SHA256),
+            size: Some(1_000),
+            max_bytes: 1_000,
+        };
+        let err = copy_capped(
+            "mem://badhash",
+            &mut std::io::Cursor::new(payload),
+            &mut Vec::new(),
+            &art_bad,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("sha256 mismatch"), "{err}");
+    }
+
+    #[test]
+    fn junk_cached_whisper_is_not_ok() {
+        let tmp = std::env::temp_dir().join(format!("runa-asr-junk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let dest = tmp.join("ggml-base.bin");
+        fs::write(&dest, vec![0u8; 2_000]).unwrap();
+        assert!(!artifact_ok(&dest, &WhisperKind::Base.artifact()));
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

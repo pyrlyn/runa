@@ -11,6 +11,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # P14.1: CI runs on push/merge to main and on ready (non-draft) PRs to main.
 # Draft PRs are skipped; `review` runs only via the `/review` comment workflow.
 # Releases go through `bump.yml` (Actions -> Bump and release: a version PR this CI gates).
@@ -265,10 +268,33 @@ jobs:
         run: moon projects
       - name: moon ci --affected (K5, parallel cached)
         # On a docs-only change, affected set is (almost) nothing — the check
-        # is that `moon ci` correctly skips. Direct-cargo jobs above remain the
-        # reference; moon is the cached parallel path.
-        run: >-
-          moon ci --affected --remote=false || moon run :test --affected --remote=false || echo "moon ci: no affected projects (docs-only), ok"
+        # is that `moon ci` correctly skips (exit 0). Direct-cargo jobs above
+        # remain the reference; moon is the cached parallel path. Do not
+        # `|| echo` — that masks real test failures (P17.1).
+        run: |
+          set +e
+          out=$(moon ci --affected --remote=false 2>&1)
+          status=$?
+          printf '%s\n' "$out"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if printf '%s\n' "$out" | grep -qiE 'no affected projects|no projects to run|no tasks to run'; then
+            echo "moon ci: no affected projects (docs-only), ok"
+            exit 0
+          fi
+          out2=$(moon run :test --affected --remote=false 2>&1)
+          status2=$?
+          printf '%s\n' "$out2"
+          if [ "$status2" -eq 0 ]; then
+            exit 0
+          fi
+          if printf '%s\n' "$out2" | grep -qiE 'no affected projects|no projects to run|no tasks to run'; then
+            echo "moon ci: no affected projects (docs-only), ok"
+            exit 0
+          fi
+          echo "moon affected run failed (status $status2)" >&2
+          exit "$status2"
       - name: registry lint (K-aware)
         run: python3 scripts/lint-tasks.py docs/tasks.md
 

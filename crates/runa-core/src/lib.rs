@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
 
-//! runa-core — shared types: `Backend` trait, `Request`/`Event`,
-//! `ThinkConfig`, `Mode`, errors (plan §5).
-//!
-//! Types land here; engine wiring is P2, thinking parse is P3.1.
+//! runa-core — shared types: [`BackendKind`], [`ThinkConfig`], reasoning
+//! parse, [`ToolCall`]. Local vs cloud generation uses concrete engine
+//! and cloud types, not a `Backend` trait.
 
 mod backend;
 mod reason;

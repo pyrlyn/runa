@@ -148,6 +148,11 @@ async fn listen(
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| format!("bind {host}:{port}: {e}"))?;
+    if !is_loopback_host(host) {
+        eprintln!(
+            "warning: runa serve has no authentication; {host} accepts any client that can reach this port"
+        );
+    }
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| format!("bind {addr}: {e}"))?;
@@ -173,15 +178,19 @@ async fn listen(
     axum::serve(listener, app).await.map_err(|e| e.to_string())
 }
 
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "localhost" | "::1" | "[::1]")
+}
+
 /// A handler panic answers 500 JSON instead of closing the socket.
 async fn catch_panic(req: Request, next: Next) -> Response {
     match AssertUnwindSafe(next.run(req)).catch_unwind().await {
         Ok(resp) => resp,
         Err(p) => {
-            let msg = format!("internal error: {}", panic_text(&*p));
+            eprintln!("serve panic: {}", panic_text(&*p));
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": {"message": msg, "type": "server_error"}})),
+                Json(json!({"error": {"message": "internal error", "type": "server_error"}})),
             )
                 .into_response()
         }
@@ -1645,6 +1654,15 @@ mod tests {
         assert_eq!(v["choices"][0]["finish_reason"], "length");
         let v = anthropic_message_body("m", &truncated);
         assert_eq!(v["stop_reason"], "max_tokens");
+    }
+
+    #[test]
+    fn loopback_hosts_are_the_default_bind() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("localhost"));
+        assert!(is_loopback_host("::1"));
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("192.168.1.2"));
     }
 
     #[test]
