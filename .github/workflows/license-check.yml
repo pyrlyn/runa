@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -18,6 +19,7 @@ permissions:
 
 jobs:
   license:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     # The canonical files are read from pyrlyn/ci main (canonical-ref default).
     uses: pyrlyn/ci/.github/workflows/license-check.yml@2f03a5d7ef6b77a3e1c6b9bccbb603c067d6af08 # main 2026-10-06
     permissions:
