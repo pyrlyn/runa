@@ -255,6 +255,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Affected detection compares HEAD to `main`; a shallow clone
+          # cannot see the merge base.
+          fetch-depth: 0
       - name: Install tools via mise (K2, D21)
         uses: jdx/mise-action@v2
         with:
@@ -266,37 +270,12 @@ jobs:
           shared-key: moon
       - name: moon projects (graph check, K1)
         run: moon projects
-      - name: moon ci --affected (K5, parallel cached)
-        # On a docs-only change, affected set is (almost) nothing — the check
-        # is that `moon ci` correctly skips (exit 0). Direct-cargo jobs above
-        # remain the reference; moon is the cached parallel path. Do not
-        # `|| echo` — that masks real test failures (P17.1).
-        run: |
-          set +e
-          out=$(moon ci --affected --remote=false 2>&1)
-          status=$?
-          printf '%s\n' "$out"
-          if [ "$status" -eq 0 ]; then
-            exit 0
-          fi
-          if printf '%s\n' "$out" | grep -qiE 'no affected projects|no projects to run|no tasks to run'; then
-            echo "moon ci: no affected projects (docs-only), ok"
-            exit 0
-          fi
-          out2=$(moon run :test --affected --remote=false 2>&1)
-          status2=$?
-          printf '%s\n' "$out2"
-          if [ "$status2" -eq 0 ]; then
-            exit 0
-          fi
-          if printf '%s\n' "$out2" | grep -qiE 'no affected projects|no projects to run|no tasks to run'; then
-            echo "moon ci: no affected projects (docs-only), ok"
-            exit 0
-          fi
-          echo "moon affected run failed (status $status2)" >&2
-          exit "$status2"
-      - name: registry lint (K-aware)
-        run: python3 scripts/lint-tasks.py docs/tasks.md
+      - name: moon ci (K5, parallel cached)
+        # moon 2.5.4: `moon ci` already enables affected mode. It does not
+        # take `--affected` or `--remote=false` (those used to fail instantly
+        # and were masked by `|| echo`). Docs-only PRs exit 0 when nothing
+        # is affected. Direct-cargo jobs above remain the reference.
+        run: moon ci
 
   # Separate job so the branch protection rule can require a single `ci` check
   # while still covering the matrix; all matrix jobs must pass.
