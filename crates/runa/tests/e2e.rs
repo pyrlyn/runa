@@ -1,10 +1,14 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P2.3/P2.5 e2e: `runa run` (one-shot, stdin piping, `--json`, auto/`on_unfit`)
 //! and `runa chat` (piped REPL with slash commands), via `assert_cmd`.
 //!
 //! Each test loads the qwen2 fixture on CPU (~seconds); the binary is built
 //! once by cargo.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -892,7 +896,7 @@ fn serve_embeddings_and_transcriptions_routes() {
         0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x00, 0x7d,
         0x00, 0x00, 0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00,
     ];
-    std::fs::write(&wav, &wav_bytes).expect("temp wav");
+    std::fs::write(&wav, wav_bytes).expect("temp wav");
     let asr = curl_post_multipart(&format!("{base}/v1/audio/transcriptions"), &wav);
     let _ = std::fs::remove_file(&wav);
     if !(asr.contains("whisper") || asr.contains("\"text\"") || asr.contains("missing")) {
@@ -1179,7 +1183,7 @@ fn curl_post_timeout(url: &str, body: &str, max_secs: &str) -> String {
     String::from_utf8(out.stdout).expect("utf8")
 }
 
-fn curl_post_multipart(url: &str, file: &PathBuf) -> String {
+fn curl_post_multipart(url: &str, file: &Path) -> String {
     let out = std::process::Command::new("curl")
         .args([
             "-sS",

@@ -1,3 +1,6 @@
+> [!NOTE]
+> This project is under active development. We need "testing volunteers": try it and report what breaks.
+
 # runa
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=listepo_runa) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=coverage)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=coverage) [![Tests](https://img.shields.io/sonar/tests/listepo_runa?server=https%3A%2F%2Fsonarcloud.io&compact_message)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=tests)
@@ -27,7 +30,7 @@ From a GitHub Release:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh
+  https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh
 ```
 
 Or Homebrew from the formula on that Release: `brew install ./runa.rb`.
@@ -108,7 +111,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | [`docs/baselines.md`](docs/baselines.md) | `llama-bench` reference numbers |
 | [`docs/perf-nightly.md`](docs/perf-nightly.md) | Nightly perf workflow and > 3 % regression gate |
 | [`docs/perf-baseline.json`](docs/perf-baseline.json) | Baseline data the gate reads |
-| [`docs/release.md`](docs/release.md) | How a release runs (`scripts/release.sh`, tag, artifacts) |
+| [`docs/release.md`](docs/release.md) | How a release runs (`bump.yml`, `scripts/release.sh`, tag, artifacts) |
 | [`docs/release-1.0.md`](docs/release-1.0.md) | v1.0 metric checklist with evidence |
 | [`docs/adr/`](docs/adr/) | ADRs for D1–D18 and D23 |
 | [`docs/runa.1`](docs/runa.1) / [`docs/runa-run.1`](docs/runa-run.1) | Man pages |
@@ -130,6 +133,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | `crates/runa` | CLI: config, TUI, serve, daemon, MCP, pull, bench, fit |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode` |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling, mtmd |
+| `crates/runa-pool` | Engine dispatch and model pool, usable in-process without the binary |
 | `crates/runa-fit` | GGUF header, hardware probe, estimator, calibration DB |
 | `crates/runa-memory` | Adaptive memory + task-claim registry |
 | `crates/runa-media` | Audio/video decode, frame sampling, ASR (`whisper-rs`) |
@@ -163,7 +167,7 @@ after-1.0 ideas in [`roadmap.md`](roadmap.md).
 Release binaries are **portable** (ggml runtime CPU dispatch). GitHub Releases
 upload macOS arm64, Linux x86_64, and Windows x86_64 CPU archives plus
 installers; Metal / Vulkan / CUDA builds are extra artifacts. Cutting a release:
-`bash scripts/release.sh` — see [`docs/release.md`](docs/release.md).
+Actions → Bump and release (or `bash scripts/release.sh`, which starts it) — see [`docs/release.md`](docs/release.md).
 
 License: see [License](#license) below. No telemetry.
 
@@ -174,3 +178,8 @@ You can use this project under **any** of the following licenses, at your choice
 1. [GNU GPLv3](LICENSE): free for open source applications on any platform, including embedded systems.
 2. [Royalty-free License](LICENSE-ROYALTY-FREE.md): free for proprietary desktop, mobile, and web applications, as long as you disclose that your application uses this project. Embedded systems are not covered.
 3. [Commercial license](PRICING.md): for proprietary applications, including embedded systems, without the attribution requirement.
+
+<!-- license-sync:start -->
+Commercial use not covered by the GPLv3 or the Royalty-free License requires a separate paid
+license — see [PRICING.md](PRICING.md).
+<!-- license-sync:end -->

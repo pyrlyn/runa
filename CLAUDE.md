@@ -73,9 +73,10 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 
 | Path | Responsibility |
 |------|----------------|
-| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `pool.rs`, `cloud.rs` |
+| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `placer.rs`, `cloud.rs` |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors. No engine dependency |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling loop, mtmd, state save; vendored patches behind features (`rpc`, `hexagon`/`openvino` stubs) |
+| `crates/runa-pool` | `LocalEngine` (backend dispatch) and `ModelPool` behind serve/daemon, as a library: another program embeds local inference through it (P16.2). Placement is injected (`Placer`), so it needs no config or fit code |
 | `crates/runa-fit` | GGUF header (local file / HTTP range), hardware probe, estimator, placement planner, calibration DB. Must not depend on the engine (D5) |
 | `crates/runa-memory` | `MemoryManager` (D17) + `TaskRegistry` (D18) |
 | `crates/runa-media` | Audio/video decode, resample, frame sampling, ASR bridge (`whisper-rs`) |
@@ -107,7 +108,7 @@ Run these before requesting a merge or closing a task. They mirror
 | Fixture budget | `python3 scripts/check-fixture-size.py` (≤ 3 GiB per file) |
 | Perf gate self-test | `python3 scripts/perf-regress.py --self-test` |
 | Feature builds | `cargo check -p runa-engine --features hexagon,openvino` and `cargo test -p runa-engine -p runa --features runa/rpc --lib --test rpc --test doctor --test trycmd` |
-| Full pass + cleanup | `moon run root:test-with-cleanup` (drops downloaded weights, compacts `target/` with dunnage) |
+| Full pass + cleanup | `moon run root:test-with-cleanup` (drops downloaded weights, compacts `target/` with swarfr) |
 
 Job time budgets stay under 5 minutes (P11.8/P11.9); when a step grows, report
 it instead of loosening the gate.
@@ -138,10 +139,8 @@ it instead of loosening the gate.
   one exists (`feat: P9.3 real RPC backend behind rpc feature`). No trailers.
 - One concern per commit; scope `git add` to the files the task card lists.
   Never commit another agent's uncommitted work.
-- `main` is the reference. Work that touches CI, or that risks a red `main`,
-  goes through a topic branch plus a PR (the P11 flow); a scoped push is fine
-  while CI is green. The `ci.yml` `revert-on-failure` job reverts a red push to
-  `main`, so verify locally first (§9).
+- `main` is the reference. The `ci.yml` `revert-on-failure` job reverts a red
+  commit on `main`, so verify locally first (§9).
 - Never force-push a shared branch. `git pull --rebase` before pushing; on a
   conflict stop and report instead of guessing.
 - Doc-only commits still use the same prefixes (`docs: …`) and mention the task

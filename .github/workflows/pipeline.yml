@@ -1,0 +1,37 @@
+# Scans from pyrlyn/ci's config-driven ci.yml (.github/infra.yml): CodeQL, Semgrep, Snyk,
+# SonarCloud and actionlint in parallel behind `pipeline / gate`. Rust CI is not repeated here:
+# ci.yml runs it on the same pushes and pull requests (its job names are the required checks).
+# Draft pull requests skip every job, the gate included, until marked ready. Secrets are passed
+# explicitly by name, not with `secrets: inherit`.
+# Shared workflows: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
+name: pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: pipeline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    uses: pyrlyn/ci/.github/workflows/ci.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+    # The union every nested job asks for, validated up front even for disabled checks.
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: write
+    secrets:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

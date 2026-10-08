@@ -1,0 +1,172 @@
+# cargo-fuzz (libFuzzer) targets for runa. Not a member of the root
+# workspace (see `exclude` there): normal builds, clippy and CI never
+# compile this crate. Run with `cargo +nightly fuzz ...` (fuzz/README.md).
+[package]
+name = "runa-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Own workspace root so cargo does not attach this crate to the repo's.
+[workspace]
+members = ["."]
+
+[features]
+default = []
+# The `cli-*`, `serve-body` and `daemon-proto` targets compile the real
+# `runa` binary crate (crates/runa/src/main.rs with `--cfg fuzzing`), which
+# pulls runa-engine (llama.cpp via llama-cpp-sys-2) and runa-media
+# (whisper.cpp). Heavy first build, so opt-in: `--features cli`.
+cli = [
+    "dep:clap",
+    "dep:sysinfo",
+    "dep:raw-cpuid",
+    "dep:chrono",
+    "dep:rayon",
+    "dep:anyhow",
+    "dep:runa-memory",
+    "dep:runa-engine",
+    "dep:runa-pool",
+    "dep:runa-media",
+    "dep:rustyline",
+    "dep:hf-hub",
+    "dep:sha2",
+    "dep:toml",
+    "dep:axum",
+    "dep:tokio",
+    "dep:futures",
+    "dep:rmcp",
+    "dep:ratatui",
+    "dep:crossterm",
+    "dep:tui-textarea-2",
+    "dep:unicode-width",
+    "dep:serde",
+]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pure-Rust library targets (default build: no llama.cpp).
+runa-core = { path = "../crates/runa-core" }
+runa-fit = { path = "../crates/runa-fit" }
+runa-cloud = { path = "../crates/runa-cloud" }
+
+# Mirror of crates/runa/Cargo.toml [dependencies] (same versions; keep in
+# sync) so the `cli` bins can compile crates/runa/src/main.rs directly.
+clap = { version = "4", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+sysinfo = { version = "0.39", optional = true }
+raw-cpuid = { version = "11", optional = true }
+chrono = { version = "0.4", optional = true }
+rayon = { version = "1", optional = true }
+anyhow = { version = "1", optional = true }
+runa-memory = { path = "../crates/runa-memory", optional = true }
+runa-engine = { path = "../crates/runa-engine", optional = true }
+runa-pool = { path = "../crates/runa-pool", optional = true }
+runa-media = { path = "../crates/runa-media", optional = true }
+rustyline = { version = "=18.0.1", optional = true }
+hf-hub = { version = "=1.0.0", features = ["blocking"], optional = true }
+sha2 = { version = "=0.11.0", optional = true }
+toml = { version = "=1.1.5", optional = true }
+axum = { version = "0.8", features = [
+    "json",
+    "http1",
+    "tokio",
+    "multipart",
+], optional = true }
+tokio = { version = "1.53.1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "process",
+    "signal",
+    "sync",
+    "time",
+], optional = true }
+futures = { version = "0.3.34", optional = true }
+rmcp = { version = "3.2", default-features = false, features = [
+    "client",
+    "transport-child-process",
+], optional = true }
+ratatui = { version = "0.30.2", optional = true }
+crossterm = { version = "0.29", optional = true }
+tui-textarea-2 = { version = "0.13", default-features = false, features = [
+    "crossterm",
+], optional = true }
+unicode-width = { version = "0.2", optional = true }
+
+[lints.rust]
+# main.rs checks runa's own cargo features (`mtmd`, `rpc`, ...), which this
+# package does not define; they are simply off here.
+unexpected_cfgs = "allow"
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "gguf-header"
+path = "fuzz_targets/gguf_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "reasoning-stream"
+path = "fuzz_targets/reasoning_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cloud-responses"
+path = "fuzz_targets/cloud_responses.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "model-refs"
+path = "fuzz_targets/model_refs.rs"
+test = false
+doc = false
+bench = false
+
+# The four bins below are the real runa binary crate: main.rs turns into a
+# libFuzzer target under `cfg(fuzzing)` and picks its surface by bin name
+# (crates/runa/src/fuzz_hooks.rs).
+[[bin]]
+name = "cli-argv"
+path = "../crates/runa/src/main.rs"
+required-features = ["cli"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cli-config"
+path = "../crates/runa/src/main.rs"
+required-features = ["cli"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "serve-body"
+path = "../crates/runa/src/main.rs"
+required-features = ["cli"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "daemon-proto"
+path = "../crates/runa/src/main.rs"
+required-features = ["cli"]
+test = false
+doc = false
+bench = false

@@ -1,12 +1,53 @@
 # runa
 
-https://github.com/listepo/runa
+https://github.com/pyrlyn/runa
 
 A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through OpenAI/Anthropic APIs; fit checker, three compute modes, adaptive memory, OpenAI-compatible server.
+
+## Cloud review findings (2026-10-08)
+
+New bugs, dead code and moves from a read-only Cursor cloud review of the current tree (agent `bc-b9ffebc5-a30f-5261-a881-c62018ac3f66`; full report: `cloud/runa.md` in the private `listepo/roadmap` repo). They form phase P17: P17.1–P17.20, ordered by priority (there is no P0; P1 is high, P2 is medium). **confirmed** means seen in the tree; **suspected** means plausible from the code but not proven (no tests or Miri were run). Line numbers are as of the review. None of these is in the task table yet: to take one, add its row and card here and its row in `docs/tasks.md`, as `AGENTS.md` says.
+
+| ID | Priority | Kind | Status | Where | Fix |
+| --- | --- | --- | --- | --- | --- |
+| P17.1 | high (P1) | bug | suspected | `Cargo.toml:22`; `README.md:171-182` | Licensing metadata: the workspace `license` is only `GPL-3.0-or-later`, while the README offers three licences (GPL, royalty-free, commercial), so crates.io will show GPL only. Align the Cargo `license` field with the README's three-licence model, or document why they differ. Raised from P2 to P1 by the creator, 2026-10-08. |
+| P17.2 | high (P1) | bug | confirmed | `crates/runa-cloud/src/prices.rs:43-50`, `:117-125` | The price table loads the first readable file, and `cwd/docs/prices.toml` comes before `~/.config/runa/prices.toml`, although the docstring (`:5`) says the user file wins. Use the `config_paths()` later-wins order and add a test. |
+| P17.3 | high (P1) | bug | confirmed | `crates/runa/src/config.rs:531-532`, `:563-579` | A later `[memory]` table resets the keys it does not set: user `idle_timeout_s = 111` plus project `floor_mib = 50` gives idle 300. Merge onto the accumulator; add a partial-table test. |
+| P17.4 | high (P1) | bug | confirmed | `crates/runa/src/config.rs:86`; `crates/runa/src/pull.rs:38`; `crates/runa-media/src/asr.rs:75`; `crates/runa/src/daemon.rs:343` | Config and data paths use `HOME` only, on a Tier 2 Windows target (D13). Use `USERPROFILE`/`LOCALAPPDATA`, like `cache_root` (`crates/runa-fit/src/remote.rs:157-161`). |
+| P17.5 | high (P1) | bug | confirmed | `crates/runa-media/src/asr.rs:274-294` | The Whisper model download has no size cap, so a bad redirect can fill the disk. Cap it like `pull.rs:108` (`MAX_MODEL_BYTES`) and fail closed; pin a sha256 per model file. |
+| P17.6 | high (P1) | dead code | confirmed | `crates/runa-media/Cargo.toml:11` (`parakeet = []`); `crates/runa-media/src/asr.rs:445-450`; re-export in `lib.rs:19` | The `parakeet` feature changes nothing and `transcribe_parakeet` always errors. Wire `sherpa-onnx`, or drop the feature and say "not available yet". |
+| P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
+| P17.8 | medium (P2) | bug | suspected | `crates/runa/src/main.rs:191-193`; no key check in `serve.rs` | `/v1` has no auth: the default bind is `127.0.0.1`, but `--host 0.0.0.0` exposes completions, embeddings and transcriptions. Refuse a non-loopback bind without `--api-key`. |
+| P17.9 | medium (P2) | bug | confirmed | `crates/runa/src/serve.rs:181-184` | `catch_panic` returns the panic text in `error.message`. Return a generic 500 and log the panic server-side. |
+| P17.10 | medium (P2) | bug | suspected | `crates/runa/src/daemon.rs:206-212` | After `ConnectionRefused`, `remove_file` then `bind` is not atomic, so two starters can still race (the live-daemon steal itself is fixed). Take a `flock` on a lock file first. |
+| P17.11 | medium (P2) | bug | suspected | `crates/runa-engine/src/generate.rs:859-866` | `add_close_bias` casts the shared slice from `get_logits_ith` to mutable and writes through it, which is UB unless the callee guarantees exclusive access. Use a mutable logits API. |
+| P17.12 | medium (P2) | bug | confirmed | `crates/runa-media/src/video.rs:224` | `ffmpeg_sidecar::download::auto_download()` runs with no hash check. Prefer ffmpeg from `PATH`/mise; pin a hash if auto-download stays. |
+| P17.13 | medium (P2) | bug | confirmed | `crates/runa-pool/src/pool.rs:62-80`; `crates/runa-memory/src/memory.rs:187` | Library crates print to stderr, which an embedder (P16.2) cannot silence (issue #37 class). Use `tracing` or a callback. |
+| P17.14 | medium (P2) | bug | confirmed | `crates/runa-core/src/lib.rs:5`; only `BackendKind` exists (`backend.rs:19`) | The crate docs, and this plan's features audit, advertise a `Backend` trait, `Request`/`Event` and `Mode` that do not exist. Fix the docs, or add the trait in `runa-core` (move M6). |
+| P17.15 | medium (P2) | dead code | confirmed (grep only, no `cargo-udeps`) | `crates/runa/Cargo.toml:37` (`raw-cpuid`), `:39` (`rayon`) | Neither crate is used in `crates/runa` (`raw-cpuid` was planned in P1.6 and never wired). Remove both. |
+| P17.16 | medium (P2) | dead code | confirmed | `crates/runa-kernels/c/{avx2,neon,scalar}.c`; `crates/runa-kernels/src/lib.rs:8` | The C kernels are "reference only" and nothing builds them; the Zig archive is what links. Move them to `docs/` or drop them. |
+| P17.17 | medium (P2) | dead code | confirmed | `crates/runa-fit/src/gguf.rs:241`; matched in `remote.rs:633` | `parse()` never constructs `ReadError::TensorTableTruncated`. Construct it on a truncated tensor table, or delete the variant. |
+| P17.18 | medium (P2) | dead code | confirmed | `report.html` (tracked, not ignored, not used by build or CI) | The reviewer suggests deleting or ignoring it; the Reference above lists it as a companion document, so decide whether to keep it. |
+| P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
+| P17.20 | medium (P2) | move | confirmed | `scripts/release.sh:1-40` → `pyrlyn/ci` | The script already dispatches `pyrlyn/ci` `bump.yml`. Keep a thin wrapper here or fold the rest into `pyrlyn/ci`. |
+
+Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
+
+- E1, licence files missing: not a bug. `LICENSE`, `LICENSE-ROYALTY-FREE.md` and `PRICING.md` are tracked, the workspace is `GPL-3.0-or-later` (`Cargo.toml:22`) and the README documents the three-licence model. The remaining SPDX mismatch is P17.1.
+- E3, local `image_url` paths: fixed in P15.1 (`done.md`). `serve.rs:1381-1382` rejects anything but `data:` before any stat; test `image_url_rejects_local_paths_without_statting`.
+- E4, GGUF `n_dims` over-allocation and divide by zero: fixed. Capacity is capped (`gguf.rs:324-329`), alignment is checked (`:346-348`), `head_dim` uses `checked_div` (`descriptor.rs:138`), `tensor_bytes` uses `checked_mul` (`ggml_types.rs:87-89`).
+- E5, daemon unlinks a live socket: fixed in P15.1. `daemon.rs:196-215` connects first and unlinks only on `ConnectionRefused`/`NotFound`; test `second_daemon_does_not_unlink_a_live_socket`. The leftover race is P17.10.
+- E6, dead website link in the README: not a bug. `README.md:7` no longer links a Pages URL; the landing is `pyrlyn.github.io/landing` (HTTP 200 on 2026-10-08).
+- E8, config precedence for `[audio]`/`[memory]`: fixed in P15.1. CLI, then env, then files (`config.rs:495-520`); test `later_config_file_overrides_memory_and_audio`. Prices and partial `[memory]` tables are P17.2 and P17.3.
+- E15, wrong origin / dirty checkout: not a bug. `origin` is `pyrlyn/runa` and the checkout is `main`.
+- E22, move `theme.js` to the brand repo: not a bug. There is no `site/` tree.
+- E23, streaming collect-then-replay: fixed in P16.1 (`done.md`). `serve.rs:620-626` streams through `generate_stream_on`; test `first_token_reaches_the_client_before_generation_ends`.
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Muse Spark |
+| P14.3 | todo | medium | M | ready | — |
+| P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
 
@@ -15,10 +56,37 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 Plan: fix dist build-setup (mise install incl. zig, like CI) + install
 glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 (same commit, CI green), wait for Release + variants, verify
-`ketch install listepo/runa`.
+`ketch install pyrlyn/runa`.
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
+
+### P14.3. Add fast testing
+
+Plan: add a fast test path for local development and PR checks.
+
+Machine check: TBD.
+
+### P14.4. Add web dashboard
+
+Plan: add a web dashboard showing, in real time, with graphs:
+
+- token speed;
+- the in-flight request/response pairs;
+- the system load attributable to this app;
+- latency percentiles (p50, p95, p99);
+- errors: a counter and the most recent failures with tracebacks;
+- quotas and limits (tokens per minute, requests per second), showing whether
+  the app is hitting the ceiling;
+- warm daemon status: alive or not;
+- loaded models: how many and how much memory they use;
+- active MCP tools;
+- the request queue while the server is up;
+- reasoning budget: current spend.
+
+Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
+
+Machine check: TBD.
 
 ## Reference
 
@@ -85,6 +153,7 @@ runa/
 │   ├── runa/                  # binary: clap CLI, figment config, output, server (axum)
 │   ├── runa-core/             # Backend trait, Request/Event types, ThinkConfig, Mode, errors
 │   ├── runa-engine/           # llama-cpp-2 wrapper: load, placement, sampling loop, mtmd, state save
+│   ├── runa-pool/             # engine dispatch + model pool, embeddable without the binary
 │   ├── runa-fit/              # gguf header (local/remote), hw probe, estimator, planner, calibration db
 │   ├── runa-media/            # audio/video decode, resample, frame sampling, ASR bridge (whisper-rs)
 │   ├── runa-cloud/            # openai (async-openai) + anthropic (reqwest+SSE) adapters, price table
@@ -334,7 +403,7 @@ Try      UD-Q2_K_XL (~82 GiB) still does not fit · Qwen3-30B-A3B Q4_K_M fits ·
 | mtmd lacks a model's audio/video path | mistral.rs feature or ASR route; `runa fit` prints `audio: via ASR` so the user knows |
 | Cloud API drift (Anthropic thinking params, OpenAI Responses changes) | adapters versioned per API date; recorded fixtures; live smoke tests behind an env flag |
 | Kernel work absorbs time without gains | hard gate ≥ 5 %; P5 time-boxed; scalar reference always shipped |
-| Licenses | llama.cpp MIT, whisper.cpp MIT, sherpa-onnx Apache-2.0, ffmpeg as a separate binary (LGPL/GPL, not linked); `runa` MIT OR Apache-2.0 |
+| Licenses | llama.cpp MIT, whisper.cpp MIT, sherpa-onnx Apache-2.0, ffmpeg as a separate binary (LGPL/GPL, not linked); `runa` GPL-3.0-or-later (or royalty-free / commercial) |
 | Silent behaviour differences vs llama-cli (templates, samplers) | golden tests at temperature 0 against `llama-cli` output for 5 models |
 | Memory thrash (shrink/grow oscillation on bursty load) | hysteresis: grow immediately, shrink only after a full `idle_timeout_s` of silence; transitions logged; soak test in P7.2 |
 | Stale task claims (agent dies holding `in progress`) | claims carry agent + `started_at`; takeover requires asking the owner (or human) first; CI lint surfaces claims older than 7 days |
@@ -362,13 +431,14 @@ skip extra fuzzers and `mockall` until a trait-heavy seam needs them.
 
 ### Runa audit — features
 
-Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo/apps/runa`; remote: `listepo/runa`.
+Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo/apps/runa`; remote: `pyrlyn/runa`.
 
 #### Crates today
 
-- `crates/runa` — CLI binary: clap surface in `main.rs`, plus `serve.rs`, `daemon.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `pool.rs`.
+- `crates/runa` — CLI binary: clap surface in `main.rs`, plus `serve.rs`, `daemon.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `placer.rs`.
 - `crates/runa-core` — `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors (no engine dependency).
 - `crates/runa-engine` — `llama-cpp-2` wrapper: load, placement, sampling, mtmd, state save; features such as `rpc`.
+- `crates/runa-pool` — `LocalEngine` backend dispatch and `ModelPool` behind serve/daemon; a library so another program can embed local inference (P16.2).
 - `crates/runa-fit` — GGUF header (local/HTTP range), hardware probe, estimator, planner, calibration DB (must not depend on the engine, D5).
 - `crates/runa-cloud` — OpenAI + Anthropic adapters, price table (`docs/prices.toml`).
 - `crates/runa-media` — audio/video decode, resample, frames, whisper-rs ASR.
@@ -409,7 +479,7 @@ Findings from the 2026-09-20 documentation audit (English).
 #### Adequacy (strong)
 
 - Indexed in `docs/README.md`: `getting-started.md`, `guide.md`, `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `profiles.md`, `versions.md`, `baselines.md`, `perf-nightly.md`, `kernels.md`, `release.md`, `release-1.0.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
-- Site at `https://listepo.github.io/runa/` (`site/`, homepage set on the GitHub repo).
+- GitHub Pages was removed; `docs/` is the documentation source (no `site/` tree, repo homepage unset).
 - Research companions: `research.md`, `report.html`.
 
 #### Gaps
@@ -417,7 +487,7 @@ Findings from the 2026-09-20 documentation audit (English).
 - **No Troubleshooting page** for install/release failures (exactly the pain of P14.2: red `v0.1.0` Release, missing mise/zig/glslc), GPU feature flags, daemon socket on Windows, MCP quoting, or HF pull errors.
 - **`docs/versions.md`**: GPU accel (Metal/CUDA/Vulkan) “not yet forwarded” into the default path — user-facing docs still undersell how to turn GPU on after a successful install.
 - **`docs/release.md` / `getting-started.md` assume a working GitHub Release installer** — today Release is red, so getting-started’s curl/Homebrew path is aspirational until P14.2 lands.
-- **Site content is thin** relative to `docs/guide.md` (risk of docs/site drift; only `_index.md`-style landing in `site/content`).
+- GitHub Pages / `site/` was removed; `docs/` is the documentation source (the old landing was only `_index.md`-style copy and could drift from `docs/guide.md`).
 - **Task-claim docs vs MCP**: `docs/tasks.md` / `memory.md` vs `docs/structured.md` MCP loop — easy for agents/users to confuse “tasks” (plan claims) with model tools; needs a one-line cross-link callout.
 - **No FAQ** covering cloud keys, `on_unfit=cloud:`, calibration DB location, or `--max-load-percent`.
 - **CHANGELOG** exists at repo root but is not linked prominently from `docs/README.md` / getting-started.
@@ -428,7 +498,7 @@ Findings from the 2026-09-20 documentation audit (English).
 2. Update getting-started with a “Release status” note until P14.2 is green (or point at local `cargo build --release`).
 3. Expand `versions.md` with a short “enable Metal/CUDA/Vulkan” recipe once features are forwarded.
 4. Cross-link tasks vs MCP in `tasks.md` and `structured.md`.
-5. Mirror key guide sections onto the Pages site or clearly defer to `docs/guide.md`.
+5. GitHub Pages was removed; keep `docs/guide.md` as the how-to source (do not reintroduce a parallel site).
 
 ### Runa audit — docs
 
@@ -436,7 +506,7 @@ Evaluation of `README.md`, `docs/`, `plan.md`, and `AGENTS.md` (2026-09-20, Engl
 
 #### Solid
 
-- **README.md** — clear product pitch, install paths, first commands, link to the site and deeper docs.
+- **README.md** — clear product pitch, install paths, first commands, and links to deeper docs.
 - **docs/** — strong index in `docs/README.md`; user path via `getting-started.md` + `guide.md`; reference depth in `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `versions.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
 - **plan.md** — decisions D1–D23, active-task table, task cards; now also carries features + documentation audit sections.
 - **AGENTS.md** — agent operating rules, crate map, claim protocol, kernel language (D23), tool/model routing — usable as the agent runbook.
@@ -453,7 +523,7 @@ Evaluation of `README.md`, `docs/`, `plan.md`, and `AGENTS.md` (2026-09-20, Engl
 
 - **getting-started / release.md** assume a green GitHub Release installer while **P14.2** still has `v0.1.0` Release red — curl/Homebrew paths are aspirational until that lands.
 - **versions.md** still says GPU accel is “not yet forwarded” to the default path — docs lag a turnkey GPU story vs Ollama.
-- **Site (`site/`)** is thinner than `docs/guide.md` — Pages vs repo docs can drift.
+- GitHub Pages / `site/` was removed; `docs/` is the documentation source (the old Pages landing was thinner than `docs/guide.md` and could drift).
 - **tasks.md vs MCP** — plan-claim “tasks” vs model tool loop in `structured.md` need an explicit cross-link to avoid agent confusion.
 
 ### Runa audit — tests
@@ -496,4 +566,3 @@ Findings from the 2026-09-20 tests-only audit (English).
 - **trycmd vs assert_cmd split** is intentional (`trycmd.rs` docs) but leaves most CLI error strings without golden files.
 - **Ignored network tests** can rot silently (`remote.rs` `#[ignore]`).
 - **Windows untested at runtime** — regressions in path/quoting/daemon will only show on contributor machines.
-

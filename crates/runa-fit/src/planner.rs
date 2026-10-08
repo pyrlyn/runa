@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Placement planner: GPU/CPU tensor placement (P1.8).
 //!
 //! Given a model descriptor, available VRAM, and configuration, decide which
@@ -515,12 +519,13 @@ mod tests {
 
     #[test]
     fn real_moe_fixture_small_vram_parks_experts_on_cpu() {
-        // End-to-end over the real 30B-A3B header (P0.7 fixture): 8 GiB VRAM
-        // must keep attention/dense on GPU while experts spill to CPU.
+        // End-to-end over the real 30B-A3B GGUF *header* (tensor infos with
+        // real expert byte sizes; weights truncated — ~6 MiB local fixture).
+        // 8 GiB VRAM must keep attention/dense on GPU while experts spill to CPU.
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures/Qwen3-30B-A3B-Q4_K_M.gguf");
         if !path.is_file() {
-            // Fixture not downloaded (P0.7): don't fail the suite.
+            // Fixture not present: don't fail the suite.
             return;
         }
         let h = crate::remote::read_local_prefix(&path).expect("fixture header");

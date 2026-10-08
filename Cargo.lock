@@ -6221,6 +6221,7 @@ dependencies = [
  "assert_cmd",
  "assert_fs",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "clap_mangen",
@@ -6240,11 +6241,13 @@ dependencies = [
  "runa-fit",
  "runa-media",
  "runa-memory",
+ "runa-pool",
  "rustyline",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "sysinfo 0.39.6",
+ "tempfile",
  "tokio",
  "toml 1.1.5+spec-1.1.0",
  "trycmd",
@@ -6337,6 +6340,17 @@ dependencies = [
  "chrono",
  "sysinfo 0.39.6",
  "tempfile",
+]
+
+[[package]]
+name = "runa-pool"
+version = "0.1.0"
+dependencies = [
+ "runa-core",
+ "runa-engine",
+ "runa-memory",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

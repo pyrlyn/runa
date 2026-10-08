@@ -1,7 +1,8 @@
 # SonarCloud OSS setup (runa)
 
-Maintainer guide for the SonarCloud workflow in `.github/workflows/sonarcloud.yml` and the scanner
-configuration in `sonar-project.properties`.
+Maintainer guide for the SonarCloud job: pyrlyn/ci's `sonarcloud.yml`, run by its `ci.yml`
+from `.github/workflows/pipeline.yml` and configured under `sonarcloud:` in `.github/infra.yml`;
+the scanner configuration is in `sonar-project.properties`.
 
 The `sonar.organization` / `sonar.projectKey` values (`listepo` / `listepo_runa`) are
 **placeholders** until they match the SonarCloud UI after you import the project.
@@ -51,15 +52,15 @@ run in that state does **not** mean an analysis happened.
   marked ready for review). Pull request decoration needs the SonarCloud GitHub App,
   which the import in step 1 installs.
 - On every push to `main`.
-- Manually via **Actions → sonarcloud → Run workflow**.
+- Manually via **Actions → pipeline → Run workflow**.
 
 ## 6. Soft-fail for now, blocking later
 
-The workflow does not fail the build yet: the coverage and scan steps use
-`continue-on-error: true`, and the Quality Gate is not awaited. To make it blocking
-once the dashboard looks sane:
+The job does not fail the build yet: infra's `sonarcloud.soft-fail` defaults to `true`
+(coverage and scan are best effort), and the Quality Gate is not awaited. To make it
+blocking once the dashboard looks sane:
 
-1. Remove `continue-on-error: true` from the scan (and, if wanted, coverage) steps.
+1. Set `soft-fail: false` under `sonarcloud:` in `.github/infra.yml`.
 2. Add `sonar.qualitygate.wait=true` to `sonar-project.properties` so the scan step
    fails when the Quality Gate fails.
 3. Optionally mark the `sonarcloud` check as required in the branch protection rules
@@ -112,6 +113,7 @@ token into the repository.
 
 ## References
 
-- Workflow: `.github/workflows/sonarcloud.yml`
+- Workflow: `.github/workflows/pipeline.yml` -> pyrlyn/ci `ci.yml` / `sonarcloud.yml`
+- Configuration: `.github/infra.yml` (`sonarcloud:`)
 - Scanner configuration: `sonar-project.properties`
 - [SonarQube Cloud documentation](https://docs.sonarsource.com/sonarqube-cloud/)

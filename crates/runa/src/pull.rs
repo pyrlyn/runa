@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! `runa pull` + the local model store (plan P2.4).
 //!
 //! Downloads go through `hf-hub` (blocking API) into
@@ -44,9 +48,53 @@ pub fn models_dir() -> PathBuf {
 }
 
 /// Store directory for one repo (`owner--name`, filesystem-safe).
+///
+/// `/` becomes `--`. Hugging Face rejects `--` inside a repo id, so
+/// `org/model-GGUF` and `org-model/GGUF` no longer share a directory.
 pub fn repo_dir(repo: &str) -> PathBuf {
-    let safe: String = repo
+    models_dir().join(repo_dirname(repo))
+}
+
+/// Lookup directory: the current layout, or the pre-`--` directory when
+/// that is the one already on disk.
+pub fn store_dir(repo: &str) -> PathBuf {
+    let primary = repo_dir(repo);
+    if primary.is_dir() {
+        return primary;
+    }
+    let legacy = models_dir().join(legacy_repo_dirname(repo));
+    if legacy != primary && legacy.is_dir() {
+        return legacy;
+    }
+    primary
+}
+
+fn repo_dirname(repo: &str) -> String {
+    match repo.split_once('/') {
+        Some((owner, name)) => format!("{}--{}", sanitize_part(owner), sanitize_part(name)),
+        None => sanitize_part(repo),
+    }
+}
+
+fn sanitize_part(part: &str) -> String {
+    let mut out: String = part
         .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if out.is_empty() {
+        out.push('_');
+    }
+    out
+}
+
+fn legacy_repo_dirname(repo: &str) -> String {
+    repo.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
                 c
@@ -54,8 +102,7 @@ pub fn repo_dir(repo: &str) -> PathBuf {
                 '-'
             }
         })
-        .collect();
-    models_dir().join(safe)
+        .collect()
 }
 
 /// Refuse fresh `pull` downloads larger than this (3 GiB).
@@ -262,8 +309,7 @@ pub fn pull(model_ref: &str) -> Result<PulledModel, String> {
     }
 
     // Verify what landed.
-    let len = verify_downloaded(&dest, &meta)?;
-    check_size_limit(len, &repo, &file)?;
+    let len = verify_downloaded(&dest, &meta, &repo, &file)?;
     println!("pulled {repo}/{file} ({len} bytes)");
     Ok(PulledModel {
         path: dest,
@@ -276,21 +322,36 @@ pub fn pull(model_ref: &str) -> Result<PulledModel, String> {
 
 /// Size + SHA-256 check of a downloaded file; writes the `.verified`
 /// sidecar. Returns the byte size. Shared by GGUF and snapshot pulls.
-fn verify_downloaded(dest: &Path, meta: &runa_fit::FileMeta) -> Result<u64, String> {
+fn verify_downloaded(
+    dest: &Path,
+    meta: &runa_fit::FileMeta,
+    repo: &str,
+    file: &str,
+) -> Result<u64, String> {
     let len = fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+    let reject = |msg: String| {
+        let _ = fs::remove_file(dest);
+        let _ = fs::remove_file(sidecar_for(dest));
+        Err(msg)
+    };
     if let Some(expected) = meta.size
         && len != expected
     {
-        return Err(format!(
+        return reject(format!(
             "size mismatch for {}: got {len}, want {expected}",
             dest.display()
         ));
     }
+    if let Err(e) = check_size_limit(len, repo, file) {
+        return reject(e);
+    }
     if let Some(expected) = meta.sha256.as_deref() {
-        let actual = sha256_file(dest)?;
+        let actual = match sha256_file(dest) {
+            Ok(hash) => hash,
+            Err(e) => return reject(e),
+        };
         if actual != expected {
-            let _ = fs::remove_file(dest);
-            return Err(format!("sha256 mismatch for {}", dest.display()));
+            return reject(format!("sha256 mismatch for {}", dest.display()));
         }
         write_sidecar(dest, len, expected);
     }
@@ -367,7 +428,7 @@ fn pull_safetensors(repo: &str) -> Result<PulledModel, String> {
         if !dest.is_file() {
             return Err(format!("download finished but {} missing", dest.display()));
         }
-        total += verify_downloaded(&dest, &meta)?;
+        total += verify_downloaded(&dest, &meta, repo, file)?;
         fresh_any = true;
     }
     let n = wanted.len();
@@ -406,7 +467,7 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
             ModelSource::Hf(r) => {
                 // P9.2: `hf:<repo>:safetensors` resolves to the snapshot dir.
                 if runa_fit::is_safetensors_tag(&r.file_or_quant) {
-                    let dir = repo_dir(&r.repo);
+                    let dir = store_dir(&r.repo);
                     if runa_core::is_mistral_dir(&dir) {
                         return Ok(dir);
                     }
@@ -415,7 +476,7 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
                         r.repo, r.repo
                     ));
                 }
-                let dir = repo_dir(&r.repo);
+                let dir = store_dir(&r.repo);
                 if r.file_or_quant.to_lowercase().ends_with(".gguf") {
                     let p = dir.join(&r.file_or_quant);
                     if p.is_file() {
@@ -533,7 +594,17 @@ mod tests {
     fn repo_dir_sanitizes_slash() {
         with_data_root(|| {
             let p = repo_dir("unsloth/Qwen3-8B-GGUF");
-            assert!(p.ends_with("unsloth-Qwen3-8B-GGUF"));
+            assert!(p.ends_with("unsloth--Qwen3-8B-GGUF"));
+            let legacy = models_dir().join("org-model-GGUF");
+            std::fs::create_dir_all(&legacy).unwrap();
+            std::fs::write(legacy.join("m.gguf"), b"gguf").unwrap();
+            let found = find_local("hf:org/model-GGUF:m.gguf", &AliasTable::default()).unwrap();
+            assert_eq!(found, legacy.join("m.gguf"));
+            assert_ne!(
+                repo_dir("org/model-GGUF"),
+                repo_dir("org-model/GGUF"),
+                "different repos must not share a store directory"
+            );
         });
     }
 
@@ -688,6 +759,31 @@ mod tests {
             let hit = cached_if_verified(&dest, &meta, repo, file).unwrap();
             assert!(!hit.fresh);
             assert_eq!(hit.size, len);
+        });
+    }
+
+    #[test]
+    fn verify_drops_over_limit_file_without_a_sidecar() {
+        with_data_root(|| {
+            unsafe { std::env::set_var("RUNA_MAX_MODEL_BYTES", "4") };
+            let dest = repo_dir("o/n").join("m.gguf");
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::write(&dest, b"12345678").unwrap();
+            let sha = sha256_file(&dest).unwrap();
+            let err = verify_downloaded(
+                &dest,
+                &FileMeta {
+                    size: Some(8),
+                    sha256: Some(sha),
+                },
+                "o",
+                "m.gguf",
+            )
+            .unwrap_err();
+            assert!(err.contains("m.gguf"), "{err}");
+            assert!(!dest.exists());
+            assert!(!sidecar_for(&dest).exists());
+            unsafe { std::env::remove_var("RUNA_MAX_MODEL_BYTES") };
         });
     }
 

@@ -17,7 +17,7 @@ lang: ru
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh
+  https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh
 ```
 
 Или через Homebrew из формулы в том же релизе: `brew install ./runa.rb`.

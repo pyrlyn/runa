@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Background daemon (P9.1): keeps models warm between CLI calls, owns
 //! the adaptive [`MemoryManager`](runa_memory::MemoryManager), and serves
 //! `run` / `chat` over a Unix socket ([`daemon_proto::default_socket_path`]).
@@ -12,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(any(unix, test))]
 use runa_core::BackendKind;
-use runa_engine::{LoadConfig, Mode, Placement};
+use runa_engine::LoadConfig;
 use runa_memory::MemoryManager;
 #[cfg(unix)]
 use runa_memory::SysinfoBackend;
@@ -26,9 +30,9 @@ use crate::daemon_proto::{
 };
 #[cfg(unix)]
 use crate::daemon_proto::{MAX_IDLE_TICK_SECS, read_line, write_line};
-use crate::pool::ModelPool;
 #[cfg(unix)]
-use crate::pool::Warmup;
+use runa_pool::Warmup;
+use runa_pool::{ModelPool, Placer};
 
 /// Admission preflight per request (MiB). Model residency is pool/LRU
 /// bound, so the preflight only records activity and lets the manager
@@ -85,10 +89,11 @@ pub(crate) fn cmd_daemon(opts: DaemonOpts) -> Result<(), String> {
         return Err("daemon: need at least one model (positional or --models)".into());
     }
     crate::config::warn_if_over_system_limit(None, None, opts.max_load_percent)?;
-    let placement_base = match crate::parse_mode_choice(&opts.mode)? {
-        crate::ModeChoice::Fixed(m) => Placement::from_mode(m),
-        crate::ModeChoice::Auto => Placement::from_mode(Mode::Cpu),
-    };
+    let placer = crate::placer::local_placer(
+        &opts.mode,
+        crate::placer::PlacementOverrides::default(),
+        opts.max_load_percent,
+    )?;
     let config = LoadConfig {
         n_ctx: opts.ctx,
         loras: opts.loras,
@@ -100,13 +105,11 @@ pub(crate) fn cmd_daemon(opts: DaemonOpts) -> Result<(), String> {
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(serve(
         opts.models,
-        placement_base,
-        opts.mode,
+        placer,
         config,
         default_id,
         max_loaded,
         socket,
-        opts.max_load_percent,
     ))
 }
 
@@ -114,13 +117,11 @@ pub(crate) fn cmd_daemon(opts: DaemonOpts) -> Result<(), String> {
 #[cfg(unix)]
 async fn serve(
     models: Vec<(String, PathBuf)>,
-    placement_base: Placement,
-    mode: String,
+    placer: Placer,
     config: LoadConfig,
     default_id: String,
     max_loaded: usize,
     socket: PathBuf,
-    max_load_percent: Option<u8>,
 ) -> Result<(), String> {
     let progress = Arc::new(AtomicU32::new(0));
     // Single slot by design: only the startup warm-up reports it, so later LRU reload overwrites go unread.
@@ -131,16 +132,8 @@ async fn serve(
     let policy = crate::config::resolve_memory_policy()?;
     let tick_secs = policy.idle_timeout_s.clamp(1, MAX_IDLE_TICK_SECS);
     let idle_timeout = std::time::Duration::from_secs(policy.idle_timeout_s.max(1));
-    let pool = ModelPool::new(
-        models,
-        BackendKind::Auto,
-        placement_base,
-        mode,
-        config,
-        max_loaded,
-    )?
-    .with_idle_timeout(idle_timeout)
-    .with_max_load_percent(max_load_percent);
+    let pool = ModelPool::new(models, BackendKind::Auto, config, max_loaded, placer)?
+        .with_idle_timeout(idle_timeout);
     let pool = Arc::new(Mutex::new(pool));
     let warm = Arc::new(Warmup::new(default_id, Arc::clone(&progress)));
     let mm = Arc::new(MemoryManager::new(
@@ -151,18 +144,19 @@ async fn serve(
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    // A stale socket from a dead daemon is ours to replace; a live one
-    // fails the bind below and the new daemon exits loudly.
-    if socket.exists() {
-        let _ = std::fs::remove_file(&socket);
-    }
-    let listener =
-        UnixListener::bind(&socket).map_err(|e| format!("bind {}: {e}", socket.display()))?;
+    // A live socket means another daemon is serving it. Only a refused
+    // connect (dead process, leftover path) is replaced.
+    let (listener, bound_id) = bind_daemon_socket(&socket)?;
     eprintln!("listening on {}", socket.display());
     // Requests that arrive meanwhile queue on the pool lock the warm-up holds.
     let (warm_pool, warm_state) = (Arc::clone(&pool), Arc::clone(&warm));
-    tokio::task::spawn_blocking(move || crate::pool::warm_up(&warm_pool, &warm_state, "daemon"));
-    tokio::spawn(crate::pool::report_progress(Arc::clone(&warm), "daemon"));
+    tokio::task::spawn_blocking(move || {
+        runa_pool::pool::warm_up(&warm_pool, &warm_state, "daemon")
+    });
+    tokio::spawn(runa_pool::pool::report_progress(
+        Arc::clone(&warm),
+        "daemon",
+    ));
     let idle_mm = Arc::clone(&mm);
     let idle_pool = Arc::clone(&pool);
     tokio::spawn(async move {
@@ -171,7 +165,7 @@ async fn serve(
             tick.tick().await;
             // P10.5: manager shrink decision plus the pool sweep
             // (prompt caches released, models kept).
-            crate::pool::idle_tick(&idle_pool, &idle_mm, "daemon").await;
+            runa_pool::pool::idle_tick(&idle_pool, &idle_mm, "daemon").await;
         }
     });
     loop {
@@ -186,8 +180,47 @@ async fn serve(
             }
         });
     }
-    let _ = std::fs::remove_file(&socket);
+    remove_owned_socket(&socket, bound_id);
     Ok(())
+}
+
+#[cfg(unix)]
+fn socket_id(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.dev(), meta.ino()))
+}
+
+/// Bind `socket`, replacing it only when nothing is accepting connections.
+#[cfg(unix)]
+fn bind_daemon_socket(socket: &Path) -> Result<(UnixListener, (u64, u64)), String> {
+    if socket.exists() {
+        match std::os::unix::net::UnixStream::connect(socket) {
+            Ok(_) => {
+                return Err(format!("daemon already running on {}", socket.display()));
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::ConnectionRefused
+                    || e.kind() == std::io::ErrorKind::NotFound =>
+            {
+                let _ = std::fs::remove_file(socket);
+            }
+            Err(e) => return Err(format!("socket {}: {e}", socket.display())),
+        }
+    }
+    let listener =
+        UnixListener::bind(socket).map_err(|e| format!("bind {}: {e}", socket.display()))?;
+    let id = socket_id(socket)
+        .ok_or_else(|| format!("socket {}: bound but cannot stat", socket.display()))?;
+    Ok((listener, id))
+}
+
+/// Unlink the socket only when it is still the one this daemon bound.
+#[cfg(unix)]
+fn remove_owned_socket(socket: &Path, owned: (u64, u64)) {
+    if socket_id(socket) == Some(owned) {
+        let _ = std::fs::remove_file(socket);
+    }
 }
 
 /// Non-unix stub: the daemon speaks over a Unix socket.
@@ -195,13 +228,11 @@ async fn serve(
 #[allow(clippy::too_many_arguments)]
 async fn serve(
     _models: Vec<(String, PathBuf)>,
-    _placement_base: Placement,
-    _mode: String,
+    _placer: Placer,
     _config: LoadConfig,
     _default_id: String,
     _max_loaded: usize,
     _socket: PathBuf,
-    _max_load_percent: Option<u8>,
 ) -> Result<(), String> {
     Err("runa daemon needs a Unix socket (not supported on Windows)".into())
 }
@@ -270,13 +301,13 @@ async fn serve_request(
     // refusing the request — admission is pool/LRU bound.
     mm.touch();
     mm.on_heavy(REQUEST_DEMAND_MIB);
-    let id = match crate::pool::resolve_or_insert(pool, Some(&req.model)) {
+    let id = match runa_pool::pool::resolve_or_insert(pool, Some(&req.model)) {
         Ok(id) => id,
         Err(e) => {
             return vec![DaemonEvent::Error { message: e }];
         }
     };
-    match crate::pool::generate(pool, &id, request).await {
+    match runa_pool::pool::generate(pool, &id, request).await {
         Ok(events) => {
             let mut out: Vec<DaemonEvent> = events
                 .iter()
@@ -296,7 +327,12 @@ async fn serve_request(
         }
         Err(e) => {
             eprintln!("daemon: error for {id}: {e}");
-            vec![DaemonEvent::Error { message: e }]
+            let message = if e.contains("context_length_exceeded") {
+                format!("bad request: {e}")
+            } else {
+                e
+            };
+            vec![DaemonEvent::Error { message }]
         }
     }
 }
@@ -474,6 +510,7 @@ pub(crate) fn daemon_argv(
 mod tests {
     use super::*;
     use crate::daemon_proto::ProtoGenerateRequest;
+    use runa_engine::Placement;
 
     #[test]
     fn units_render_exe_and_args() {
@@ -562,10 +599,9 @@ mod tests {
                 ModelPool::new(
                     vec![],
                     BackendKind::Auto,
-                    Placement::cpu(),
-                    "cpu".into(),
                     LoadConfig::default(),
                     1,
+                    runa_pool::fixed_placer(Placement::cpu()),
                 )
                 .unwrap(),
             ));
@@ -589,5 +625,42 @@ mod tests {
             let events = serve_request(&pool, &mm, &stale).await;
             assert!(matches!(events[0], DaemonEvent::Error { .. }));
         });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn second_daemon_does_not_unlink_a_live_socket() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-sock-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("d.sock");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (listener, id) = bind_daemon_socket(&path).unwrap();
+            let err = bind_daemon_socket(&path).unwrap_err();
+            assert!(err.contains("already running"), "{err}");
+            assert!(path.exists());
+            drop(listener);
+            let (listener, id2) = bind_daemon_socket(&path).unwrap();
+            assert_ne!(id, id2);
+            remove_owned_socket(&path, id);
+            assert!(
+                path.exists(),
+                "a stale inode must not remove the new socket"
+            );
+            remove_owned_socket(&path, id2);
+            assert!(!path.exists());
+            drop(listener);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

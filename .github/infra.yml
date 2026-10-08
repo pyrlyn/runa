@@ -1,0 +1,34 @@
+# Configuration for pyrlyn/ci's ci.yml, called from pipeline.yml (docs/config.md in
+# pyrlyn/ci). Rust CI stays in the local ci.yml (its job names are the required checks);
+# this file turns on the scans and SonarCloud, which replaces the former sonarcloud.yml.
+version: 1
+
+# Docs-only pull requests (pyrlyn/ci docs/config.md, "Docs-only changes"): when every changed
+# file is documentation, infra's scans are skipped and the gate counts them as passed; ci.yml's
+# `config` job reads the same verdict and turns the build/test matrix into no-ops (the required
+# `<os> (<target>)` checks still report), while `moon pipeline` still runs the registry lint
+# (docs/tasks.md, AGENTS.md). Documentation = any *.md except Markdown that is code or test
+# input: crates/, tests/, fuzz/, docs/config.md and docs/memory.md (asserted on by unit tests).
+# README.md and CHANGELOG.md (release) are excluded by pyrlyn/ci's default `base-exclude`.
+# Anything else (.github/, mise.toml, a non-.md file) runs the full CI.
+docs-only:
+  enabled: true
+  exclude:
+    - '^(crates|tests|fuzz)/'
+    - '^docs/(config|memory)\.md$'
+
+codeql:
+  # C/C++ is the vendored ggml-rpc and the first-party kernels; Python and JS are repo scripts.
+  languages: [actions, c-cpp, javascript-typescript, python, rust]
+
+sonarcloud:
+  enabled: true # push, pull_request and workflow_dispatch (pyrlyn/ci's default events)
+  rust: true # llvm-tools-preview, cargo-llvm-cov
+  coverage-command: cargo llvm-cov --workspace --lib --lcov --output-path coverage/lcov.info
+
+# License files against pyrlyn/ci's canonical ones (replaces license-check.yml).
+license:
+  enabled: true
+
+# Snyk stays off and actionlint on (pyrlyn/ci's defaults); actionlint skips the dist-generated
+# release.yml.

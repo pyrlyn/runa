@@ -271,7 +271,7 @@ SIGILL на более старом CPU.
 `vulkan` / `mtmd`, вкомпилированные в сборку). Тег `vX.Y.Z` запускает `.github/workflows/release.yml`
 (архивы cargo-dist 0.33 для CPU + установщики shell/powershell/homebrew). GPU-
 варианты: `.github/workflows/release-variants.yml`. Формула Homebrew лежит в
-GitHub Release; для `brew install listepo/runa/runa` нужен tap-репозиторий
+GitHub Release; для `brew install pyrlyn/runa/runa` нужен tap-репозиторий
 `listepo/homebrew-runa`. Локально: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
 
 ### Пакет ketch (`ketch.toml`)
@@ -279,12 +279,12 @@ GitHub Release; для `brew install listepo/runa/runa` нужен tap-репо�
 Корневой `ketch.toml` — это манифест [ketch](https://github.com/listepo/ketch)
 для этого репозитория: файл, который `ketch registry push` предлагает в
 `listepo/ketch-registry` как `runa/ketch.toml`, и то, что показывает `ketch info runa`,
-когда он там окажется. Вывод из `github:listepo/runa` уже работает и без
+когда он там окажется. Вывод из `github:pyrlyn/runa` уже работает и без
 него; манифест закрепляет выбор ассета.
 
 | Поле | Значение |
 |-------|-------|
-| `source` | `github:listepo/runa` |
+| `source` | `github:pyrlyn/runa` |
 | `bin` | `runa` (корень распакованного архива cargo-dist) |
 | `[asset] include` | `*.tar.xz`, `*windows-msvc.zip` |
 | `[asset] exclude` | GPU-варианты (`-metal`, `-vulkan`, `-cuda`), установщики shell / powershell / homebrew, `dist-manifest.json`, `*.sha256`, тарбол исходников |

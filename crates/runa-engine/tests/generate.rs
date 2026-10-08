@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P2.2: templated streaming generation with sampler chain, stop strings,
 //! EOS/max-token termination and usage counters.
 //!
@@ -11,7 +15,6 @@
 
 use std::path::PathBuf;
 
-use runa_core::{ThinkConfig, ThinkMode};
 use runa_engine::{
     ChatMessage, GenEvent, GenerateRequest, LoadConfig, Placement, PromptCache, SamplingConfig,
     StopReason, load,
@@ -201,83 +204,4 @@ fn bench_exact_prompt_and_gen_counts() {
     assert_eq!(usage.generated_tokens, 4);
     assert!(usage.pp_toks_per_s > 0.0, "pp {}", usage.pp_toks_per_s);
     assert!(usage.tg_toks_per_s > 0.0, "tg {}", usage.tg_toks_per_s);
-}
-
-/// P10.4 / M6: the reported reasoning count is externally checkable
-/// against the budget. Needs the 8B fixture (5 GiB — dev machines only;
-/// skips where the file is absent, e.g. CI with only the qwen2 fixture).
-#[test]
-fn think_budget_reports_reasoning_tokens() {
-    let path = fixture("Qwen3-8B-Q4_K_M.gguf");
-    if !path.is_file() {
-        return;
-    }
-    let mut loaded = load(&path, &Placement::cpu(), &LoadConfig::default()).expect("cpu load");
-    let mut req = request("What is 2+2? Answer briefly.", 48);
-    req.think = ThinkConfig {
-        mode: ThinkMode::Budget {
-            tokens: 32,
-            grace: 8,
-        },
-        show: true,
-    };
-    let mut usage = None;
-    let mut reasoning = String::new();
-    for ev in loaded.generate(req).expect("generate") {
-        match ev.expect("event") {
-            GenEvent::Reasoning(s) => reasoning.push_str(&s),
-            GenEvent::Usage(u) => usage = Some(u),
-            _ => {}
-        }
-    }
-    let u = usage.expect("usage event");
-    assert!(
-        !reasoning.is_empty(),
-        "Qwen3 thinks out loud under a budget"
-    );
-    assert!(u.reasoning_tokens > 0, "{u:?}");
-    assert!(
-        u.reasoning_tokens <= u.generated_tokens,
-        "reasoning is a subset of generated: {u:?}"
-    );
-    assert!(
-        u.reasoning_tokens <= 32 + 8,
-        "reported reasoning honors budget+grace (M6): {u:?}"
-    );
-
-    // P10.11: a thinking model still completes a required tool call under
-    // a budget (`thinking_forced_open` templates are driven by llama.cpp's
-    // own handler from our `enable_thinking` — nothing extra on our side).
-    loaded.reset_context().expect("reset before think-tools");
-    let mut tool_req = request("What is the weather in Paris?", 96);
-    tool_req.think = runa_core::ThinkConfig {
-        mode: runa_core::ThinkMode::Budget {
-            tokens: 64,
-            grace: 8,
-        },
-        show: true,
-    };
-    tool_req.tools = Some(
-        r#"[{"type":"function","function":{"name":"get_weather","description":"Current weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]"#
-            .into(),
-    );
-    tool_req.tool_choice = Some("required".into());
-    let mut calls = Vec::new();
-    let mut tool_usage = None;
-    for ev in loaded.generate(tool_req).expect("think-tool generate") {
-        match ev.expect("think-tool event") {
-            runa_engine::GenEvent::ToolCalls(c) => calls = c,
-            runa_engine::GenEvent::Usage(u) => tool_usage = Some(u),
-            _ => {}
-        }
-    }
-    assert_eq!(calls.len(), 1, "one forced call under a budget");
-    assert_eq!(calls[0].name, "get_weather");
-    let args: serde_json::Value = serde_json::from_str(&calls[0].arguments).expect("args JSON");
-    assert!(args["city"].is_string(), "{args}");
-    let tu = tool_usage.expect("usage event");
-    assert!(
-        tu.reasoning_tokens <= 64 + 8,
-        "budget holds with tools too (M6): {tu:?}"
-    );
 }

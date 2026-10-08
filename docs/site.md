@@ -2,23 +2,26 @@
 title: runa
 tagline: Local-first AI CLI — fit-check a GGUF before you download it, run it locally via ggml / llama.cpp, or hit OpenAI and Anthropic.
 repo: https://github.com/pyrlyn/runa
-install: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh"
+homepage: https://github.com/pyrlyn/runa
+install: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh"
 install_alternatives:
   - 'brew install ./runa.rb'
   - "RUSTFLAGS='-C target-cpu=native' cargo build --release --features native"
 version: "0.1.0"
-accent: "#F07050"
+status: "In development · no release yet"
+accent: "#E85A3C"
 accent2: "#FFB088"
-accentLight: "#E85A3C"
+accentLight: "#C94830"
 order: 4
 ---
 
-<!-- Website copy for the listepo project site. The sync-docs workflow copies this file to
+<!-- Website copy for the pyrlyn project site. The sync-docs workflow copies this file to
 pyrlyn/landing (main) as content/projects/runa.md on every change to main and on every v*
 tag; front matter follows CONTENT_CONTRACT.md in that repository.
-Sources (checked 2026-10-01): README.md, docs/getting-started.md and docs/guide.md; version
-from the latest tag (v0.1.0); accent, accent2 and accentLight are the dark-theme --runa-accent,
-the dark-theme --runa-ember and the light-theme --runa-accent in docs/brand/tokens.css. -->
+Sources (checked 2026-10-05): README.md, docs/getting-started.md and docs/guide.md; version
+from the latest tag (v0.1.0, no GitHub release published yet, hence `status`); accent, accent2
+and accentLight are the dark-theme --runa-accent-muted, the dark-theme --runa-ember and the
+light-theme --runa-accent-hover in docs/brand/tokens.css. -->
 
 ## Overview
 
@@ -30,6 +33,9 @@ Before you download a model, `runa fit` tells you whether it runs on this machin
 and the forecast calibrates to your device as you record `runa bench` runs. Release binaries are
 portable CPU builds for macOS arm64, Linux x86_64 and Windows x86_64; Metal, Vulkan and CUDA
 builds are extra artifacts. No telemetry.
+
+runa is in development: the v0.1.0 tag has no GitHub release yet, so the installer and the
+Homebrew formula below work from the first release. Until then, build from source.
 
 ## Features
 
@@ -54,7 +60,7 @@ builds are extra artifacts. No telemetry.
 From a GitHub Release (portable CPU archives; Metal / Vulkan / CUDA are extra artifacts):
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh
 ```
 
 Or Homebrew from the formula on that Release:

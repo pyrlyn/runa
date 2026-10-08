@@ -1,0 +1,66 @@
+# The only way to a release, and the only thing that creates a `v*` tag
+# (pyrlyn/ci bump.yml; replaces release-manual.yml, which pushed the tag
+# itself). `scripts/release.sh <level> --local` makes one `release: vX.Y.Z`
+# commit (Cargo.toml, Cargo.lock, CHANGELOG.md via git-cliff); bump pushes it
+# to `release/bump-vX.Y.Z` and opens a pull request into main with
+# RELEASE_PLZ_TOKEN, so the pull request's own ci.yml reports every required
+# check of protect-main. Once they are green, bump rebase-merges it with
+# GITHUB_TOKEN (no ruleset bypass), reads back the commit that landed on main,
+# tags it, creates a draft release with the CHANGELOG.md section and dispatches
+# release.yml (dist, `create-release = false`: uploads and publishes the draft)
+# and release-variants.yml (GPU archives) on the tag. Red checks, a timeout or
+# a failed merge close the pull request: no tag, no release. `dry-run` stops
+# after the checks. The local preview: `scripts/release.sh <level> --dry-run`.
+name: Bump and release
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: which part of the version to raise, if the current one is already released
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+      dry-run:
+        description: open the version pull request and wait for its checks, then close it
+        default: false
+        type: boolean
+      release-untagged-head:
+        description: release the untagged version already on main (nothing to commit) as it stands
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    uses: pyrlyn/ci/.github/workflows/bump.yml@341896b491b89d93a1940313c0149ddfd8fae9c2 # main
+    permissions:
+      contents: write # the bump branch, the tag and the release
+      pull-requests: write # merge or close the bump pull request
+      actions: write # dispatch release.yml, release-variants.yml (and ci.yml for release-untagged-head)
+      checks: read # wait for the required checks
+      statuses: read
+      issues: write # notify-failure: a failed run opens a release-failure issue
+    with:
+      level: ${{ inputs.level }}
+      dry-run: ${{ inputs.dry-run }}
+      release-untagged-head: ${{ inputs.release-untagged-head }}
+      # Every release is a dev build (Cargo `dev` profile, see [profile.dist] in
+      # Cargo.toml), published as a prerelease. This repository's decision, not pyrlyn/ci's.
+      prerelease: true
+      release-title-suffix: " (dev build)"
+      release-notes-header: |-
+        > [!WARNING]
+        > Dev build: compiled with the Cargo `dev` profile (unoptimized, with debug info) and published as a prerelease.
+      # Rust and git-cliff (scripts/release.sh, pyrlyn/ci's default release script, runs cargo
+      # and git-cliff) at the mise.toml pins.
+      mise-install-args: rust git-cliff
+      # The workflow that reports protect-main's required checks when dispatched.
+      ci-workflows: ci.yml
+      release-workflows: |
+        release.yml
+        release-variants.yml
+    secrets:
+      BUMP_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}

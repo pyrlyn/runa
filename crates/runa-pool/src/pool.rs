@@ -1,23 +1,39 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Shared engine pool (P9.1): `ModelPool`, `EngineJob`, `spawn_engine`,
-//! and the P8.8 `Warmup`, moved verbatim from `serve.rs` so `serve` and
-//! `daemon` share one loader. No behavior change.
+//! and the P8.8 `Warmup`, shared by `serve`, `daemon` and (P16.2) any
+//! program that embeds local inference. Where a model is placed is not
+//! decided here: the host passes a [`Placer`].
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use runa_core::BackendKind;
 use runa_engine::{GenEvent, GenerateRequest, LoadConfig, Placement};
-use runa_fit::{
-    Descriptor, FitConfig, HwSpec, PlannerConfig, Reader, check_fit, read_local_prefix,
-};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
+
+use crate::engine::{LocalEngine, resolve_requested};
+
+/// Decides where a ggml model goes before it loads: the model path and the
+/// load config in, a placement out. An `Err` (by convention starting with
+/// `unfit:` when the model does not fit) fails the load. Not consulted for
+/// the mistral backend, which manages its own devices.
+pub type Placer = Arc<dyn Fn(&Path, &LoadConfig) -> Result<Placement, String> + Send + Sync>;
+
+/// A [`Placer`] that always answers `placement`, with no fit check. The
+/// host owns the memory budget when it picks this.
+pub fn fixed_placer(placement: Placement) -> Placer {
+    Arc::new(move |_, _| Ok(placement.clone()))
+}
 
 /// Startup load of the default model, read by `/health` (P8.8) and by the
 /// daemon's ready line.
-pub(crate) struct Warmup {
+pub struct Warmup {
     pub model: String,
     /// Per mille, written by llama.cpp's load callback.
     pub progress: Arc<AtomicU32>,
@@ -39,9 +55,9 @@ impl Warmup {
     }
 }
 
-pub(crate) fn warm_up(pool: &Mutex<ModelPool>, warm: &Warmup, tag: &str) {
+pub fn warm_up(pool: &Mutex<ModelPool>, warm: &Warmup, tag: &str) {
     let t = Instant::now();
-    let r = catch_job(|| lock(pool).ensure_engine(&warm.model).map(drop));
+    let r = catch_job(|| ensure_engine(pool, &warm.model).map(drop));
     match &r {
         Ok(()) => eprintln!(
             "{tag}: {} ready in {:.1}s",
@@ -54,7 +70,7 @@ pub(crate) fn warm_up(pool: &Mutex<ModelPool>, warm: &Warmup, tag: &str) {
 }
 
 /// `<tag>: loading <id> N%` in 10% steps while the warm-up runs.
-pub(crate) async fn report_progress(warm: Arc<Warmup>, tag: &'static str) {
+pub async fn report_progress(warm: Arc<Warmup>, tag: &'static str) {
     let mut shown = 0;
     while warm.done().is_none() {
         tokio::time::sleep(Duration::from_millis(250)).await;
@@ -68,11 +84,11 @@ pub(crate) async fn report_progress(warm: Arc<Warmup>, tag: &'static str) {
 
 /// A poisoned lock still holds consistent pool state (every mutation is a
 /// single insert/remove), so recover it instead of failing every request.
-pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-pub(crate) fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
+pub fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
     p.downcast_ref::<&str>()
         .map(|s| (*s).to_owned())
         .or_else(|| p.downcast_ref::<String>().cloned())
@@ -80,19 +96,35 @@ pub(crate) fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 }
 
 /// Run one engine/pool step; a panic becomes an error, not a dead thread.
-pub(crate) fn catch_job<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+pub fn catch_job<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
         .unwrap_or_else(|p| Err(format!("internal error: {}", panic_text(&*p))))
 }
 
-pub(crate) enum EngineJob {
+/// One item on a streaming generation channel.
+#[derive(Debug)]
+pub enum Streamed {
+    /// Prompt length in tokens, sent once before the first event by
+    /// backends that know it up front.
+    Prompt(u32),
+    Event(GenEvent),
+}
+
+pub enum EngineJob {
     Generate {
         req: Box<GenerateRequest>,
         resp: oneshot::Sender<Result<Vec<GenEvent>, String>>,
     },
+    /// P16.1: the same generation, delivered event by event. The channel is
+    /// bounded, so a slow reader slows the engine; a dropped receiver
+    /// cancels the generation. An `Err` item ends the stream.
+    GenerateStream {
+        req: Box<GenerateRequest>,
+        tx: mpsc::Sender<Result<Streamed, String>>,
+    },
     Embed {
         input: String,
-        resp: oneshot::Sender<Result<Vec<f32>, String>>,
+        resp: oneshot::Sender<Result<(Vec<f32>, u32), String>>,
     },
     /// Idle tick (P10.5): the engine releases its prompt cache and keeps
     /// the model (`LoadedModel::on_idle`). Fire-and-forget: queued behind
@@ -100,7 +132,7 @@ pub(crate) enum EngineJob {
     Idle,
 }
 
-pub(crate) struct ModelPool {
+pub struct ModelPool {
     specs: HashMap<String, PathBuf>,
     order: Vec<String>,
     engines: HashMap<String, Arc<std::sync::mpsc::Sender<EngineJob>>>,
@@ -108,59 +140,28 @@ pub(crate) struct ModelPool {
     max_loaded: usize,
     /// Requested `--backend` (possibly `Auto`; resolved per model path).
     backend: BackendKind,
-    placement_base: Placement,
-    /// CLI placement overrides (`--device/--tensor-split/--main-gpu/--rpc`,
-    /// P2.9/P9.3): applied on top of both fixed and `auto` placements so an
-    /// explicit flag is never dropped silently (plan D12).
-    overrides: PlacementOverrides,
-    mode: String,
+    placer: Placer,
     config: LoadConfig,
     /// Last request per loaded engine, for the idle sweep (P10.5).
     last_used: HashMap<String, Instant>,
+    /// Models whose load is in flight. Waiters block on the condvar, not
+    /// on the pool mutex, so a multi-GB load does not stall other models.
+    loading: HashMap<String, Arc<LoadWait>>,
     /// Engines unused for this long get an `EngineJob::Idle`
     /// (prompt cache released, model kept). `Duration::MAX` disables.
     idle_timeout: Duration,
-    /// CLI `--max-load-percent` for the demand-aware startup cap check
-    /// (warn-only; `None` = resolve from env/config, default 80).
-    max_load_percent: Option<u8>,
-}
-
-/// Parsed `--device/--tensor-split/--main-gpu/--rpc` overrides for
-/// `serve` (and the daemon later): empty = no overrides.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct PlacementOverrides {
-    pub devices: Vec<String>,
-    pub tensor_split: Vec<f32>,
-    pub main_gpu: Option<i32>,
-    pub rpc_servers: Vec<String>,
-}
-
-impl PlacementOverrides {
-    pub fn apply(&self, mut placement: Placement) -> Placement {
-        if !self.devices.is_empty() {
-            placement = placement.with_devices(self.devices.clone());
-        }
-        if !self.tensor_split.is_empty() {
-            placement = placement.with_tensor_split(self.tensor_split.clone());
-        }
-        if let Some(n) = self.main_gpu {
-            placement = placement.with_main_gpu(n);
-        }
-        if !self.rpc_servers.is_empty() {
-            placement = placement.with_rpc_servers(self.rpc_servers.clone());
-        }
-        placement
-    }
 }
 
 impl ModelPool {
-    pub(crate) fn new(
+    /// A pool over `models` (id, file or directory), keeping at most
+    /// `max_loaded` engines loaded (LRU). Nothing loads until the first
+    /// request or [`ensure_engine`].
+    pub fn new(
         models: Vec<(String, PathBuf)>,
         backend: BackendKind,
-        placement_base: Placement,
-        mode: String,
         config: LoadConfig,
         max_loaded: usize,
+        placer: Placer,
     ) -> Result<Self, String> {
         let mut specs = HashMap::new();
         let mut order = Vec::new();
@@ -181,42 +182,43 @@ impl ModelPool {
             lru: VecDeque::new(),
             max_loaded: max_loaded.max(1),
             backend,
-            placement_base,
-            overrides: PlacementOverrides::default(),
-            mode,
+            placer,
             config,
             last_used: HashMap::new(),
+            loading: HashMap::new(),
             idle_timeout: Duration::MAX,
-            max_load_percent: None,
         })
     }
 
     /// Idle-sweep timeout from the memory policy (serve + daemon set it;
     /// unit tests keep the disabled default).
-    pub(crate) fn with_idle_timeout(mut self, timeout: Duration) -> Self {
+    pub fn with_idle_timeout(mut self, timeout: Duration) -> Self {
         self.idle_timeout = timeout;
         self
     }
 
-    /// Attach CLI placement overrides (serve `--device/…/--rpc`); the daemon
-    /// keeps the default (empty).
-    pub(crate) fn with_overrides(mut self, overrides: PlacementOverrides) -> Self {
-        self.overrides = overrides;
-        self
+    /// Serve `id` (already in the pool) with an engine thread the caller
+    /// spawned, replacing any loaded one: a custom backend, or a test
+    /// double that speaks the [`EngineJob`] protocol.
+    pub fn attach_engine(
+        &mut self,
+        id: &str,
+        jobs: std::sync::mpsc::Sender<EngineJob>,
+    ) -> Result<(), String> {
+        if !self.specs.contains_key(id) {
+            return Err(format!("model {id} not found"));
+        }
+        self.engines.insert(id.to_owned(), Arc::new(jobs));
+        self.touch_lru(id);
+        self.evict_if_needed();
+        Ok(())
     }
 
-    /// Carry CLI `--max-load-percent` into the per-load demand check so a
-    /// flag is never silently replaced by the config default there.
-    pub(crate) fn with_max_load_percent(mut self, max_load_percent: Option<u8>) -> Self {
-        self.max_load_percent = max_load_percent;
-        self
-    }
-
-    pub(crate) fn model_ids(&self) -> &[String] {
+    pub fn model_ids(&self) -> &[String] {
         &self.order
     }
 
-    pub(crate) fn resolve_id(&self, model: Option<&str>) -> Result<String, String> {
+    pub fn resolve_id(&self, model: Option<&str>) -> Result<String, String> {
         let id = model
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -231,7 +233,7 @@ impl ModelPool {
     /// Register one more model (file or directory) under a stem id
     /// (daemon on-demand serving of paths it was not started with).
     /// No-op when the id or an equal path is already known. Returns the id.
-    pub(crate) fn insert_spec(&mut self, path: &Path) -> Result<String, String> {
+    pub fn insert_spec(&mut self, path: &Path) -> Result<String, String> {
         if !path.is_file() && !path.is_dir() {
             return Err(format!(
                 "no such model file or directory: {}",
@@ -284,7 +286,7 @@ impl ModelPool {
 
     /// Ids whose engines have seen no request for `idle_timeout` (P10.5).
     /// Pure decision: unit-testable without spawning engines.
-    pub(crate) fn due_for_idle(&self, now: Instant) -> Vec<String> {
+    pub fn due_for_idle(&self, now: Instant) -> Vec<String> {
         if self.idle_timeout == Duration::MAX {
             return Vec::new();
         }
@@ -304,7 +306,7 @@ impl ModelPool {
     /// swept ids for logging. May block briefly while an engine finishes
     /// its current request (the job queues behind it) — call from a
     /// blocking thread, never the async hot path.
-    pub(crate) fn idle_sweep(&mut self) -> Vec<String> {
+    pub fn idle_sweep(&mut self) -> Vec<String> {
         let now = Instant::now();
         let due = self.due_for_idle(now);
         let mut swept = Vec::new();
@@ -324,94 +326,24 @@ impl ModelPool {
         swept
     }
 
-    fn placement_for(&self, path: &Path) -> Result<Placement, String> {
-        match crate::parse_mode_choice(&self.mode)? {
-            crate::ModeChoice::Auto => match crate::auto_placement(
-                path,
-                self.config.n_ctx,
-                &crate::config::OnUnfit::Error,
-                runa_engine::planner_kv_type(self.config.kv_k, self.config.kv_v),
-                None,
-                None,
-                &self.config.loras,
-            )? {
-                crate::AutoPlacement::Local(p) => Ok(self.overrides.apply(p)),
-                crate::AutoPlacement::Cloud(_) => {
-                    Err("unfit: auto mode chose cloud fallback; serve is local-only".into())
-                }
-            },
-            crate::ModeChoice::Fixed(_) => {
-                crate::preflight_grow(
-                    path,
-                    self.config.n_ctx,
-                    runa_engine::planner_kv_type(self.config.kv_k, self.config.kv_v),
-                    0,
-                    self.max_load_percent,
-                )?;
-                Ok(self.overrides.apply(self.placement_base.clone()))
-            }
-        }
-    }
-
-    fn fit_check_no_fit(path: &Path, ctx: u32, lora_bytes: u64) -> Result<(), String> {
-        let header = read_local_prefix(path).map_err(|e| e.to_string())?;
-        let reader = Reader::parse(&header.bytes).map_err(|e| e.to_string())?;
-        let desc = Descriptor::from_reader(&reader).map_err(|e| e.to_string())?;
-        let (vram, _) = crate::vram_bytes()?;
-        let planner = PlannerConfig {
-            vram_bytes: vram,
-            ram_bytes: crate::ram_bytes(),
-            ctx_len: u64::from(ctx),
-            kv_type: runa_engine::planner_kv_type(None, None).to_owned(),
-            lora_bytes,
-            ..PlannerConfig::default()
-        };
-        let report = check_fit(
-            &desc,
-            &FitConfig {
-                planner,
-                gpu_hw: None,
-                cpu_hw: HwSpec::cpu(),
-                has_mmproj: false,
-                media: runa_fit::MediaFit::default(),
-            },
-        );
-        if matches!(report.verdict, runa_fit::Verdict::NoFit) {
-            return Err(format!("unfit: model does not fit (ctx={ctx})"));
-        }
-        Ok(())
-    }
-
-    /// Adapter bytes summed from the configured `--lora` files (P8.5).
-    fn lora_bytes(config: &LoadConfig) -> u64 {
-        config
-            .loras
-            .iter()
-            .map(|s| runa_fit::mmproj_file_bytes(&s.path))
-            .sum()
-    }
-
-    pub(crate) fn ensure_engine(
-        &mut self,
-        id: &str,
-    ) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
-        if self.engines.contains_key(id) {
+    fn begin_load(&mut self, id: &str) -> Result<LoadPoll, String> {
+        if let Some(tx) = self.engines.get(id).cloned() {
             self.touch_lru(id);
-            return Ok(Arc::clone(self.engines.get(id).expect("contains_key")));
+            return Ok(LoadPoll::Ready(tx));
+        }
+        if let Some(wait) = self.loading.get(id) {
+            return Ok(LoadPoll::Wait(Arc::clone(wait)));
         }
         let path = self
             .specs
             .get(id)
             .ok_or_else(|| format!("model {id} not found"))?
             .clone();
-        let kind = crate::engine::resolve_requested(self.backend, &path)?;
+        let kind = resolve_requested(self.backend, &path)?;
         // Fit, placement and LoRA are ggml concepts; the mistral backend
         // manages devices and KV itself.
         let (placement, kind) = match kind {
-            BackendKind::Gguf => {
-                Self::fit_check_no_fit(&path, self.config.n_ctx, Self::lora_bytes(&self.config))?;
-                (self.placement_for(&path)?, BackendKind::Gguf)
-            }
+            BackendKind::Gguf => ((self.placer)(&path, &self.config)?, BackendKind::Gguf),
             BackendKind::Mistral => {
                 if !self.config.loras.is_empty() {
                     return Err("--lora needs the gguf backend".into());
@@ -422,15 +354,134 @@ impl ModelPool {
                 return Err("internal error: backend was not resolved".into());
             }
         };
-        let tx = Arc::new(spawn_engine(path, kind, placement, self.config.clone())?);
-        self.engines.insert(id.to_owned(), Arc::clone(&tx));
-        self.touch_lru(id);
-        self.evict_if_needed();
-        Ok(tx)
+        self.loading
+            .insert(id.to_owned(), Arc::new(LoadWait::new()));
+        Ok(LoadPoll::Start(Box::new(LoadStart {
+            id: id.to_owned(),
+            path,
+            kind,
+            placement,
+            config: self.config.clone(),
+        })))
+    }
+
+    fn complete_load(
+        &mut self,
+        id: &str,
+        outcome: Result<std::sync::mpsc::Sender<EngineJob>, String>,
+    ) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+        let wait = self.loading.remove(id);
+        let result = outcome.map(Arc::new);
+        if let Ok(tx) = &result {
+            self.engines.insert(id.to_owned(), Arc::clone(tx));
+            self.touch_lru(id);
+            self.evict_if_needed();
+        }
+        if let Some(wait) = wait {
+            wait.finish(result.clone());
+        }
+        result
     }
 }
 
-pub(crate) fn spawn_engine(
+struct LoadWait {
+    state: Mutex<Option<Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String>>>,
+    cv: Condvar,
+}
+
+impl LoadWait {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(None),
+            cv: Condvar::new(),
+        }
+    }
+
+    fn finish(&self, result: Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String>) {
+        *lock(&self.state) = Some(result);
+        self.cv.notify_all();
+    }
+
+    fn wait(&self) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+        let mut guard = lock(&self.state);
+        loop {
+            if let Some(result) = guard.clone() {
+                return result;
+            }
+            guard = self.cv.wait(guard).unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+}
+
+struct LoadStart {
+    id: String,
+    path: PathBuf,
+    kind: BackendKind,
+    placement: Placement,
+    config: LoadConfig,
+}
+
+enum LoadPoll {
+    Ready(Arc<std::sync::mpsc::Sender<EngineJob>>),
+    Wait(Arc<LoadWait>),
+    Start(Box<LoadStart>),
+}
+
+/// Resolve or load `id`. The pool mutex is not held across `spawn_engine`,
+/// so a load of one model does not block requests to models already loaded.
+pub fn ensure_engine(
+    pool: &Mutex<ModelPool>,
+    id: &str,
+) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+    let start = {
+        let mut guard = lock(pool);
+        match guard.begin_load(id)? {
+            LoadPoll::Ready(tx) => return Ok(tx),
+            LoadPoll::Wait(wait) => {
+                drop(guard);
+                return wait.wait();
+            }
+            LoadPoll::Start(start) => *start,
+        }
+    };
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        spawn_engine(start.path, start.kind, start.placement, start.config)
+    }))
+    .unwrap_or_else(|p| Err(format!("internal error: {}", panic_text(&*p))));
+    lock(pool).complete_load(&start.id, outcome)
+}
+
+/// Drive one generation, handing each item to `emit`; `emit` returns
+/// `false` to stop early (the client is gone), and an `Err` item ends it.
+fn run_generation(
+    engine: &mut LocalEngine,
+    used: &mut bool,
+    req: GenerateRequest,
+    mut emit: impl FnMut(Result<Streamed, String>) -> bool,
+) -> Result<(), String> {
+    // The ggml backend reuses one context per thread: drop KV cells between
+    // requests (P3.9). The mistral backend is stateless (no-op there).
+    if *used {
+        engine.clear_kv();
+    }
+    *used = true;
+    let (prompt_len, events) = engine.generate_counted(req)?;
+    if let Some(n) = prompt_len
+        && !emit(Ok(Streamed::Prompt(n)))
+    {
+        return Ok(());
+    }
+    for item in events {
+        let item = item.map(Streamed::Event).map_err(|e| e.to_string());
+        let failed = item.is_err();
+        if !emit(item) || failed {
+            break;
+        }
+    }
+    Ok(())
+}
+
+pub fn spawn_engine(
     path: PathBuf,
     kind: BackendKind,
     placement: Placement,
@@ -447,43 +498,54 @@ pub(crate) fn spawn_engine(
         // (the 2 MiB default is tight for llama.cpp's Jinja templates).
         .stack_size(8 << 20)
         .spawn(move || {
-            let mut engine =
-                match crate::engine::LocalEngine::load(kind, &path, &placement, &config) {
-                    Ok(m) => {
-                        let _ = ready_tx.send(Ok(()));
-                        m
-                    }
-                    Err(e) => {
-                        let _ = ready_tx.send(Err(e));
-                        return;
-                    }
-                };
+            let mut engine = match LocalEngine::load(kind, &path, &placement, &config) {
+                Ok(m) => {
+                    let _ = ready_tx.send(Ok(()));
+                    m
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e));
+                    return;
+                }
+            };
             let mut used = false;
             while let Ok(job) = rx.recv() {
                 match job {
                     EngineJob::Generate { req, resp } => {
+                        let mut events = Vec::new();
+                        let mut failed = None;
                         let out = catch_job(|| {
-                            // The ggml backend reuses one context per thread:
-                            // drop KV cells between requests (P3.9). The
-                            // mistral backend is stateless (no-op there).
-                            if used {
-                                engine.clear_kv();
-                            }
-                            used = true;
-                            let generation = engine.generate(*req).map_err(|e| e.to_string())?;
-                            generation
-                                .collect::<Result<Vec<_>, _>>()
-                                .map_err(|e| e.to_string())
+                            run_generation(&mut engine, &mut used, *req, |item| match item {
+                                Ok(Streamed::Event(ev)) => {
+                                    events.push(ev);
+                                    true
+                                }
+                                Ok(Streamed::Prompt(_)) => true,
+                                Err(e) => {
+                                    failed = Some(e);
+                                    false
+                                }
+                            })
                         });
-                        let _ = resp.send(out);
+                        let _ = resp.send(out.and_then(|()| failed.map_or(Ok(events), Err)));
+                    }
+                    EngineJob::GenerateStream { req, tx } => {
+                        let out = catch_job(|| {
+                            run_generation(&mut engine, &mut used, *req, |item| {
+                                tx.blocking_send(item).is_ok()
+                            })
+                        });
+                        if let Err(e) = out {
+                            let _ = tx.blocking_send(Err(e));
+                        }
                     }
                     EngineJob::Embed { input, resp } => {
                         let out = catch_job(|| match &mut engine {
-                            crate::engine::LocalEngine::Gguf(loaded) => {
+                            LocalEngine::Gguf(loaded) => {
                                 loaded.embed(&input).map_err(|e| e.to_string())
                             }
                             #[cfg(feature = "mistralrs")]
-                            crate::engine::LocalEngine::Mistral(_) => {
+                            LocalEngine::Mistral(_) => {
                                 Err("mistral backend does not serve /v1/embeddings (gguf only)"
                                     .into())
                             }
@@ -512,7 +574,7 @@ pub(crate) fn spawn_engine(
 /// decision plus the pool sweep. The blocking sweep runs off-thread;
 /// `/health` and `/v1/models` never touch activity, so monitoring polls
 /// cannot hold engines awake.
-pub(crate) async fn idle_tick(
+pub async fn idle_tick(
     pool: &Arc<Mutex<ModelPool>>,
     mm: &Arc<runa_memory::MemoryManager>,
     tag: &'static str,
@@ -527,21 +589,12 @@ pub(crate) async fn idle_tick(
     }
 }
 
-/// Resolve `model_id` against the pool and run one generation on its
-/// engine thread (blocking load happens on a blocking thread). Shared by
-/// the daemon; `serve` keeps its own status-mapped variant.
-pub(crate) async fn generate(
-    pool: &Arc<Mutex<ModelPool>>,
-    model_id: &str,
+/// Run one generation on an engine thread and collect its events. Shared
+/// by `serve`, the daemon and [`generate`].
+pub async fn generate_on(
+    jobs: &std::sync::mpsc::Sender<EngineJob>,
     req: GenerateRequest,
 ) -> Result<Vec<GenEvent>, String> {
-    let jobs = {
-        let pool = Arc::clone(pool);
-        let id = model_id.to_owned();
-        tokio::task::spawn_blocking(move || lock(&pool).ensure_engine(&id))
-            .await
-            .map_err(|e| e.to_string())??
-    };
     let (resp, rx) = oneshot::channel();
     jobs.send(EngineJob::Generate {
         req: Box::new(req),
@@ -551,12 +604,61 @@ pub(crate) async fn generate(
     rx.await.map_err(|e| e.to_string())?
 }
 
+/// Start one generation and return its events as they are produced (P16.1).
+/// The channel holds at most `backlog` items, so a slow reader slows the
+/// engine; dropping the receiver cancels the generation. An `Err` item ends
+/// the stream.
+pub fn generate_stream_on(
+    jobs: &std::sync::mpsc::Sender<EngineJob>,
+    req: GenerateRequest,
+    backlog: usize,
+) -> Result<mpsc::Receiver<Result<Streamed, String>>, String> {
+    let (tx, rx) = mpsc::channel(backlog.max(1));
+    jobs.send(EngineJob::GenerateStream {
+        req: Box::new(req),
+        tx,
+    })
+    .map_err(|_| "engine thread stopped".to_string())?;
+    Ok(rx)
+}
+
+/// Load `model_id` if needed (on a blocking thread), then run one
+/// generation on its engine thread. Shared by the daemon; `serve` keeps its
+/// own status-mapped variant.
+pub async fn generate(
+    pool: &Arc<Mutex<ModelPool>>,
+    model_id: &str,
+    req: GenerateRequest,
+) -> Result<Vec<GenEvent>, String> {
+    let jobs = engine_for(pool, model_id).await?;
+    generate_on(&jobs, req).await
+}
+
+/// [`generate`], streaming: see [`generate_stream_on`].
+pub async fn generate_stream(
+    pool: &Arc<Mutex<ModelPool>>,
+    model_id: &str,
+    req: GenerateRequest,
+    backlog: usize,
+) -> Result<mpsc::Receiver<Result<Streamed, String>>, String> {
+    let jobs = engine_for(pool, model_id).await?;
+    generate_stream_on(&jobs, req, backlog)
+}
+
+async fn engine_for(
+    pool: &Arc<Mutex<ModelPool>>,
+    model_id: &str,
+) -> Result<Arc<std::sync::mpsc::Sender<EngineJob>>, String> {
+    let pool = Arc::clone(pool);
+    let id = model_id.to_owned();
+    tokio::task::spawn_blocking(move || ensure_engine(&pool, &id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Look up `model` (pool id, or an on-disk path to serve on demand) and
 /// return the id to generate with. Inserting a path never unloads models.
-pub(crate) fn resolve_or_insert(
-    pool: &Mutex<ModelPool>,
-    model: Option<&str>,
-) -> Result<String, String> {
+pub fn resolve_or_insert(pool: &Mutex<ModelPool>, model: Option<&str>) -> Result<String, String> {
     let mut pool = lock(pool);
     match pool.resolve_id(model) {
         Ok(id) => Ok(id),
@@ -604,13 +706,12 @@ mod tests {
             ModelPool::new(
                 vec![],
                 BackendKind::Gguf,
-                Placement::cpu(),
-                "cpu".into(),
                 LoadConfig {
                     n_ctx: 512,
                     ..LoadConfig::default()
                 },
                 2,
+                fixed_placer(Placement::cpu()),
             )
             .unwrap(),
         );
@@ -630,36 +731,13 @@ mod tests {
     }
 
     #[test]
-    fn placement_overrides_apply_on_top_of_any_mode() {
-        // P2.9/P9.3: explicit serve flags survive both fixed and `auto`
-        // placements (plan D12 — never dropped silently).
-        let base = Placement::gpu();
-        let full = PlacementOverrides {
-            devices: vec!["0".into()],
-            tensor_split: vec![3.0, 1.0],
-            main_gpu: Some(1),
-            rpc_servers: vec!["127.0.0.1:50052".into()],
-        }
-        .apply(base);
-        assert_eq!(full.devices, vec!["0"]);
-        assert_eq!(full.tensor_split, vec![3.0, 1.0]);
-        assert_eq!(full.main_gpu, 1);
-        assert_eq!(full.rpc_servers, vec!["127.0.0.1:50052"]);
-        assert_eq!(full.n_gpu_layers, u32::MAX);
-
-        let empty = PlacementOverrides::default().apply(Placement::cpu());
-        assert_eq!(empty, Placement::cpu());
-    }
-
-    #[test]
     fn pool_rejects_missing_files() {
         let err = ModelPool::new(
             vec![("m".into(), PathBuf::from("/no/such/model.gguf"))],
             BackendKind::Gguf,
-            Placement::cpu(),
-            "cpu".into(),
             LoadConfig::default(),
             1,
+            fixed_placer(Placement::cpu()),
         )
         .err()
         .expect("missing file errors");
@@ -670,10 +748,9 @@ mod tests {
         ModelPool::new(
             vec![],
             BackendKind::Gguf,
-            Placement::cpu(),
-            "cpu".into(),
             LoadConfig::default(),
             2,
+            fixed_placer(Placement::cpu()),
         )
         .unwrap()
         .with_idle_timeout(timeout)

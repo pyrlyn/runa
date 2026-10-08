@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Model loading with [`Placement`] (plan P2.1).
 //!
 //! [`load`] initializes the backend, translates [`Placement`] +
@@ -176,6 +180,10 @@ pub enum EngineError {
     /// Batch decode failed (P2.2).
     #[error("decode error: {0}")]
     Decode(String),
+    /// The prompt does not fit in `n_ctx`, so prefill would abort or
+    /// return `NoKvCacheSlot`.
+    #[error("context_length_exceeded: prompt has {prompt_tokens} tokens, n_ctx is {n_ctx}")]
+    ContextExceeded { prompt_tokens: u32, n_ctx: u32 },
     /// `--device` index/name is unknown (P2.9).
     #[error("{0}")]
     BadDevices(String),
@@ -491,8 +499,8 @@ pub(crate) fn default_threads() -> i32 {
 }
 
 /// `hw.perflevel0.logicalcpu` via `sysctlbyname(3)`. `None` on any failure
-/// (missing key on Intel Macs without perf levels, short read, absurd
-/// value) — the caller falls back to logical CPUs.
+/// (missing key, short read, absurd value) — the caller falls back to
+/// logical CPUs. macOS is Apple Silicon only.
 #[cfg(target_os = "macos")]
 fn apple_pcore_threads() -> Option<i32> {
     let name = c"hw.perflevel0.logicalcpu";
@@ -810,11 +818,16 @@ pub fn load(
         })?,
     );
 
+    // llama.cpp clamps the context batch to `n_ctx`. Prefill must use that
+    // same size, or a prompt chunk larger than the context aborts in
+    // `GGML_ASSERT(n_tokens_all <= n_batch)`.
+    let mut stored = config.clone();
+    clamp_batches(&mut stored);
     let (context, kv_cache_bytes) = capture_kv_log(|| {
         model
-            .new_context(backend, context_params(config))
+            .new_context(backend, context_params(&stored))
             .map_err(|e| EngineError::ContextFailed {
-                n_ctx: config.n_ctx,
+                n_ctx: stored.n_ctx,
                 msg: format!("{e:?}"),
             })
     });
@@ -856,7 +869,7 @@ pub fn load(
         context,
         model,
         placement: placement.clone(),
-        config: config.clone(),
+        config: stored,
         path: path.to_owned(),
         _cpu_patterns: owned,
         _loras: adapters,
@@ -870,7 +883,17 @@ pub fn load(
 
 /// Build context params from a [`LoadConfig`] (shared by `load` and
 /// [`LoadedModel::reset_context`]).
+/// llama.cpp refuses a batch larger than the context. Clamp here so every
+/// context (chat, embed, reset) and the prefill chunker agree.
+pub(crate) fn clamp_batches(config: &mut LoadConfig) {
+    let ctx = config.n_ctx.max(1);
+    config.n_batch = config.n_batch.clamp(1, ctx);
+    config.n_ubatch = config.n_ubatch.clamp(1, config.n_batch);
+}
+
 fn context_params(config: &LoadConfig) -> LlamaContextParams {
+    let mut config = config.clone();
+    clamp_batches(&mut config);
     let threads = config.threads.unwrap_or_else(default_threads);
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(config.n_ctx.try_into().ok())
@@ -903,6 +926,19 @@ mod threads_tests {
     use super::default_threads;
 
     #[test]
+    fn batch_is_clamped_to_context() {
+        let mut config = super::LoadConfig {
+            n_ctx: 128,
+            n_batch: 512,
+            n_ubatch: 512,
+            ..super::LoadConfig::default()
+        };
+        super::clamp_batches(&mut config);
+        assert_eq!(config.n_batch, 128);
+        assert_eq!(config.n_ubatch, 128);
+    }
+
+    #[test]
     fn default_threads_is_sane() {
         let t = default_threads();
         let logical = std::thread::available_parallelism()
@@ -916,8 +952,8 @@ mod threads_tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn apple_pcore_reading_is_plausible() {
-        // Apple Silicon exposes perf levels; Intel Macs return None and
-        // fall back to logical CPUs — both are acceptable here.
+        // Apple Silicon exposes perf levels; a failed read returns None and
+        // falls back to logical CPUs — both are acceptable here.
         if let Some(p) = super::apple_pcore_threads() {
             let logical = std::thread::available_parallelism()
                 .map(|n| n.get() as i32)

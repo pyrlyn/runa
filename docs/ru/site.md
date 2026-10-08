@@ -2,7 +2,7 @@
 title: runa
 tagline: CLI для ИИ, локальный в первую очередь — проверьте GGUF до скачивания, запускайте локально через ggml / llama.cpp или обращайтесь к OpenAI и Anthropic.
 repo: https://github.com/pyrlyn/runa
-install: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh"
+install: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh"
 install_alternatives:
   - 'brew install ./runa.rb'
   - "RUSTFLAGS='-C target-cpu=native' cargo build --release --features native"
@@ -56,7 +56,7 @@ CUDA — дополнительные артефакты. Без телемет�
 Из релиза на GitHub (переносимые архивы для CPU; Metal / Vulkan / CUDA — дополнительные артефакты):
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/listepo/runa/releases/latest/download/runa-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/pyrlyn/runa/releases/latest/download/runa-installer.sh | sh
 ```
 
 Или через Homebrew из формулы в том же релизе:

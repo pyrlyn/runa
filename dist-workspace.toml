@@ -2,15 +2,16 @@
 #
 # Default GitHub Release artifacts are portable CPU builds (ggml runtime
 # dispatch). GPU variants are extra `--features` (same target triples):
-#   macOS arm64  — cargo build --release --features metal
-#   Linux x86_64 — cargo build --release --features vulkan
-#                  cargo build --release --features cuda   (needs CUDA toolkit)
+#   macOS arm64  — cargo build --profile dist --features metal
+#   Linux x86_64 — cargo build --profile dist --features vulkan
+#                  cargo build --profile dist --features cuda   (needs CUDA toolkit)
 #   Windows      — CPU (Vulkan/CUDA: same flags locally)
 #
 # Homebrew: the `homebrew` installer ships `runa.rb` on the GitHub Release.
-# `publish-jobs = ["homebrew"]` stays off until
-# https://github.com/listepo/homebrew-runa exists; then re-enable and
-# `brew install listepo/runa/runa`. Until then:
+# `publish-jobs = ["homebrew"]` stays off until runa's formula is wired into
+# the shared tap https://github.com/pyrlyn/homebrew-tap (it holds only rtok and
+# the ketch cask today); then re-enable and `brew install pyrlyn/tap/runa`.
+# Until then:
 #   brew install ./runa.rb   # formula downloaded from the Release
 
 [workspace]
@@ -24,13 +25,21 @@ ci = "github"
 # bare, and runa-kernels/build.rs shells out to `zig`) and warms the cargo
 # cache. Same file layout as rtok's .github/build-setup.yml.
 github-build-setup = "../build-setup.yml"
-# No PR or manual runs for the release workflow (the repo runs CI on
-# main/manual only): with `skip`, dist generates a tag-push-only trigger in
-# release.yml, so `dist generate --mode=ci --check` (CI) stays green without
-# hand edits to the generated file.
+# No PR runs for the release workflow (the repo runs CI on main/manual only),
+# so `dist generate --mode=ci --check` (CI) stays green without hand edits to
+# the generated file.
 pr-run-mode = "skip"
+# bump.yml (pyrlyn/ci) is the only way to a release and the only tagger: it
+# lands the version commit through a pull request merged by rebase once the
+# required checks are green, tags the commit that landed on main, creates a
+# draft GitHub Release with the CHANGELOG.md section, and dispatches this
+# workflow with `--ref <tag> -f tag=<tag>` (a tag pushed with GITHUB_TOKEN
+# starts no workflow). So: a workflow_dispatch trigger instead of a tag push,
+# and dist uploads to bump's release instead of creating one.
+dispatch-releases = true
+create-release = false
 installers = ["shell", "powershell", "homebrew"]
-tap = "listepo/homebrew-runa"
+tap = "pyrlyn/homebrew-tap"
 targets = [
     "aarch64-apple-darwin",
     "x86_64-unknown-linux-gnu",
