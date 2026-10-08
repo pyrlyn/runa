@@ -1,3 +1,6 @@
+> [!NOTE]
+> This project is under active development. We need "testing volunteers": try it and report what breaks.
+
 # runa
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=listepo_runa) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=coverage)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=coverage) [![Tests](https://img.shields.io/sonar/tests/listepo_runa?server=https%3A%2F%2Fsonarcloud.io&compact_message)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=tests)
