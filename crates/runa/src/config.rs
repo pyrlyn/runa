@@ -589,6 +589,7 @@ fn apply_memory_table(
     Ok(())
 }
 
+#[cfg(any(test, fuzzing))]
 fn memory_from_toml(text: &str, origin: &str) -> Result<Option<runa_memory::MemoryPolicy>, String> {
     let value: toml::Value =
         toml::from_str(text).map_err(|e| format!("{origin}: invalid TOML: {e}"))?;
