@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   bump:
-    uses: pyrlyn/ci/.github/workflows/bump.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+    uses: pyrlyn/ci/.github/workflows/bump.yml@341896b491b89d93a1940313c0149ddfd8fae9c2 # main
     permissions:
       contents: write # the bump branch, the tag and the release
       pull-requests: write # merge or close the bump pull request
@@ -47,6 +47,13 @@ jobs:
       level: ${{ inputs.level }}
       dry-run: ${{ inputs.dry-run }}
       release-untagged-head: ${{ inputs.release-untagged-head }}
+      # Every release is a dev build (Cargo `dev` profile, see [profile.dist] in
+      # Cargo.toml), published as a prerelease. This repository's decision, not pyrlyn/ci's.
+      prerelease: true
+      release-title-suffix: " (dev build)"
+      release-notes-header: |-
+        > [!WARNING]
+        > Dev build: compiled with the Cargo `dev` profile (unoptimized, with debug info) and published as a prerelease.
       # Rust and git-cliff (scripts/release.sh, pyrlyn/ci's default release script, runs cargo
       # and git-cliff) at the mise.toml pins.
       mise-install-args: rust git-cliff

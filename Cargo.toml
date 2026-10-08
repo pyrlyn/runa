@@ -2,10 +2,10 @@
 codegen-units = 1
 lto = "fat"
 
-# cargo-dist installers (P6.3). Thin LTO so CI release jobs finish.
+# cargo-dist installers (P6.3) and the GPU variants (release-variants.yml): the
+# `dev` profile, so every release is a dev build (unoptimized, debug info, no LTO).
 [profile.dist]
-inherits = "release"
-lto = "thin"
+inherits = "dev"
 
 [workspace]
 members = ["crates/*"]
