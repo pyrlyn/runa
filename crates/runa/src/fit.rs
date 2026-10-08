@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! `runa fit` (P1.11): will a model run here, and how fast, before any
 //! download. `--recommend` (P8.4) ranks the built-in catalog instead.
 

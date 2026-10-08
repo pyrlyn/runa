@@ -1,0 +1,32 @@
+name: release-ci-alert
+
+# CI failure notifications for release pull requests only, from the shared pyrlyn/ci
+# release-ci-alert.yml. When one of the workflows below fails on a release PR, one comment per
+# failed workflow and commit (updated on a re-run) mentions @listepo with the failed jobs and
+# steps and the tail of each failed job's log. Failures on any other pull request post nothing.
+# Inputs and permissions: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
+on:
+  workflow_run:
+    workflows: [pipeline, ci, license-check]
+    types: [completed]
+
+concurrency:
+  # One run per failed workflow and commit, so a comment is never posted twice.
+  group: >-
+    ${{ github.workflow }}-${{ github.event.workflow_run.workflow_id }}-${{
+    github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  alert:
+    if: >-
+      contains(fromJSON('["pull_request", "pull_request_target"]'),
+      github.event.workflow_run.event)
+      && contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion)
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: pyrlyn/ci/.github/workflows/release-ci-alert.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main

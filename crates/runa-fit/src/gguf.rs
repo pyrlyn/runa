@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Zero-copy, allocation-light reader for the GGUF (GGML unified format)
 //! header and metadata.
 //!
@@ -319,7 +323,10 @@ impl Reader {
             let name = r.string()?;
             let n_dims = r.u32()?;
             let n_dims_usize = usize::try_from(n_dims).map_err(|_| ReadError::CountOverflow)?;
-            let mut dims = Vec::with_capacity(n_dims_usize);
+            // `n_dims` is untrusted: never reserve more than the bytes left
+            // could hold (8 per dim), or a 38-byte file asks for gigabytes.
+            let room = r.buf.len().saturating_sub(r.pos) / 8;
+            let mut dims = Vec::with_capacity(n_dims_usize.min(room));
             for _ in 0..n_dims {
                 dims.push(r.u64()?);
             }
@@ -333,12 +340,15 @@ impl Reader {
             });
         }
 
-        // The first tensor's data begins after padding the header/table up to
-        // a 64-byte alignment (ggml `GGUF_ALIGNMENT` = 32; total header is
-        // padded to that boundary). Compute it from the reader position.
-        const ALIGN: u64 = 32;
+        // Tensor data starts on `general.alignment` (power of two, default
+        // 32 — ggml's `GGUF_DEFAULT_ALIGNMENT`). A missing or unusable value
+        // keeps that default.
+        let align = match out.get_u64("general.alignment") {
+            Some(a) if a > 0 && a.is_power_of_two() && a <= (1 << 20) => a,
+            _ => 32,
+        };
         let pos = r.pos as u64;
-        out.data_start = pos.div_ceil(ALIGN) * ALIGN;
+        out.data_start = pos.div_ceil(align) * align;
 
         Ok(out)
     }

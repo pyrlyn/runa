@@ -1123,7 +1123,7 @@ Completed 2026-09-18 (Cline). Creator request: a ketch manifest in the
 project root, following the sibling convention (`apps/rtok/ketch.toml`,
 `apps/ketch/ketch.toml`).
 
-- New root `ketch.toml`: `name` / `source = "github:listepo/runa"` /
+- New root `ketch.toml`: `name` / `source = "github:pyrlyn/runa"` /
   `description` / `homepage`, `bin = [{ name = "runa" }]`, and an
   `[asset]` block — `include = ["*.tar.xz", "*windows-msvc.zip"]` plus
   `exclude` for the GPU variants (`-metal` / `-vulkan` / `-cuda`), the
@@ -1154,7 +1154,7 @@ three portable CPU archives are selectable, and the three GPU variants plus
 
 Limit: asset *scoring* cannot be exercised end to end yet — `gh release view`
 answers `release not found`, so no release exists to install from. The
-registry copy landed after this entry was written: `listepo/ketch-registry`
+registry copy landed after this entry was written: `pyrlyn/ketch-registry`
 PR #7 `add runa` (merged 2026-09-19 as `cb7b0f3`) carries `runa/ketch.toml`
 (the CLI `runa*` bin glob, portable CPU archives, GPU variants excluded); the
 CI assertion step was dropped from that PR before merge because the registry
@@ -1206,3 +1206,79 @@ Completed 2026-09-19 (Cline / Muse Spark). User request: CI+tests on push/merge 
 - `docs/release.md`: trigger table + draft/review notes, gate text covers both entry points.
 
 Check (evidence): `cargo fmt --check` OK; `python3 scripts/lint-tasks.py docs/tasks.md` -> 0 error(s); `cargo test -p runa-memory` -> 15 passed; `${{ }}` balance equal in all three workflows; registry table left empty.
+
+### P14.3. Clean up target dirs with dunnage after tests
+
+`scripts/test-with-fixture-cleanup.sh` (`moon run root:test-with-cleanup`) now runs `dunnage run target` after a green pass, before the fixture cleanup: lossless compression and dedupe of `./target` that never deletes and keeps mtimes, so nothing rebuilds. Exit code 2 (a build held the lock) counts as success; without dunnage the step prints an install hint, without `target/` it is skipped, and a failed test run still exits before it. dunnage is installed with `ketch install dunnage`; `toolchain.md` lists ketch and dunnage and gains a `ketch` package table; `AGENTS.md` and `README.md` describe the task.
+
+Check (evidence): `bash -n scripts/test-with-fixture-cleanup.sh` OK; the dunnage step run on its own exits 0 without `target/`, and `dunnage run --dry-run target` plans work on a real target.
+
+### P15.1. Fix the 2026-10-01 QA audit findings
+
+The find-only audit (PR 26) lists 20 confirmed bugs. Fix all of them
+in one change: clamp prefill batches to `n_ctx` and reject oversized
+prompts, send `HF_TOKEN` only to Hugging Face (or the configured hub
+host), lock the task registry across processes, validate agent names,
+surface registry I/O errors, reject local `image_url` paths before any
+stat, keep request payloads in 0600 temp files that are deleted on drop,
+map context overflow to HTTP 400, report `max_tokens` truncation, refuse
+a second daemon on a live socket, cap `fit` range bodies and check
+`Content-Range`, let later config files override `[memory]`/`[audio]`
+and reject bad `RUNA_MEMORY_*` values, stop the MCP tool loop at
+`max_rounds`, store models as `owner--name` with a legacy lookup, use a
+strict base64 decoder, honor `general.alignment`, count embedding
+tokens, reject unknown roles and `max_tokens: 0`, verify pull size
+before the sidecar, and drop the pool lock while a model loads.
+
+Check (evidence): `cargo test -p runa-memory` 18 passed; `cargo test -p runa-fit --lib` 82 passed and `cargo test -p runa-fit --test gguf` 14 passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa-engine --lib batch_is_clamped` passed; `cargo clippy -p runa -p runa-memory -p runa-fit -p runa-engine --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s).
+
+## P16. Requests from aulo
+
+### P16.1. Stream tokens as they are generated
+
+Completed 2026-10-07.
+
+`runa serve` builds the whole reply before replaying it as SSE
+(`serve.rs` `generate_events`), so time to first token equals generation
+time. Stream each GenEvent to the client as the engine produces it.
+Requested by aulo (its task T1.19): a voice agent needs the first
+sentence before the reply is finished.
+
+Machine check: a test with a timer shows the first token reaches the
+client before generation ends.
+
+Plan: replace the collect-then-replay path in `serve.rs` with a channel from
+the generation task to the SSE body (bounded, so a slow client slows
+generation instead of buffering it), keep the non-streaming JSON path and
+the event order unchanged, and add a timed test with a slow fake engine.
+
+Check (evidence): `cargo test -p runa --bin runa` 113 passed (includes `first_token_reaches_the_client_before_generation_ends` and `anthropic_message_start_carries_the_prompt_length`); `cargo test -p runa-engine --lib` 52 passed; `cargo test -p runa --test e2e serve_ -- --test-threads=1` 5 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean. The Anthropic `message_start` reports 0 input tokens on the mistral backend, which only counts them at the end.
+
+### P16.2. Library target for in-process local inference
+
+Completed 2026-10-07.
+
+runa is bin-only (`serve`, `pool` and `mcp` are `pub(crate)`). Expose a
+library crate (for example `runa-serve`) so another program, aulo's
+daemon `aulod` (its task T1.20), can embed local inference without a
+second process.
+
+Plan: the bin's module tree is also the `cargo fuzz` root (`fuzz/Cargo.toml`
+compiles `main.rs` directly), so a lib target inside `crates/runa` would
+need `main.rs` moved. Instead extract `engine.rs` and `pool.rs` into a new
+crate `crates/runa-pool` (the code moves, it is not copied) and make the
+bin depend on it. The pool reached `main.rs` only through placement
+(`auto_placement`, `preflight_grow`, fit check), so placement becomes an
+injected `Placer` (`Arc<dyn Fn(&Path, &LoadConfig) -> Result<Placement>>`):
+the bin keeps today's policy in `crates/runa/src/placer.rs`, embedders pass
+`fixed_placer(..)` or their own. Add `ModelPool::attach_engine` (custom
+backend or test double) and `generate_stream`. No CLI behaviour change.
+Verify with an integration test in `crates/runa-pool/tests/` that builds
+the pool through the public API and drains a generation from a fake engine
+thread, then fmt, clippy `--all-targets`, `cargo test -p runa --bin runa`
+and the registry lint.
+
+Machine check: a test outside the runa binary calls the pool through the
+library.
+
+Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_placer`, `generate_on`, `generate_stream_on`); `cargo test -p runa-pool` 6 unit + 3 integration (`tests/embed.rs`) passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa --test e2e -- --test-threads=1 serve_ daemon` 7 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean; `cargo check -p runa --features mistralrs` passed. The nightly fuzz crate was not built.

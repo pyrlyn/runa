@@ -1,0 +1,79 @@
+# Shared by every pyrlyn repository; keep the copies identical (https://editorconfig.org).
+root = true
+
+# Line endings are also pinned for git in .gitattributes where a repo has one; keep the two in step.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# rustfmt defaults (no repo sets max_width).
+[*.rs]
+max_line_length = 100
+
+[*.{md,yml,yaml,toml,json,jsonc,js,mjs,cjs,jsx,ts,mts,cts,tsx,astro,vue,svelte,sh,bash,zsh,html,css,scss,gotmpl,dart,ps1,xml,xaml,csproj,props,targets,resx,slnx,entitlements,xcstrings}]
+indent_size = 2
+
+# Two trailing spaces are a Markdown hard line break.
+[*.md]
+trim_trailing_whitespace = false
+
+# swift-format's default configuration (2 spaces, 100 columns), which cox uses.
+[*.swift]
+indent_size = 2
+max_line_length = 100
+
+# ketch's desktop/macos/.swift-format: 4 spaces, 120 columns.
+[desktop/macos/Ketch*/**.swift]
+indent_size = 4
+max_line_length = 120
+
+# rtok formats these with oxfmt, which reads this file; they are at 4 spaces.
+[{web/**.{tsx,mjs},tools/npm/**.mjs,tests/node/**.mjs,vitest.config.mjs}]
+indent_size = 4
+
+# Property lists come from Xcode (tabs) and from hand (spaces); each file keeps its own.
+[*.plist]
+indent_style = unset
+indent_size = unset
+
+[{Makefile,makefile,GNUmakefile,*.mk}]
+indent_style = tab
+indent_size = unset
+
+# Byte-exact test data: trailing spaces, CRLF and a missing final newline can be part of the
+# expected output (trycmd stdout, cmd goldens, request bodies, insta snapshots, patches, fuzz
+# seeds). An editor must save these files exactly as they are.
+[{tests/trycmd/**,tests/cmd_golden/**,fixtures/**,**/fixtures/**,snapshots/**,**/snapshots/**,fuzz/{seeds,regressions,corpus,artifacts}/**}]
+charset = unset
+end_of_line = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset
+
+[*.{snap,patch,diff}]
+charset = unset
+end_of_line = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset
+
+# Exported or vendored assets (SVG, generated man pages, bundled fonts) are kept as shipped.
+[*.{svg,1}]
+end_of_line = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset
+
+[**/fonts/**]
+end_of_line = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset

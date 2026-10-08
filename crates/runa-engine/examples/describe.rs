@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P0.5 spike: load an mmproj via llama-cpp-2 `mtmd` and answer
 //! "what is in this image?".
 //!
@@ -47,6 +51,8 @@ fn main() {
         print_timings: false,
         n_threads: 4,
         media_marker: CString::new(llama_cpp_2::mtmd::mtmd_default_marker()).unwrap(),
+        image_min_tokens: -1,
+        image_max_tokens: -1,
     };
     let mtmd_ctx =
         MtmdContext::init_from_file(&mmproj_path, &model, &mtmd_params).expect("init mmproj");

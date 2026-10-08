@@ -11,12 +11,20 @@ Project programs and direct packages from manifests.
 | rustc | mise (pin rust) | Rust compiler | https://github.com/rust-lang/rust |
 | cargo | mise (pin rust) | Rust build and dependencies | https://github.com/rust-lang/cargo |
 | moon | mise | Monorepo tasks | https://github.com/moonrepo/moon |
+| ketch | see its README | Installs swarfr | https://github.com/pyrlyn/ketch |
+| swarfr | ketch | `root:test-with-cleanup` compacts `target/` after a green pass | https://github.com/listepo/swarfr |
 | ffmpeg | mise | Audio/video fixtures | https://github.com/FFmpeg/FFmpeg |
 | python | mise | Scripts | https://github.com/python/cpython |
 | node | mise | JS runtime | https://github.com/nodejs/node |
 | cargo-dist | mise | Release artifacts | https://github.com/axodotdev/cargo-dist |
 | cargo-cache | mise | Clean cargo home | https://github.com/matthiaskrgr/cargo-cache |
 | zig | mise | Custom kernels / native | https://github.com/ziglang/zig |
+
+## ketch
+
+| Package | Where | Source | Why here |
+| --- | --- | --- | --- |
+| swarfr | global | https://github.com/listepo/swarfr | Lossless `target/` cleanup after tests |
 
 ## cargo
 
@@ -27,6 +35,7 @@ Project programs and direct packages from manifests.
 | assert_fs | local | https://crates.io/crates/assert_fs | e2e temp dirs with auto-cleanup (bench calibration DB). |
 | async-openai | local | https://crates.io/crates/async-openai | Rust dependency |
 | axum | local | https://crates.io/crates/axum | Rust dependency |
+| base64 | local | https://crates.io/crates/base64 | Strict `data:` / `input_audio` decoding |
 | chrono | local | https://crates.io/crates/chrono | Rust dependency |
 | clap | local | https://crates.io/crates/clap | CLI |
 | clap_mangen | local | https://crates.io/crates/clap_mangen | Rust dependency |

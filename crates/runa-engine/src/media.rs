@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! Native audio through mtmd (plan P4.3).
 //!
 //! PCM is 16 kHz mono f32 (same as `runa-media`). The mmproj is optional at
@@ -158,9 +162,8 @@ impl LoadedModel {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
+    #[allow(clippy::assertions_on_constants)] // a runtime check of the feature set, on purpose
     fn default_build_has_no_mtmd() {
         assert!(
             !cfg!(feature = "mtmd"),

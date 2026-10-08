@@ -4,8 +4,8 @@ description = "Run AI models locally (GGUF via llama.cpp) or through the OpenAI 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-repository = "https://github.com/listepo/runa"
-homepage = "https://github.com/listepo/runa"
+repository = "https://github.com/pyrlyn/runa"
+homepage = "https://github.com/pyrlyn/runa"
 rust-version.workspace = true
 
 [features]
@@ -23,7 +23,7 @@ hexagon = ["runa-engine/hexagon"]
 openvino = ["runa-engine/openvino"]
 mtmd = ["runa-engine/mtmd"]
 # P9.2: mistral.rs backend for safetensors dirs (`--backend mistral`).
-mistralrs = ["runa-engine/mistralrs"]
+mistralrs = ["runa-engine/mistralrs", "runa-pool/mistralrs"]
 # P9.3: real ggml RPC backend (vendored b7709 `ggml-rpc.cpp` in runa-engine).
 # Enables `--rpc` registration in `load()`; without it `--rpc` fails
 # explicitly with `Unsupported`. Default builds stay GGUF-local.
@@ -43,6 +43,8 @@ runa-fit = { path = "../runa-fit" }
 runa-memory = { path = "../runa-memory" }
 # P2.3 run/chat CLI on the engine wrapper.
 runa-engine = { path = "../runa-engine" }
+# P16.2 engine wrapper + model pool, shared with embedders of local inference.
+runa-pool = { path = "../runa-pool" }
 # P3.8 secrets (env / keyring / reject inline keys).
 runa-cloud = { path = "../runa-cloud" }
 runa-media = { path = "../runa-media" }
@@ -64,6 +66,10 @@ ratatui = "0.30.2"
 crossterm = "0.29"
 tui-textarea-2 = { version = "0.13", default-features = false, features = ["crossterm"] }
 unicode-width = "0.2"
+# Strict base64 for `data:` images and `input_audio` (reject padding junk).
+base64 = "0.22.1"
+# 0600 temp files deleted on drop for request payloads.
+tempfile = "3"
 
 [dev-dependencies]
 # P2.3 e2e CLI tests.
@@ -76,3 +82,7 @@ predicates = "3.1.4"
 pretty_assertions = "1.4.1"
 assert_fs = "1.1.4"
 trycmd = "1.2.1"
+
+[lints.rust]
+# `cargo fuzz` compiles src/main.rs with `--cfg fuzzing` (fuzz/Cargo.toml).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

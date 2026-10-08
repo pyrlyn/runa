@@ -1,0 +1,23 @@
+[package]
+name = "runa-pool"
+description = "In-process local inference: the engine wrapper and the model pool behind `runa serve` and `runa daemon` (P16.2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+# Mistral.rs backend for safetensors dirs; `runa/mistralrs` forwards here.
+mistralrs = ["runa-engine/mistralrs"]
+
+[dependencies]
+runa-core = { path = "../runa-core" }
+runa-engine = { path = "../runa-engine" }
+# `idle_tick` drives the adaptive-memory shrink decision.
+runa-memory = { path = "../runa-memory" }
+tokio = { version = "1.53.1", features = ["rt", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }

@@ -1,0 +1,46 @@
+# Publishes this repo's docs/ to the public site repository pyrlyn/landing (pyrlyn/ci's
+# sync-docs.yml): docs/site.md becomes the project card, every other user-facing docs/**/*.md
+# goes to content/docs/runa/ (mirrored). Internal pages are left out by the shared filter plus
+# the list below. On a v* tag or release the card's `version:` is set from the tag. Auth: the
+# SITE_DEPLOY_KEY deploy key on pyrlyn/landing; GITHUB_TOKEN stays read-only.
+# Inputs: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
+name: sync-docs
+
+on:
+  push:
+    branches: [main]
+    # Path filters are not evaluated for tag pushes, so every v* tag syncs.
+    paths: [docs/**, .github/workflows/sync-docs.yml]
+    tags: ["v*"]
+  # A tag pushed with GITHUB_TOKEN triggers no workflow, so also sync when a release is published.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# One sync at a time per source repo, never cancelled half-way.
+concurrency:
+  group: sync-docs
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    uses: pyrlyn/ci/.github/workflows/sync-docs.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+    permissions:
+      contents: read
+    with:
+      # Internal pages beyond the shared list.
+      extra-excludes: |
+        README.md
+        tasks.md
+        perf-nightly.md
+        baselines.md
+        versions.md
+        kernels.md
+        fit.md
+        profiles.md
+        memory.md
+    secrets:
+      SITE_DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}

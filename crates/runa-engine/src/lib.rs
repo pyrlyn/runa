@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! runa-engine — llama-cpp-2 wrapper: model load with `Placement`,
 //! context params, streaming sampling loop, mtmd (audio/image/video),
 //! prompt-cache state save (plan §2).
@@ -63,6 +67,7 @@ pub fn ensure_backend_available(
 #[cfg(test)]
 mod native_feature_tests {
     #[test]
+    #[allow(clippy::assertions_on_constants)] // a runtime check of the feature set, on purpose
     fn portable_default_build_is_not_native() {
         assert!(
             !cfg!(feature = "native"),

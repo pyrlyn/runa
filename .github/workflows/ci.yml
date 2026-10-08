@@ -13,16 +13,34 @@ on:
 
 # P14.1: CI runs on push/merge to main and on ready (non-draft) PRs to main.
 # Draft PRs are skipped; `review` runs only via the `/review` comment workflow.
-# Manual release (patch/minor/major) is the separate `release-manual.yml` workflow.
+# Releases go through `bump.yml` (Actions -> Bump and release: a version PR this CI gates).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # infra's config action on .github/infra.yml: `docs-only` is "true" when every changed file
+  # is documentation (fails open: "false" when unsure, e.g. a .github/ change). A failed
+  # `config` runs everything.
+  config:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs-only: ${{ steps.config.outputs.docs-only }}
+    steps:
+      - id: config
+        uses: pyrlyn/ci/.github/actions/config@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+
   ci:
     name: ${{ matrix.os }} (${{ matrix.target }})
-    # Skip draft PRs (push/workflow_dispatch have no pull_request object).
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: config
+    # Skip draft PRs (push/workflow_dispatch have no pull_request object). Never skipped for a
+    # docs-only change: a matrix job skipped at job level reports one check under its raw name
+    # and the required `<os> (<target>)` checks would wait, so every step is a no-op instead.
+    if: >-
+      !cancelled()
+      && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -44,26 +62,31 @@ jobs:
     # restore/save (~2.5 min on ubuntu/macos). Test semantics are unchanged;
     # failure backtraces keep symbols but lose line numbers.
     env:
+      RUN: ${{ needs.config.outputs.docs-only != 'true' }}
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
 
     steps:
-      - uses: actions/checkout@v4
+      - if: env.RUN == 'true'
+        uses: actions/checkout@v4
 
-      - name: Install tools via mise (K2, D21)
+      - if: env.RUN == 'true'
+        name: Install tools via mise (K2, D21)
         uses: jdx/mise-action@v2
         with:
           install: true
           # also installs rust 1.98, moon 2.5.4, ffmpeg 9.0.1, python 3.13.15, node 24.21.0, cargo-dist 0.33.0 (aqua), cargo-cache 0.8.3
           # rust-toolchain.toml stays the rustup source of truth; mise mirrors the pin
 
-      - uses: Swatinem/rust-cache@v2
+      - if: env.RUN == 'true'
+        uses: Swatinem/rust-cache@v2
         with:
           # v1: drop caches with whisper's ggml built GGML_NATIVE=ON (SIGILL)
           prefix-key: v1-rust
           shared-key: ci-${{ matrix.target }}
 
-      - name: sccache cold-build insurance (P12.2)
+      - if: env.RUN == 'true'
+        name: sccache cold-build insurance (P12.2)
         # Measured verdict: cold Swatinem + warm sccache compiles in
         # ~2.5 min (clippy 1m34s + build 30s + test 24s, 88.5% hit
         # rate) vs ~8.5+ min true-cold on ubuntu (run 35099674405 vs
@@ -72,7 +95,8 @@ jobs:
         # Overhead on warm runs: ~1 s server start + stats.
         uses: mozilla-actions/sccache-action@v0.0.11
 
-      - name: enable sccache wrappers (P12.2)
+      - if: env.RUN == 'true'
+        name: enable sccache wrappers (P12.2)
         shell: bash
         run: |
           {
@@ -82,7 +106,8 @@ jobs:
             echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           } >> "$GITHUB_ENV"
 
-      - name: Show toolchain (mise + rustup)
+      - if: env.RUN == 'true'
+        name: Show toolchain (mise + rustup)
         # Multi-line script: force bash (Windows default is PowerShell).
         shell: bash
         run: |
@@ -102,19 +127,23 @@ jobs:
         # against dist-workspace.toml, which is platform-independent (the
         # matrix it emits already covers all OSes), so one run proves it.
         # Trade-off: loses per-OS proof that `dist` itself behaves here.
-        if: runner.os == 'Linux'
+        if: env.RUN == 'true' && runner.os == 'Linux'
         run: dist generate --mode=ci --check
 
-      - name: cargo fmt --check
+      - if: env.RUN == 'true'
+        name: cargo fmt --check
         run: cargo fmt --all -- --check
 
-      - name: cargo clippy (-D warnings)
+      - if: env.RUN == 'true'
+        name: cargo clippy (-D warnings)
         run: cargo clippy --workspace -- -D warnings
 
-      - name: cargo build --workspace
+      - if: env.RUN == 'true'
+        name: cargo build --workspace
         run: cargo build --workspace
 
-      - name: cargo test --workspace (CPU tests)
+      - if: env.RUN == 'true'
+        name: cargo test --workspace (CPU tests)
         # P0.2 says ubuntu does CPU tests; other OS also run tests. We test
         # only libs (`--lib`) so the P0.4 `runa-engine` examples (which need
         # `llama-cpp-2`/`encoding_rs` wiring still in progress) are not
@@ -127,18 +156,19 @@ jobs:
         # tests need qwen2-0_5b-instruct-q4_0.gguf present. Anonymous HF
         # download (~340MB). `-f` fails the step loudly instead of the
         # tests failing with "listening on …: Disconnected".
-        if: runner.os != 'Windows'
+        if: env.RUN == 'true' && runner.os != 'Windows'
         run: |
           test -f tests/fixtures/qwen2-0_5b-instruct-q4_0.gguf || curl -fSL --retry 3 -o tests/fixtures/qwen2-0_5b-instruct-q4_0.gguf https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-GGUF/resolve/main/qwen2-0_5b-instruct-q4_0.gguf
 
-      - name: fixture size guard (<=3 GiB)
+      - if: env.RUN == 'true'
+        name: fixture size guard (<=3 GiB)
         # Downloaded weights must stay within the fixture budget; hand-made
         # files (synthetic-*.gguf, audio/video/api) are kilobytes.
         # Override locally with RUNA_FIXTURE_MAX_BYTES (bytes).
         run: python3 scripts/check-fixture-size.py
 
       - name: runa serve e2e + OpenAI Python SDK smoke (P3.9)
-        if: runner.os != 'Windows'
+        if: env.RUN == 'true' && runner.os != 'Windows'
         env:
           RUNA_REQUIRE_OPENAI_SMOKE: "1"
         run: |
@@ -149,18 +179,21 @@ jobs:
         # CI runners are ephemeral, but this keeps self-hosted runners lean:
         # drop git-ignored weights only when everything above passed, keep
         # hand-made fixtures (synthetic-*.gguf, audio/video/api).
-        if: success() && runner.os != 'Windows'
+        if: env.RUN == 'true' && success() && runner.os != 'Windows'
         run: python3 scripts/clean-fixtures.py
 
-      - name: registry lint (docs/tasks.md)
+      - if: env.RUN == 'true'
+        name: registry lint (docs/tasks.md)
         # P0.9/P7.6 — every `in progress` row must have agent + RFC 3339 started_at;
         # no double-held task. The script warns on stale (>7d) claims. K-aware (K1-K5).
         run: python3 scripts/lint-tasks.py docs/tasks.md
 
-      - name: perf-regress self-test (P5.8)
+      - if: env.RUN == 'true'
+        name: perf-regress self-test (P5.8)
         run: python3 scripts/perf-regress.py --self-test
 
-      - name: NPU stub features resolve (P9.4 Tier-3)
+      - if: env.RUN == 'true'
+        name: NPU stub features resolve (P9.4 Tier-3)
         # Hexagon/OpenVINO are probe-only stubs (no ggml backend, no CI
         # runners). This only proves the stub features resolve and the
         # doctor reports them; runtime validation stays manual on-device.
@@ -172,7 +205,8 @@ jobs:
           cargo check -p runa-engine --features hexagon,openvino
           cargo test -p runa --features hexagon,openvino --test doctor
 
-      - name: RPC backend feature (P9.3)
+      - if: env.RUN == 'true'
+        name: RPC backend feature (P9.3)
         # The vendored b7709 ggml-rpc.cpp compiles behind `--features rpc`
         # on all three OSes (ws2_32 on Windows); the loopback test answers
         # HELLO/DEVICE_COUNT from a fake TCP server, so no fixture weights
@@ -188,7 +222,8 @@ jobs:
         run: |
           cargo test -p runa-engine -p runa --features runa/rpc --lib --test rpc --test doctor --test trycmd
 
-      - name: registry lint rejects bad fixture (P7.6)
+      - if: env.RUN == 'true'
+        name: registry lint rejects bad fixture (P7.6)
         # Multi-line script: force bash (Windows default is PowerShell,
         # which cannot parse `if ...; then ... fi`).
         shell: bash
@@ -198,12 +233,13 @@ jobs:
             exit 1
           fi
 
-      - name: runa-memory regression (P7.1/P7.4)
+      - if: env.RUN == 'true'
+        name: runa-memory regression (P7.1/P7.4)
         run: cargo test -p runa-memory
 
       - name: sccache stats (P12.2)
         # Always runs: hit-rate forensics when a red run needs it.
-        if: always()
+        if: env.RUN == 'true' && always()
         shell: bash
         run: sccache --show-stats || true
 
@@ -251,47 +287,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      # The shared action skips new branches, bot and earlier auto-revert commits and pushes
+      # touching .github/ (GITHUB_TOKEN cannot push workflow files). No re-apply PR, as before.
+      - uses: pyrlyn/ci/.github/actions/revert-on-failure@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
         with:
-          fetch-depth: 0
-      - name: Revert commits from this push
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "No parent (new branch); skip revert"
-            exit 0
-          fi
-          subject=$(git log -1 --format=%s "$AFTER")
-          author=$(git log -1 --format=%an "$AFTER")
-          case "$subject" in
-            "ci: auto-revert"*) echo "Already an auto-revert; skip"; exit 0 ;;
-          esac
-          if [ "$author" = "github-actions[bot]" ]; then
-            echo "Last commit is from actions bot; skip"
-            exit 0
-          fi
-          # The GITHUB_TOKEN has no `workflows` permission, so a revert that
-          # touches `.github/` (e.g. a CI fix) is rejected on push. Leave
-          # those to a human instead of failing the job.
-          if git diff --name-only "$BEFORE" "$AFTER" -- .github/ | grep -q .; then
-            echo "Push touches .github/; skip auto-revert (needs human with workflows permission)"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          parent_count=$(git rev-list --parents -n 1 "$AFTER" | awk '{print NF}')
-          if [ "$parent_count" -gt 2 ]; then
-            git revert --no-edit -m 1 "$AFTER"
-          else
-            git revert --no-commit "$BEFORE".."$AFTER"
-            if git diff --cached --quiet; then
-              echo "Nothing to revert"
-              exit 0
-            fi
-            short=$(git rev-parse --short "$AFTER")
-            git commit -m "ci: auto-revert $short — main CI failed"
-          fi
-          git push origin HEAD:main
+          reapply-pr: "false"

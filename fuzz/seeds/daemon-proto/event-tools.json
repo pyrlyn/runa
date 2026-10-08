@@ -1,0 +1,1 @@
+{"type": "tool_calls", "calls": [{"id": "c", "name": "f", "arguments": "{}"}]}

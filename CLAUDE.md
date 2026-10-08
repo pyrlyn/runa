@@ -73,9 +73,10 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 
 | Path | Responsibility |
 |------|----------------|
-| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `pool.rs`, `cloud.rs` |
+| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `placer.rs`, `cloud.rs` |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors. No engine dependency |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling loop, mtmd, state save; vendored patches behind features (`rpc`, `hexagon`/`openvino` stubs) |
+| `crates/runa-pool` | `LocalEngine` (backend dispatch) and `ModelPool` behind serve/daemon, as a library: another program embeds local inference through it (P16.2). Placement is injected (`Placer`), so it needs no config or fit code |
 | `crates/runa-fit` | GGUF header (local file / HTTP range), hardware probe, estimator, placement planner, calibration DB. Must not depend on the engine (D5) |
 | `crates/runa-memory` | `MemoryManager` (D17) + `TaskRegistry` (D18) |
 | `crates/runa-media` | Audio/video decode, resample, frame sampling, ASR bridge (`whisper-rs`) |
@@ -107,7 +108,7 @@ Run these before requesting a merge or closing a task. They mirror
 | Fixture budget | `python3 scripts/check-fixture-size.py` (≤ 3 GiB per file) |
 | Perf gate self-test | `python3 scripts/perf-regress.py --self-test` |
 | Feature builds | `cargo check -p runa-engine --features hexagon,openvino` and `cargo test -p runa-engine -p runa --features runa/rpc --lib --test rpc --test doctor --test trycmd` |
-| Full pass + cleanup | `moon run root:test-with-cleanup` |
+| Full pass + cleanup | `moon run root:test-with-cleanup` (drops downloaded weights, compacts `target/` with swarfr) |
 
 Job time budgets stay under 5 minutes (P11.8/P11.9); when a step grows, report
 it instead of loosening the gate.
@@ -137,10 +138,8 @@ it instead of loosening the gate.
   one exists (`feat: P9.3 real RPC backend behind rpc feature`). No trailers.
 - One concern per commit; scope `git add` to the files the task card lists.
   Never commit another agent's uncommitted work.
-- `main` is the reference. Work that touches CI, or that risks a red `main`,
-  goes through a topic branch plus a PR (the P11 flow); a scoped push is fine
-  while CI is green. The `ci.yml` `revert-on-failure` job reverts a red push to
-  `main`, so verify locally first (§9).
+- `main` is the reference. The `ci.yml` `revert-on-failure` job reverts a red
+  commit on `main`, so verify locally first (§9).
 - Never force-push a shared branch. `git pull --rebase` before pushing; on a
   conflict stop and report instead of guessing.
 - Doc-only commits still use the same prefixes (`docs: …`) and mention the task
@@ -168,3 +167,5 @@ A task is done when all of these hold:
 Save tokens. If anything is unclear, ask the creator first. Write a short execution plan into that task's card in `plan.md`, then claim and work. Default cap: **5** parallel agents per project unless the creator says otherwise. Never use max effort or fast mode without permission. Cheapest model for scripts, commands, repo scans, web, file moves, tests. On Cursor: **grok 4.6** (no fast) for planning, refactoring, bug hunts; **composer 2.5** (no fast) for file moves, tests, commands, scans, web. Before writing code, decide whether a ready library or framework should be used. A new dependency is allowed only if it is current (not abandoned) and the creator approved it. Packages already in `toolchain.md` may be reused without asking again. Prefer the latest versions of tools and packages, but bump already-installed ones only with the creator’s permission. Rust: reuse crates already used by sibling projects in this workspace (workspace-root `rust.md`). If this repo lacks one it should use, add a `plan.md` task — do not add the dependency silently. Extract duplicated helpers into `packages/` and depend via local `{ path = "..." }`. No version bumps without permission.
 
 If a directory above this repository contains an `AGENTS.md` or `CLAUDE.md`, follow it too. If it conflicts with this file, ask the creator.
+
+**Config files.** A config file this project owns has a schema generated from its types (Rust: `schemars`), committed and checked by a drift test, and one module owns all config loading, validation and editing. A config file another program owns (an agent host's or an editor's) gets no schema from us: check only our own entry in it and leave the rest byte-for-byte, comments included.

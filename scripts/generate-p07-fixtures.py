@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ivan Tugay
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 """Generate P0.7 fixtures: synthetic header-only GGUFs, audio clips, video placeholders, recorded API responses."""
 import os
 import struct
@@ -199,11 +203,12 @@ All synthetic files are generated, not derived from upstream weights.
 | File | Size | Source | License |
 |------|------|--------|---------|
 | qwen2-0_5b-instruct-q4_0.gguf | 337M | Qwen/Qwen2-0.5B-Instruct-GGUF (TheBloke) | Qwen |
+| Qwen3-0.6B-Q4_K_M.gguf | ~378M | unsloth/Qwen3-0.6B-GGUF | Qwen |
 | Qwen3-8B-Q4_K_M.gguf | 4.7G | unsloth/Qwen3-8B-GGUF | Qwen |
 | Qwen3-30B-A3B-Q4_K_M.gguf | ~6M header-only (real tensor infos; weights truncated) | unsloth/Qwen3-30B-A3B-GGUF | Qwen |
 | gpt-oss-20b-MXFP4.gguf | ~26M tiny loadable (real Harmony chat_template + minimal tensors) | custom from ggml-org/gpt-oss-20b-GGUF tokenizer | Apache-2.0 |
-| SmolVLM-500M-Instruct-Q8_0.gguf | 417M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
-| mmproj-SmolVLM-500M-Instruct-Q8_0.gguf | 104M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
+| SmolVLM-256M-Instruct-Q4_K_M.gguf | ~119M | pierretokns/SmolVLM-256M-Instruct-GGUF (from HuggingFaceTB/SmolVLM-256M-Instruct) | Apache-2.0 |
+| mmproj-SmolVLM-256M-Instruct-f16.gguf | ~181M | pierretokns/SmolVLM-256M-Instruct-GGUF | Apache-2.0 |
 | shapes.png | 2.3K | synthetic | MIT |
 
 ## Audio clips (10, 1 sec each, 16kHz mono WAV, sine tones)

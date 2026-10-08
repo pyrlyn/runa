@@ -1,4 +1,4 @@
-# docs/structured.md — structured output
+# Structured output
 
 `runa` can force a model's answer into a JSON Schema or a GBNF grammar.
 Local models use llama.cpp grammar sampling, so the output always matches.

@@ -1,0 +1,17 @@
+{
+  "name": "@pyrlyn/runa-brand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "runa brand pack: the runa deltas (colour roles, logos) on top of the Pyrlyn base layer (@pyrlyn/brand base/).",
+  "license": "SEE LICENSE IN README.md",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "dependencies": {
+    "@pyrlyn/brand": "github:pyrlyn/brand#v0.4.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

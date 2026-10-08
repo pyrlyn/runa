@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! P2.2: templated streaming generation with sampler chain, stop strings,
 //! EOS/max-token termination and usage counters.
 //!
@@ -11,7 +15,6 @@
 
 use std::path::PathBuf;
 
-use runa_core::{ThinkConfig, ThinkMode};
 use runa_engine::{
     ChatMessage, GenEvent, GenerateRequest, LoadConfig, Placement, PromptCache, SamplingConfig,
     StopReason, load,

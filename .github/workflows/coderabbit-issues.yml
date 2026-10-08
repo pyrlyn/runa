@@ -1,0 +1,29 @@
+name: coderabbit-issues
+
+# One GitHub issue per actionable CodeRabbit inline review comment, filed by the shared
+# pyrlyn/ci coderabbit-issues.yml (label `coderabbit`, assigned to @listepo, deduped by a hidden
+# comment-id marker; nitpicks, warnings, notices, summaries and replies are skipped). Runs only
+# for coderabbitai[bot]; needs no secrets.
+# Inputs and permissions: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  # Per pull request and author, so a human comment never replaces a queued CodeRabbit run.
+  group: coderabbit-issues-${{ github.event.pull_request.number }}-${{ github.event.sender.login }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  issues:
+    if: >-
+      github.event.review.user.login == 'coderabbitai[bot]'
+      || github.event.comment.user.login == 'coderabbitai[bot]'
+    permissions:
+      issues: write
+      pull-requests: read
+    uses: pyrlyn/ci/.github/workflows/coderabbit-issues.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main

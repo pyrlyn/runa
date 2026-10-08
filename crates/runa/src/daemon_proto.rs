@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
 //! NDJSON daemon protocol (P9.1).
 //!
 //! `runa run` / `runa chat` speak to `runa daemon` over a Unix socket at
@@ -573,7 +577,7 @@ mod tests {
 
     #[test]
     fn events_roundtrip_and_map_gen_events() {
-        let gen_events = vec![
+        let gen_events = [
             GenEvent::Text("hello".into()),
             GenEvent::Reasoning("plan".into()),
             GenEvent::ToolCalls(vec![ToolCall {

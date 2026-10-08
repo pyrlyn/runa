@@ -1,4 +1,4 @@
-# docs/thinking.md — `ThinkConfig` (D07)
+# Thinking: `ThinkConfig`
 
 Thinking is a first-class stream, not mixed into answer text. Local and cloud
 backends share `runa_core::ThinkConfig`.
