@@ -261,11 +261,12 @@ jobs:
           install: true
       - name: moon projects (graph check, K1)
         run: moon projects
-      - name: moon registry lint (K-aware)
-        # P17.1: do not `|| echo`. Full `moon ci` on this affected set
-        # exceeded the 5 min P11.9 budget (cancelled at 5m17s on 4d0349f
-        # and a080a60). Direct-cargo jobs above remain the test gate.
-        run: moon run root:lint-tasks
+      - name: registry lint (K-aware)
+        # P17.1: do not `|| echo`. `moon run` diffs against `main`, which a
+        # shallow PR checkout does not have. Full `moon ci` exceeded the
+        # 5 min P11.9 budget (cancelled at 5m17s). Direct-cargo jobs above
+        # remain the test gate.
+        run: python3 scripts/lint-tasks.py docs/tasks.md
 
   # Separate job so the branch protection rule can require a single `ci` check
   # while still covering the matrix; all matrix jobs must pass.
