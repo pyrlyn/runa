@@ -1,4 +1,4 @@
-# docs/perf-nightly.md — P5.8 first report
+# Nightly performance report
 
 Nightly workflow: `.github/workflows/perf.yml` (`cron: 0 4 * * *` UTC + `workflow_dispatch`).
 Gate: `scripts/perf-regress.py` fails if `pp_tok_s` or `tg_tok_s` drop **> 3 %** vs

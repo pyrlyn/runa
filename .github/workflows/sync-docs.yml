@@ -1,6 +1,7 @@
 # Publishes this repo's docs/ to the public site repository pyrlyn/landing (pyrlyn/ci's
 # sync-docs.yml): docs/site.md becomes the project card, every other user-facing docs/**/*.md
-# goes to content/docs/runa/ (mirrored). Internal pages are left out by the shared filter plus
+# goes to content/docs/runa/ (mirrored), and the ru/uk translations under docs/ru and docs/uk go
+# next to them (`locales`). Internal pages are left out by the shared filter plus
 # the list below. On a v* tag or release the card's `version:` is set from the tag. Auth: the
 # SITE_DEPLOY_KEY deploy key on pyrlyn/landing; GITHUB_TOKEN stays read-only.
 # Inputs: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
@@ -31,6 +32,8 @@ jobs:
     permissions:
       contents: read
     with:
+      # ru and uk translations under docs/ru and docs/uk, published next to the English pages.
+      locales: ru uk
       # Internal pages beyond the shared list.
       extra-excludes: |
         README.md
