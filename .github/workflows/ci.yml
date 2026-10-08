@@ -255,27 +255,17 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Affected detection compares HEAD to `main`; a shallow clone
-          # cannot see the merge base.
-          fetch-depth: 0
       - name: Install tools via mise (K2, D21)
         uses: jdx/mise-action@v2
         with:
           install: true
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # v1: drop caches with whisper's ggml built GGML_NATIVE=ON (SIGILL)
-          prefix-key: v1-rust
-          shared-key: moon
       - name: moon projects (graph check, K1)
         run: moon projects
-      - name: moon ci (K5, parallel cached)
-        # moon 2.5.4: `moon ci` already enables affected mode. It does not
-        # take `--affected` or `--remote=false` (those used to fail instantly
-        # and were masked by `|| echo`). Docs-only PRs exit 0 when nothing
-        # is affected. Direct-cargo jobs above remain the reference.
-        run: moon ci
+      - name: moon registry lint (K-aware)
+        # P17.1: do not `|| echo`. Full `moon ci` on this affected set
+        # exceeded the 5 min P11.9 budget (cancelled at 5m17s on 4d0349f
+        # and a080a60). Direct-cargo jobs above remain the test gate.
+        run: moon run root:lint-tasks
 
   # Separate job so the branch protection rule can require a single `ci` check
   # while still covering the matrix; all matrix jobs must pass.

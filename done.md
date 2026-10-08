@@ -1290,10 +1290,12 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 Completed 2026-10-08 (Cursor Grok 4.6). Land the confirmed, still-open
 audit items without the large architecture splits.
 
-- `moon ci` uses moon 2.5.4’s real CLI (affected is built in). The old
-  `--affected --remote=false || echo` never ran tasks and always
-  succeeded; the moon job fetches full history so affected detection
-  can see `main`.
+- Moon CI no longer `|| echo`s success. `moon ci --affected
+  --remote=false` is invalid on moon 2.5.4 and used to fail instantly
+  behind the echo. Full `moon ci` of this affected set exceeded the 5
+  min P11.9 budget (cancelled at 5m17s); the moon job now runs
+  `moon projects` + `moon run root:lint-tasks`, and the cargo matrix
+  remains the test gate.
 - Workflows get `permissions: contents: read`.
 - `prices.toml` later-wins overlay (user file after shipped
   `docs/prices.toml`; models not named stay).
