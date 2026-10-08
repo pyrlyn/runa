@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   bump:
-    uses: pyrlyn/ci/.github/workflows/bump.yml@a4f93a2606a5dd8f697ad3d876440ab3e2eb4ae9 # main
+    uses: pyrlyn/ci/.github/workflows/bump.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
     permissions:
       contents: write # the bump branch, the tag and the release
       pull-requests: write # merge or close the bump pull request
@@ -47,8 +47,8 @@ jobs:
       level: ${{ inputs.level }}
       dry-run: ${{ inputs.dry-run }}
       release-untagged-head: ${{ inputs.release-untagged-head }}
-      release-script: scripts/release.sh
-      # Rust and git-cliff (scripts/release.sh runs cargo and git-cliff) at the mise.toml pins.
+      # Rust and git-cliff (scripts/release.sh, pyrlyn/ci's default release script, runs cargo
+      # and git-cliff) at the mise.toml pins.
       mise-install-args: rust git-cliff
       # The workflow that reports protect-main's required checks when dispatched.
       ci-workflows: ci.yml

@@ -26,4 +26,4 @@ jobs:
     permissions:
       issues: write
       pull-requests: read
-    uses: pyrlyn/ci/.github/workflows/coderabbit-issues.yml@c875cd763ad0c4abbd936e480be5752330d3b66b # main 2026-10-07
+    uses: pyrlyn/ci/.github/workflows/coderabbit-issues.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
