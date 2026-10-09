@@ -32,13 +32,14 @@ Fit-check a model before downloading, then run / serve / chat:
 runa fit hf:unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M --ctx 16384 --kv q8_0
 runa fit --recommend --use code   # best catalog models for this machine
 runa run qwen "explain KV-cache quantization in one paragraph"
-runa serve --port 8080            # OpenAI-compatible HTTP server
+runa serve --port 8080            # OpenAI-compatible HTTP server (loopback)
 runa chat qwen                    # REPL; add --tui for the full-screen UI
 ```
 
 `runa fit` says whether a model runs on this machine and how fast, before you
 download it. After a few `runa bench` runs, predictions calibrate to your
-device (see [`guide.md`](guide.md)).
+device (see [`guide.md`](guide.md)). `runa serve` listens on `127.0.0.1`
+unless you pass `--api-key` with a non-loopback `--host`.
 
 ## Useful next steps
 

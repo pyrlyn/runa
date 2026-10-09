@@ -243,3 +243,26 @@ ambient RAM pressure, and `--threads` CPU share. Out-of-range
 values fail before any load. The flag opts `run` out of the daemon
 (the daemon knows no per-request cap) and is rejected on
 `--backend mistral` (never warned there).
+
+## Serve bind and `--api-key`
+
+**What.** `runa serve` binds `127.0.0.1` by default. A non-loopback
+`--host` (`0.0.0.0`, `::`, a LAN address, a hostname) is refused
+unless `--api-key` is set. Loopback is `127.0.0.0/8` and `::1`
+(including `[::1]` and IPv4-mapped `::ffff:127.0.0.1`).
+
+**Why.** `/v1` serves completions, embeddings and transcriptions.
+Binding every interface without a key exposes that API on the
+network. `/health` stays open so a probe can still see whether the
+process is up.
+
+**How.** With a key, every `/v1` route requires
+`Authorization: Bearer <key>`. A missing or wrong token is HTTP 401
+`invalid api key`. The same flag also locks a loopback bind. There
+is no `runa.toml` key for this token.
+
+```sh
+runa serve model.gguf --port 8080
+runa serve model.gguf --host 0.0.0.0 --api-key "$SERVE_KEY"
+curl -H "Authorization: Bearer $SERVE_KEY" http://127.0.0.1:8080/v1/models
+```

@@ -38,13 +38,14 @@ RUSTFLAGS='-C target-cpu=native' cargo build --release --features native
 runa fit hf:unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M --ctx 16384 --kv q8_0
 runa fit --recommend --use code   # лучшие модели каталога для этой машины
 runa run qwen "explain KV-cache quantization in one paragraph"
-runa serve --port 8080            # OpenAI-совместимый HTTP-сервер
+runa serve --port 8080            # OpenAI-совместимый HTTP-сервер (loopback)
 runa chat qwen                    # REPL; добавьте --tui для полноэкранного интерфейса
 ```
 
 `runa fit` сообщает, запустится ли модель на этой машине и насколько быстро, ещё до того,
 как вы её скачаете. После нескольких запусков `runa bench` прогнозы калибруются под ваше
-устройство (см. [`guide.md`](guide.md)).
+устройство (см. [`guide.md`](guide.md)). `runa serve` слушает `127.0.0.1`,
+если вместе с не-loopback `--host` не передан `--api-key`.
 
 ## Полезные следующие шаги
 
