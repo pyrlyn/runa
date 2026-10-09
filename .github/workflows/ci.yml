@@ -152,6 +152,9 @@ jobs:
         # `llama-cpp-2`/`encoding_rs` wiring still in progress) are not
         # compiled as part of the test step — they are exercised separately
         # via `cargo build --workspace` and the P0.4 spike.
+        # P14.3: this step is the library half of the local fast path
+        # `moon run root:test-fast`. Fixture download and serve e2e below
+        # stay required; that command does not replace them.
         run: cargo test --workspace --lib
 
       - name: fetch qwen2 fixture (P0.7, git-ignored weights)

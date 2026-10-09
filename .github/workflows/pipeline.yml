@@ -32,6 +32,7 @@ jobs:
       security-events: write
       pull-requests: read
       actions: write
+      issues: write # pyrlyn/ci main-failure job (pyrlyn/ci#56)
     secrets:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

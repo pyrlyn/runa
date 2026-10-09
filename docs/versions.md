@@ -1,4 +1,4 @@
-# docs/versions.md — version pins
+# Version pins
 
 Plan D16: the Rust toolchain, `llama-cpp-2`, `whisper-rs` and `async-openai`
 are pinned. `Cargo.lock` enforces the crate pins (once the workspace exists,

@@ -1,4 +1,4 @@
-# runa-kernels (P5.2+)
+# runa-kernels: benchmarks and adoption gates
 
 Per-kernel benchmark results and adoption gates (plan D14, D23). P5.2 ships
 the crate skeleton (C). New kernels prefer Zig (C ABI, `@Vector`) over new C;

@@ -1,4 +1,4 @@
-# docs/memory.md — public methods: `MemoryManager` and `TaskRegistry`
+# Public methods: `MemoryManager` and `TaskRegistry`
 
 Crate: `runa-memory` (plan D17/D18, phase P7, metrics M11/M12).
 Targets: M11 (idle RSS ≤ floor + 10 %), M12 (no double-held task).

@@ -4,10 +4,48 @@ https://github.com/pyrlyn/runa
 
 A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through OpenAI/Anthropic APIs; fit checker, three compute modes, adaptive memory, OpenAI-compatible server.
 
+## Cloud review findings (2026-10-08)
+
+New bugs, dead code and moves from a read-only Cursor cloud review of the current tree (agent `bc-b9ffebc5-a30f-5261-a881-c62018ac3f66`; full report: `cloud/runa.md` in the private `listepo/roadmap` repo). They form phase P17: P17.1–P17.20, ordered by priority (there is no P0; P1 is high, P2 is medium). **confirmed** means seen in the tree; **suspected** means plausible from the code but not proven (no tests or Miri were run). Line numbers are as of the review. None of these is in the task table yet: to take one, add its row and card here and its row in `docs/tasks.md`, as `AGENTS.md` says.
+
+| ID | Priority | Kind | Status | Where | Fix |
+| --- | --- | --- | --- | --- | --- |
+| P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
+| P17.10 | medium (P2) | bug | suspected | `crates/runa/src/daemon.rs:206-212` | After `ConnectionRefused`, `remove_file` then `bind` is not atomic, so two starters can still race (the live-daemon steal itself is fixed). Take a `flock` on a lock file first. |
+| P17.11 | medium (P2) | bug | suspected | `crates/runa-engine/src/generate.rs:859-866` | `add_close_bias` casts the shared slice from `get_logits_ith` to mutable and writes through it, which is UB unless the callee guarantees exclusive access. Use a mutable logits API. |
+| P17.12 | medium (P2) | bug | confirmed | `crates/runa-media/src/video.rs:224` | `ffmpeg_sidecar::download::auto_download()` runs with no hash check. Prefer ffmpeg from `PATH`/mise; pin a hash if auto-download stays. |
+| P17.13 | medium (P2) | bug | confirmed | `crates/runa-pool/src/pool.rs:62-80`; `crates/runa-memory/src/memory.rs:187` | Library crates print to stderr, which an embedder (P16.2) cannot silence (issue #37 class). Use `tracing` or a callback. |
+| P17.16 | medium (P2) | dead code | confirmed | `crates/runa-kernels/c/{avx2,neon,scalar}.c`; `crates/runa-kernels/src/lib.rs:8` | The C kernels are "reference only" and nothing builds them; the Zig archive is what links. Move them to `docs/` or drop them. |
+| P17.17 | medium (P2) | dead code | confirmed | `crates/runa-fit/src/gguf.rs:241`; matched in `remote.rs:633` | `parse()` never constructs `ReadError::TensorTableTruncated`. Construct it on a truncated tensor table, or delete the variant. |
+| P17.18 | medium (P2) | dead code | confirmed | `report.html` (tracked, not ignored, not used by build or CI) | The reviewer suggests deleting or ignoring it; the Reference above lists it as a companion document, so decide whether to keep it. |
+| P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
+| P17.20 | medium (P2) | move | confirmed | `scripts/release.sh:1-40` → `pyrlyn/ci` | The script already dispatches `pyrlyn/ci` `bump.yml`. Keep a thin wrapper here or fold the rest into `pyrlyn/ci`. |
+
+Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
+
+- E1, licence files missing: not a bug. `LICENSE`, `LICENSE-ROYALTY-FREE.md` and `PRICING.md` are tracked, the workspace is `GPL-3.0-or-later` (`Cargo.toml`) and the README documents the three-licence model. Why the Cargo field names only the GPL is P17.1 (`done.md`).
+- E3, local `image_url` paths: fixed in P15.1 (`done.md`). `serve.rs:1381-1382` rejects anything but `data:` before any stat; test `image_url_rejects_local_paths_without_statting`.
+- E4, GGUF `n_dims` over-allocation and divide by zero: fixed. Capacity is capped (`gguf.rs:324-329`), alignment is checked (`:346-348`), `head_dim` uses `checked_div` (`descriptor.rs:138`), `tensor_bytes` uses `checked_mul` (`ggml_types.rs:87-89`).
+- E5, daemon unlinks a live socket: fixed in P15.1. `daemon.rs:196-215` connects first and unlinks only on `ConnectionRefused`/`NotFound`; test `second_daemon_does_not_unlink_a_live_socket`. The leftover race is P17.10.
+- E6, dead website link in the README: not a bug. `README.md:7` no longer links a Pages URL; the landing is `pyrlyn.github.io/landing` (HTTP 200 on 2026-10-08).
+- E8, config precedence for `[audio]`/`[memory]`: fixed in P15.1. CLI, then env, then files (`config.rs:495-520`); test `later_config_file_overrides_memory_and_audio`. Prices and partial `[memory]` tables are fixed in the PR #62 audit bundle (`done.md`).
+- P17.2, price-table later-wins: fixed in the PR #62 audit bundle (`done.md`).
+- P17.3, partial `[memory]` overlay: fixed in the PR #62 audit bundle (`done.md`).
+- P17.4, `USERPROFILE` when `HOME` is unset: fixed in the PR #62 audit bundle (`done.md`).
+- P17.5, Whisper download cap and SHA-256 pins: fixed in the PR #62 audit bundle (`done.md`).
+- P17.6, empty `parakeet` feature: removed; `transcribe_parakeet` says "not available yet" (`done.md`).
+- P17.9, panic text in `error.message`: fixed. `catch_panic` returns `"internal error"` and logs the panic (`done.md`).
+- P17.14, `runa-core` docs advertised a `Backend` trait: crate docs now name `BackendKind` (`done.md`).
+- P17.15, unused `raw-cpuid` and `rayon` on the CLI crate: removed (`done.md`).
+- E15, wrong origin / dirty checkout: not a bug. `origin` is `pyrlyn/runa` and the checkout is `main`.
+- E22, move `theme.js` to the brand repo: not a bug. There is no `site/` tree.
+- E23, streaming collect-then-replay: fixed in P16.1 (`done.md`). `serve.rs:620-626` streams through `generate_stream_on`; test `first_token_reaches_the_client_before_generation_ends`.
+- P17.8, non-loopback `serve` without a key: fixed (`done.md`). A non-loopback `--host` is refused unless `--api-key` is set; `/v1` then requires `Authorization: Bearer`. `/health` stays open.
+- P17.1, Cargo `license` vs the three README licences: documented (`done.md`). The field stays `GPL-3.0-or-later` because crates.io accepts only SPDX License List identifiers and rejects `LicenseRef-*`.
+
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Muse Spark |
-| P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
@@ -21,12 +59,6 @@ glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
-
-### P14.3. Add fast testing
-
-Plan: add a fast test path for local development and PR checks.
-
-Machine check: TBD.
 
 ### P14.4. Add web dashboard
 

@@ -1213,6 +1213,16 @@ Check (evidence): `cargo fmt --check` OK; `python3 scripts/lint-tasks.py docs/ta
 
 Check (evidence): `bash -n scripts/test-with-fixture-cleanup.sh` OK; the dunnage step run on its own exits 0 without `target/`, and `dunnage run --dry-run target` plans work on a real target.
 
+### P14.3. Add fast testing
+
+Completed 2026-10-07 (Grok 4.7 P14.3).
+
+`moon run root:test-fast` runs `scripts/test-fast.sh`: `cargo test --workspace --lib`, then the weight-free integration tests `runa-fit` (`gguf`, `fuzz_regressions`), `runa-cloud` (`openai`), and `runa-pool` (`embed`). It does not download GGUF weights and does not run engine or serve e2e. `moon run :test` still runs each crate's full `cargo test` (integration tests included). `moon run root:test-with-cleanup` still runs `cargo test --workspace` and then drops downloaded weights. CI jobs are unchanged; the existing `cargo test --workspace --lib` step notes the local command.
+
+`cargo test -p runa --bin runa` stays on the full gate. The package has no library target, and `second_daemon_does_not_unlink_a_live_socket` failed here (107 passed, 1 failed) because overlayfs reused the socket inode `(39, 2228234)`.
+
+Check (evidence): `python3 scripts/lint-tasks.py docs/tasks.md` → `0 error(s)` while the claim was in progress. `moon run root:test-fast` (moon 2.5.4) → exit 0 in 2.8s warm: lib 263 passed (cloud 37, core 35, engine 51, fit 82, kernels 9, media 25, memory 18, pool 6) and integration 22 passed (fuzz_regressions 1, gguf 14, openai 4, embed 3); 0 failed.
+
 ### P15.1. Fix the 2026-10-01 QA audit findings
 
 The find-only audit (PR 26) lists 20 confirmed bugs. Fix all of them
@@ -1283,12 +1293,47 @@ library.
 
 Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_placer`, `generate_on`, `generate_stream_on`); `cargo test -p runa-pool` 6 unit + 3 integration (`tests/embed.rs`) passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa --test e2e -- --test-threads=1 serve_ daemon` 7 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean; `cargo check -p runa --features mistralrs` passed. The nightly fuzz crate was not built.
 
-## P17. Audit follow-ups
+## P17. Cloud review findings
 
-### P17.1. Fix 2026-10-08 roadmap audit findings
+### P17.8. Refuse a non-loopback `runa serve` bind without `--api-key`
 
-Completed 2026-10-08 (Cursor Grok 4.6). Land the confirmed, still-open
-audit items without the large architecture splits.
+Completed 2026-10-09 (Cursor Grok 4.7).
+
+`runa serve` binds `127.0.0.1` by default and had no auth on `/v1`, so
+`--host 0.0.0.0` (or any other non-loopback address) exposed completions,
+embeddings and transcriptions. The command now refuses that bind unless
+`--api-key` is set. With a key, every `/v1` route requires
+`Authorization: Bearer <key>` and answers HTTP 401 `invalid api key`
+otherwise. `/health` stays open. Loopback (`127.0.0.0/8`, `::1`, and
+IPv4-mapped loopback) still starts with no key. There is no `runa.toml`
+key for this token.
+
+Check (evidence): `cargo test -p runa --bin runa -- require_bind_auth` 1 passed; `cargo test -p runa --bin runa -- api_key_gates` 1 passed; `cargo test -p runa --test security --test trycmd` 5 passed; `cargo clippy --workspace -- -D warnings` and `cargo clippy -p runa --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held. `cargo test -p runa --bin runa` 109 passed. `second_daemon_does_not_unlink_a_live_socket` failed on this overlayfs checkout (the same socket inode is reused) and does not touch serve auth.
+
+### P17.1. Licensing metadata: Cargo SPDX field vs the three-licence README
+
+Completed 2026-10-09 (Cursor Grok 4.7).
+
+The workspace `license` is `GPL-3.0-or-later` while the README offers GPL, a
+royalty-free licence, and a commercial licence. crates.io accepts only SPDX
+License List identifiers in `license` and rejects `LicenseRef-*`, so the other
+two terms cannot be named there. `license` and `license-file` cannot be set
+together; replacing the SPDX identifier would hide the GPL from license
+scanners. The field stays the open-source choice. A comment in `Cargo.toml`
+says so, the README license section (outside the `license-sync` markers)
+explains it, and `docs/getting-started.md` plus the Russian and Ukrainian
+translations say the same. Those two translations had said `MIT OR Apache-2.0`;
+they now match the English note. `crates/runa-core` test
+`cargo_license_is_spdx_gpl_and_readme_explains_the_other_two` locks the field
+and the explanation.
+
+Check (evidence): `cargo test -p runa-core --lib cargo_license_is_spdx_gpl` 1 passed; `cargo test --workspace --lib` passed (runa-core 36, runa-cloud 37, runa-engine 51, runa-fit 82, runa-kernels 9, runa-media 25, runa-memory 18, runa-pool 6); `cargo clippy --workspace -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held.
+
+### Audit bundle. 2026-10-08 review fixes
+
+Completed 2026-10-08 (Cursor Grok 4.6), merged with `main` on 2026-10-09.
+Land the confirmed, still-open audit items without the large architecture
+splits. This bundle is not P17.1: that id is the licence note above.
 
 - Moon CI no longer `|| echo`s success. `moon ci --affected
   --remote=false` is invalid on moon 2.5.4 and used to fail instantly
@@ -1298,19 +1343,21 @@ audit items without the large architecture splits.
   remains the test gate.
 - Workflows get `permissions: contents: read`.
 - `prices.toml` later-wins overlay (user file after shipped
-  `docs/prices.toml`; models not named stay).
-- `[memory]` later files overlay only the keys they set.
-- Home paths use `$HOME` then `$USERPROFILE` (Windows).
+  `docs/prices.toml`; models not named stay). Closes P17.2.
+- `[memory]` later files overlay only the keys they set. Closes P17.3.
+- Home paths use `$HOME` then `$USERPROFILE` (Windows). Closes P17.4.
 - Whisper `base` / `large-v3-turbo` pinned by SHA-256 + size (HF
   `x-linked-etag` / `x-linked-size`, 2026-10-08); downloads size-capped;
   Silero VAD optional with a cap only (Hub path 404s; no invented hash).
+  Closes P17.5.
 - Parakeet stub says "not available yet"; empty `parakeet` feature
-  removed.
+  removed. Closes P17.6.
 - Sidecar write failures log a warning; `docs_lint` man pages go to a
-  tempdir; serve/engine panics answer generic `"internal error"`;
-  `MemoryManager` recovers poisoned mutexes.
+  tempdir; serve/engine panics answer generic `"internal error"`
+  (P17.9); `MemoryManager` recovers poisoned mutexes.
 - Unused `raw-cpuid` / `rayon` dropped from the CLI crate and lockfile.
-- `runa-core` crate docs no longer claim a `Backend` trait.
+  Closes P17.15.
+- `runa-core` crate docs no longer claim a `Backend` trait. Closes P17.14.
 
 Check (evidence): `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors
 (P14.2 stale-claim warning only); `cargo test -p runa-cloud --lib` 39

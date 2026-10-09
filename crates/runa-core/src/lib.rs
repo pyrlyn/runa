@@ -29,3 +29,7 @@ pub struct ToolCall {
     /// Arguments as JSON text.
     pub arguments: String,
 }
+
+/// P17.1: Cargo `license` stays the SPDX GPL id; the README explains the rest.
+#[cfg(test)]
+mod license_meta;
