@@ -45,7 +45,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
-| P14.2 | in progress | high | S | ready | Muse Spark |
+| P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 
 ## Tasks
 
