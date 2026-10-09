@@ -45,11 +45,25 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.1 | in progress | high | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
+
+### P17.1. Licensing metadata: Cargo SPDX field vs the three-licence README
+
+Plan: keep `license = "GPL-3.0-or-later"`. crates.io accepts only SPDX
+License List identifiers in `license` and rejects `LicenseRef-*`. The
+royalty-free and commercial terms are not SPDX ids, and `license-file`
+cannot be set beside `license` (that would hide the GPL id from scanners).
+Document that in a `Cargo.toml` comment and in the README license section
+(outside the `license-sync` markers), and mirror it in
+`docs/getting-started.md` plus `docs/ru` and `docs/uk`. A test locks the
+field and the README explanation.
+
+Machine check: `cargo test -p runa --test license`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
