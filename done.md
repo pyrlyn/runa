@@ -1299,3 +1299,22 @@ IPv4-mapped loopback) still starts with no key. There is no `runa.toml`
 key for this token.
 
 Check (evidence): `cargo test -p runa --bin runa -- require_bind_auth` 1 passed; `cargo test -p runa --bin runa -- api_key_gates` 1 passed; `cargo test -p runa --test security --test trycmd` 5 passed; `cargo clippy --workspace -- -D warnings` and `cargo clippy -p runa --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held. `cargo test -p runa --bin runa` 109 passed. `second_daemon_does_not_unlink_a_live_socket` failed on this overlayfs checkout (the same socket inode is reused) and does not touch serve auth.
+
+### P17.1. Licensing metadata: Cargo SPDX field vs the three-licence README
+
+Completed 2026-10-09 (Cursor Grok 4.7).
+
+The workspace `license` is `GPL-3.0-or-later` while the README offers GPL, a
+royalty-free licence, and a commercial licence. crates.io accepts only SPDX
+License List identifiers in `license` and rejects `LicenseRef-*`, so the other
+two terms cannot be named there. `license` and `license-file` cannot be set
+together; replacing the SPDX identifier would hide the GPL from license
+scanners. The field stays the open-source choice. A comment in `Cargo.toml`
+says so, the README license section (outside the `license-sync` markers)
+explains it, and `docs/getting-started.md` plus the Russian and Ukrainian
+translations say the same. Those two translations had said `MIT OR Apache-2.0`;
+they now match the English note. `crates/runa-core` test
+`cargo_license_is_spdx_gpl_and_readme_explains_the_other_two` locks the field
+and the explanation.
+
+Check (evidence): `cargo test -p runa-core --lib cargo_license_is_spdx_gpl` 1 passed; `cargo test --workspace --lib` passed (runa-core 36, runa-cloud 37, runa-engine 51, runa-fit 82, runa-kernels 9, runa-media 25, runa-memory 18, runa-pool 6); `cargo clippy --workspace -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held.

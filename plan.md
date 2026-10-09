@@ -10,7 +10,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 
 | ID | Priority | Kind | Status | Where | Fix |
 | --- | --- | --- | --- | --- | --- |
-| P17.1 | high (P1) | bug | suspected | `Cargo.toml:22`; `README.md:171-182` | Licensing metadata: the workspace `license` is only `GPL-3.0-or-later`, while the README offers three licences (GPL, royalty-free, commercial), so crates.io will show GPL only. Align the Cargo `license` field with the README's three-licence model, or document why they differ. Raised from P2 to P1 by the creator, 2026-10-08. |
 | P17.2 | high (P1) | bug | confirmed | `crates/runa-cloud/src/prices.rs:43-50`, `:117-125` | The price table loads the first readable file, and `cwd/docs/prices.toml` comes before `~/.config/runa/prices.toml`, although the docstring (`:5`) says the user file wins. Use the `config_paths()` later-wins order and add a test. |
 | P17.3 | high (P1) | bug | confirmed | `crates/runa/src/config.rs:531-532`, `:563-579` | A later `[memory]` table resets the keys it does not set: user `idle_timeout_s = 111` plus project `floor_mib = 50` gives idle 300. Merge onto the accumulator; add a partial-table test. |
 | P17.4 | high (P1) | bug | confirmed | `crates/runa/src/config.rs:86`; `crates/runa/src/pull.rs:38`; `crates/runa-media/src/asr.rs:75`; `crates/runa/src/daemon.rs:343` | Config and data paths use `HOME` only, on a Tier 2 Windows target (D13). Use `USERPROFILE`/`LOCALAPPDATA`, like `cache_root` (`crates/runa-fit/src/remote.rs:157-161`). |
@@ -32,7 +31,7 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 
 Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
 
-- E1, licence files missing: not a bug. `LICENSE`, `LICENSE-ROYALTY-FREE.md` and `PRICING.md` are tracked, the workspace is `GPL-3.0-or-later` (`Cargo.toml:22`) and the README documents the three-licence model. The remaining SPDX mismatch is P17.1.
+- E1, licence files missing: not a bug. `LICENSE`, `LICENSE-ROYALTY-FREE.md` and `PRICING.md` are tracked, the workspace is `GPL-3.0-or-later` (`Cargo.toml`) and the README documents the three-licence model. Why the Cargo field names only the GPL is P17.1 (`done.md`).
 - E3, local `image_url` paths: fixed in P15.1 (`done.md`). `serve.rs:1381-1382` rejects anything but `data:` before any stat; test `image_url_rejects_local_paths_without_statting`.
 - E4, GGUF `n_dims` over-allocation and divide by zero: fixed. Capacity is capped (`gguf.rs:324-329`), alignment is checked (`:346-348`), `head_dim` uses `checked_div` (`descriptor.rs:138`), `tensor_bytes` uses `checked_mul` (`ggml_types.rs:87-89`).
 - E5, daemon unlinks a live socket: fixed in P15.1. `daemon.rs:196-215` connects first and unlinks only on `ConnectionRefused`/`NotFound`; test `second_daemon_does_not_unlink_a_live_socket`. The leftover race is P17.10.
@@ -42,28 +41,15 @@ Stale review items, closed and not added. The review checked the older roadmap l
 - E22, move `theme.js` to the brand repo: not a bug. There is no `site/` tree.
 - E23, streaming collect-then-replay: fixed in P16.1 (`done.md`). `serve.rs:620-626` streams through `generate_stream_on`; test `first_token_reaches_the_client_before_generation_ends`.
 - P17.8, non-loopback `serve` without a key: fixed (`done.md`). A non-loopback `--host` is refused unless `--api-key` is set; `/v1` then requires `Authorization: Bearer`. `/health` stays open.
+- P17.1, Cargo `license` vs the three README licences: documented (`done.md`). The field stays `GPL-3.0-or-later` because crates.io accepts only SPDX License List identifiers and rejects `LicenseRef-*`.
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
-| P17.1 | in progress | high | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
 
 ## Tasks
-
-### P17.1. Licensing metadata: Cargo SPDX field vs the three-licence README
-
-Plan: keep `license = "GPL-3.0-or-later"`. crates.io accepts only SPDX
-License List identifiers in `license` and rejects `LicenseRef-*`. The
-royalty-free and commercial terms are not SPDX ids, and `license-file`
-cannot be set beside `license` (that would hide the GPL id from scanners).
-Document that in a `Cargo.toml` comment and in the README license section
-(outside the `license-sync` markers), and mirror it in
-`docs/getting-started.md` plus `docs/ru` and `docs/uk`. A test locks the
-field and the README explanation.
-
-Machine check: `cargo test -p runa-core --lib cargo_license_is_spdx_gpl`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
