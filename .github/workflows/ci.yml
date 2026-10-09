@@ -11,6 +11,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # P14.1: CI runs on push/merge to main and on ready (non-draft) PRs to main.
 # Draft PRs are skipped; `review` runs only via the `/review` comment workflow.
 # Releases go through `bump.yml` (Actions -> Bump and release: a version PR this CI gates).
@@ -259,20 +262,13 @@ jobs:
         uses: jdx/mise-action@v2
         with:
           install: true
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # v1: drop caches with whisper's ggml built GGML_NATIVE=ON (SIGILL)
-          prefix-key: v1-rust
-          shared-key: moon
       - name: moon projects (graph check, K1)
         run: moon projects
-      - name: moon ci --affected (K5, parallel cached)
-        # On a docs-only change, affected set is (almost) nothing — the check
-        # is that `moon ci` correctly skips. Direct-cargo jobs above remain the
-        # reference; moon is the cached parallel path.
-        run: >-
-          moon ci --affected --remote=false || moon run :test --affected --remote=false || echo "moon ci: no affected projects (docs-only), ok"
       - name: registry lint (K-aware)
+        # P17.1: do not `|| echo`. `moon run` diffs against `main`, which a
+        # shallow PR checkout does not have. Full `moon ci` exceeded the
+        # 5 min P11.9 budget (cancelled at 5m17s). Direct-cargo jobs above
+        # remain the test gate.
         run: python3 scripts/lint-tasks.py docs/tasks.md
 
   # Separate job so the branch protection rule can require a single `ci` check

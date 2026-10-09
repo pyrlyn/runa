@@ -4,7 +4,7 @@
 
 //! Adaptive memory manager (plan D17, P7.1).
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 /// Idle / normal / heavy load state (plan §5).
@@ -188,8 +188,8 @@ impl MemoryManager {
     }
 
     pub fn current_usage(&self) -> Usage {
-        let rss = self.backend.lock().unwrap().rss_mib();
-        let state = *self.state.lock().unwrap();
+        let rss = lock(&self.backend).rss_mib();
+        let state = *lock(&self.state);
         Usage {
             rss_mib: rss,
             budget_mib: self.ceiling_mib(rss),
@@ -199,30 +199,27 @@ impl MemoryManager {
 
     /// Record a request/job so idle shrink waits a full `idle_timeout_s`.
     pub fn touch(&self) {
-        *self.last_activity.lock().unwrap() = Instant::now();
+        *lock(&self.last_activity) = Instant::now();
     }
 
     /// Shrink if nothing has `touch`ed for `idle_timeout_s` (P7.2).
     pub fn maybe_idle(&self) {
-        let elapsed = self.last_activity.lock().unwrap().elapsed();
+        let elapsed = lock(&self.last_activity).elapsed();
         if elapsed.as_secs() >= self.policy.idle_timeout_s {
             self.on_idle();
         }
     }
 
     pub fn on_idle(&self) {
-        let before = self.backend.lock().unwrap().rss_mib();
-        self.backend
-            .lock()
-            .unwrap()
-            .shrink_to(self.policy.floor_mib);
-        let after = self.backend.lock().unwrap().rss_mib();
+        let before = lock(&self.backend).rss_mib();
+        lock(&self.backend).shrink_to(self.policy.floor_mib);
+        let after = lock(&self.backend).rss_mib();
         if before != after {
             self.log_transition("on_idle", before, after);
         }
-        *self.state.lock().unwrap() = LoadState::Idle;
-        *self.granted_growth_mib.lock().unwrap() = 0;
-        *self.last_activity.lock().unwrap() = Instant::now();
+        *lock(&self.state) = LoadState::Idle;
+        *lock(&self.granted_growth_mib) = 0;
+        *lock(&self.last_activity) = Instant::now();
     }
 
     pub fn on_heavy(&self, demand_mib: u64) {
@@ -230,22 +227,19 @@ impl MemoryManager {
     }
 
     pub fn shrink_to_floor(&self) {
-        let before = self.backend.lock().unwrap().rss_mib();
-        self.backend
-            .lock()
-            .unwrap()
-            .shrink_to(self.policy.floor_mib);
-        let after = self.backend.lock().unwrap().rss_mib();
+        let before = lock(&self.backend).rss_mib();
+        lock(&self.backend).shrink_to(self.policy.floor_mib);
+        let after = lock(&self.backend).rss_mib();
         if before != after {
             self.log_transition("shrink_to_floor", before, after);
         }
-        *self.state.lock().unwrap() = LoadState::Idle;
-        *self.granted_growth_mib.lock().unwrap() = 0;
+        *lock(&self.state) = LoadState::Idle;
+        *lock(&self.granted_growth_mib) = 0;
     }
 
     pub fn grow_for(&self, demand_mib: u64) -> Result<(), MemoryError> {
         self.touch();
-        let current = self.backend.lock().unwrap().rss_mib();
+        let current = lock(&self.backend).rss_mib();
         let ceiling = self.ceiling_mib(current);
         if current.saturating_add(demand_mib) > ceiling {
             return Err(MemoryError::OverCeiling {
@@ -255,12 +249,16 @@ impl MemoryManager {
             });
         }
         let before = current;
-        let after = self.backend.lock().unwrap().grow(demand_mib);
+        let after = lock(&self.backend).grow(demand_mib);
         self.log_transition("grow_for", before, after);
-        *self.granted_growth_mib.lock().unwrap() += demand_mib;
-        *self.state.lock().unwrap() = LoadState::Heavy;
+        *lock(&self.granted_growth_mib) += demand_mib;
+        *lock(&self.state) = LoadState::Heavy;
         Ok(())
     }
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn over_ceiling_suggestion() -> String {

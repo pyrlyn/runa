@@ -235,7 +235,7 @@ Upstream whisper.cpp ушёл вперёд (v1.8.4 … v1.8.7, затем v1.9.x
 
 | Крейт | Задача плана |
 |-------|-----------|
-| `sherpa-onnx` (Parakeet; официальный Rust-биндинг — **не** `sherpa-rs`, архивирован 2026-06) | P4.2 |
+| `sherpa-onnx` (Parakeet; официальный Rust-биндинг — **не** `sherpa-rs`, архивирован 2026-06). Пустая cargo-фича `parakeet` удалена; `transcribe_parakeet` возвращает «not available yet», пока отдельная задача не подключит крейт. | P4.2 |
 | `ffmpeg-sidecar` | P4.5 |
 | `hf-hub` | P2.4 |
 | `axum` | P3.9 |

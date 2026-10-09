@@ -234,7 +234,7 @@ Anthropic — це наш власний клієнт на `reqwest` + SSE (D9) 
 
 | Крейт | Задача плану |
 |-------|-----------|
-| `sherpa-onnx` (Parakeet; офіційна прив'язка до Rust — **не** `sherpa-rs`, архівований 2026-06) | P4.2 |
+| `sherpa-onnx` (Parakeet; офіційна прив'язка до Rust — **не** `sherpa-rs`, архівований 2026-06). Порожню cargo-фічу `parakeet` прибрано; `transcribe_parakeet` повертає «not available yet», доки окрема задача не підключить крейт. | P4.2 |
 | `ffmpeg-sidecar` | P4.5 |
 | `hf-hub` | P2.4 |
 | `axum` | P3.9 |

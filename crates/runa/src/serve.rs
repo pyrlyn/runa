@@ -1984,6 +1984,15 @@ mod tests {
     }
 
     #[test]
+    fn numeric_loopback_is_loopback_and_localhost_is_not() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("::1"));
+        assert!(!is_loopback_host("localhost"));
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("192.168.1.2"));
+    }
+
+    #[test]
     fn image_url_rejects_local_paths_without_statting() {
         let raw = r#"[{"role":"user","content":[{"type":"image_url","image_url":{"url":"/etc/hosts"}}]}]"#;
         let msgs: Vec<IncomingMessage> = serde_json::from_str(raw).unwrap();
