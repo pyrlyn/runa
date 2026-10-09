@@ -1282,3 +1282,20 @@ Machine check: a test outside the runa binary calls the pool through the
 library.
 
 Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_placer`, `generate_on`, `generate_stream_on`); `cargo test -p runa-pool` 6 unit + 3 integration (`tests/embed.rs`) passed; `cargo test -p runa --bin runa` 108 passed; `cargo test -p runa --test e2e -- --test-threads=1 serve_ daemon` 7 passed; `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean; `cargo check -p runa --features mistralrs` passed. The nightly fuzz crate was not built.
+
+## P17. Cloud review findings
+
+### P17.8. Refuse a non-loopback `runa serve` bind without `--api-key`
+
+Completed 2026-10-09 (Cursor Grok 4.7).
+
+`runa serve` binds `127.0.0.1` by default and had no auth on `/v1`, so
+`--host 0.0.0.0` (or any other non-loopback address) exposed completions,
+embeddings and transcriptions. The command now refuses that bind unless
+`--api-key` is set. With a key, every `/v1` route requires
+`Authorization: Bearer <key>` and answers HTTP 401 `invalid api key`
+otherwise. `/health` stays open. Loopback (`127.0.0.0/8`, `::1`, and
+IPv4-mapped loopback) still starts with no key. There is no `runa.toml`
+key for this token.
+
+Check (evidence): `cargo test -p runa --bin runa -- require_bind_auth` 1 passed; `cargo test -p runa --bin runa -- api_key_gates` 1 passed; `cargo test -p runa --test security --test trycmd` 5 passed; `cargo clippy --workspace -- -D warnings` and `cargo clippy -p runa --all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held. `cargo test -p runa --bin runa` 109 passed. `second_daemon_does_not_unlink_a_live_socket` failed on this overlayfs checkout (the same socket inode is reused) and does not touch serve auth.

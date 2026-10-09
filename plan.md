@@ -17,7 +17,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 | P17.5 | high (P1) | bug | confirmed | `crates/runa-media/src/asr.rs:274-294` | The Whisper model download has no size cap, so a bad redirect can fill the disk. Cap it like `pull.rs:108` (`MAX_MODEL_BYTES`) and fail closed; pin a sha256 per model file. |
 | P17.6 | high (P1) | dead code | confirmed | `crates/runa-media/Cargo.toml:11` (`parakeet = []`); `crates/runa-media/src/asr.rs:445-450`; re-export in `lib.rs:19` | The `parakeet` feature changes nothing and `transcribe_parakeet` always errors. Wire `sherpa-onnx`, or drop the feature and say "not available yet". |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
-| P17.8 | medium (P2) | bug | suspected | `crates/runa/src/main.rs:191-193`; no key check in `serve.rs` | `/v1` has no auth: the default bind is `127.0.0.1`, but `--host 0.0.0.0` exposes completions, embeddings and transcriptions. Refuse a non-loopback bind without `--api-key`. |
 | P17.9 | medium (P2) | bug | confirmed | `crates/runa/src/serve.rs:181-184` | `catch_panic` returns the panic text in `error.message`. Return a generic 500 and log the panic server-side. |
 | P17.10 | medium (P2) | bug | suspected | `crates/runa/src/daemon.rs:206-212` | After `ConnectionRefused`, `remove_file` then `bind` is not atomic, so two starters can still race (the live-daemon steal itself is fixed). Take a `flock` on a lock file first. |
 | P17.11 | medium (P2) | bug | suspected | `crates/runa-engine/src/generate.rs:859-866` | `add_close_bias` casts the shared slice from `get_logits_ith` to mutable and writes through it, which is UB unless the callee guarantees exclusive access. Use a mutable logits API. |
@@ -42,13 +41,13 @@ Stale review items, closed and not added. The review checked the older roadmap l
 - E15, wrong origin / dirty checkout: not a bug. `origin` is `pyrlyn/runa` and the checkout is `main`.
 - E22, move `theme.js` to the brand repo: not a bug. There is no `site/` tree.
 - E23, streaming collect-then-replay: fixed in P16.1 (`done.md`). `serve.rs:620-626` streams through `generate_stream_on`; test `first_token_reaches_the_client_before_generation_ends`.
+- P17.8, non-loopback `serve` without a key: fixed (`done.md`). A non-loopback `--host` is refused unless `--api-key` is set; `/v1` then requires `Authorization: Bearer`. `/health` stays open.
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
-| P17.8 | in progress | medium | S | ready | Cursor Grok 4.7 |
 
 ## Tasks
 
@@ -88,17 +87,6 @@ Plan: add a web dashboard showing, in real time, with graphs:
 Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
 
 Machine check: TBD.
-
-### P17.8. Refuse a non-loopback `runa serve` bind without `--api-key`
-
-Plan: `runa serve` binds `127.0.0.1` by default and has no auth on `/v1`.
-`--host 0.0.0.0` (and any other non-loopback address) must fail closed
-unless `--api-key` is set. When the key is set, every `/v1` route requires
-`Authorization: Bearer <key>`; `/health` stays open. Loopback (`127.0.0.0/8`,
-`::1`) keeps working without a key.
-
-Machine check: `cargo test -p runa --bin runa require_bind_auth api_key_gates`
-and `cargo test -p runa --test security --test trycmd`.
 
 ## Reference
 
