@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{DefaultBodyLimit, Multipart, Request, State};
 use axum::http::StatusCode;
@@ -26,16 +25,17 @@ use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
+use axum::Router;
 use base64::Engine;
-use futures::{FutureExt, Stream, stream};
+use futures::{stream, FutureExt, Stream};
 use runa_core::{BackendKind, Effort, ThinkConfig, ThinkOverrides};
 use runa_engine::{
     ChatMessage, GenEvent, GenerateRequest, LoadConfig, SamplingConfig, StopReason, ToolCall,
     VisionFrame, VisionSource,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
+use serde_json::{json, Value};
+use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
 
 use runa_memory::MemoryManager;
 use runa_pool::pool::{lock, panic_text};
@@ -48,6 +48,9 @@ pub(crate) struct ServeOpts {
     pub backend: BackendKind,
     pub host: String,
     pub port: u16,
+    /// When set, every `/v1` route requires `Authorization: Bearer <key>`.
+    /// Required for a non-loopback `--host` (P17.8).
+    pub api_key: Option<String>,
     pub mode: String,
     pub ctx: u32,
     pub parallel: usize,
@@ -63,6 +66,7 @@ pub(crate) struct ServeOpts {
 }
 
 pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
+    let api_key = require_bind_auth(&opts.host, opts.api_key.as_deref())?;
     crate::config::warn_if_over_system_limit(None, opts.threads, opts.max_load_percent)?;
     if opts.models.is_empty() {
         return Err("serve: need at least one model (positional or --models)".into());
@@ -87,6 +91,7 @@ pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
     rt.block_on(listen(
         &opts.host,
         opts.port,
+        api_key,
         opts.models,
         backend,
         placer,
@@ -97,10 +102,131 @@ pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
     ))
 }
 
+/// A numeric loopback address: `127.0.0.0/8`, `::1`, or an IPv4-mapped
+/// loopback. Hostnames are not treated as loopback.
+pub(crate) fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim();
+    let host = host
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .unwrap_or(host);
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => v4.is_loopback(),
+        Ok(std::net::IpAddr::V6(v6)) => {
+            v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
+        }
+        Err(_) => false,
+    }
+}
+
+/// Refuse a non-loopback bind that would expose `/v1` with no key.
+/// An empty `--api-key` is an error. The returned key is the one to enforce.
+pub(crate) fn require_bind_auth(
+    host: &str,
+    api_key: Option<&str>,
+) -> Result<Option<String>, String> {
+    let key = match api_key {
+        None => None,
+        Some(k) if k.trim().is_empty() => {
+            return Err("serve: --api-key must not be empty".into());
+        }
+        Some(k) => Some(k.to_owned()),
+    };
+    if key.is_none() && !is_loopback_host(host) {
+        return Err(format!(
+            "serve: refusing to bind {host}: a non-loopback address exposes /v1 without authentication. Pass --api-key, or bind 127.0.0.1 or ::1"
+        ));
+    }
+    Ok(key)
+}
+
+fn bind_addr(host: &str, port: u16) -> Result<SocketAddr, String> {
+    let host = host.trim();
+    let rendered = if host.starts_with('[') {
+        format!("{host}:{port}")
+    } else if host.parse::<std::net::Ipv6Addr>().is_ok() {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+    rendered
+        .parse()
+        .map_err(|e| format!("bind {host}:{port}: {e}"))
+}
+
+fn keys_equal(expected: &[u8], presented: &[u8]) -> bool {
+    let mut diff = expected.len() ^ presented.len();
+    let n = expected.len().max(presented.len());
+    for i in 0..n {
+        let a = expected.get(i).copied().unwrap_or(0);
+        let b = presented.get(i).copied().unwrap_or(0);
+        diff |= usize::from(a ^ b);
+    }
+    diff == 0
+}
+
+fn bearer_token(header: &str) -> Option<&str> {
+    let (scheme, rest) = header.trim().split_once(char::is_whitespace)?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    let token = rest.trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+fn unauthorized() -> Response {
+    let mut resp = (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "error": {
+                "message": "invalid api key",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key"
+            }
+        })),
+    )
+        .into_response();
+    resp.headers_mut().insert(
+        axum::http::header::WWW_AUTHENTICATE,
+        axum::http::HeaderValue::from_static("Bearer realm=\"runa\""),
+    );
+    resp
+}
+
+fn protect_v1(router: Router, api_key: Option<String>) -> Router {
+    let Some(expected) = api_key else {
+        return router;
+    };
+    let expected: Arc<str> = Arc::from(expected);
+    router.layer(middleware::from_fn(move |req: Request, next: Next| {
+        let expected = Arc::clone(&expected);
+        async move {
+            if !req.uri().path().starts_with("/v1/") {
+                return next.run(req).await;
+            }
+            let presented = req
+                .headers()
+                .get(axum::http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(bearer_token);
+            if presented.is_some_and(|token| keys_equal(expected.as_bytes(), token.as_bytes())) {
+                next.run(req).await
+            } else {
+                unauthorized()
+            }
+        }
+    }))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn listen(
     host: &str,
     port: u16,
+    api_key: Option<String>,
     models: Vec<(String, PathBuf)>,
     backend: BackendKind,
     placer: Placer,
@@ -162,9 +288,8 @@ async fn listen(
             async move { catch_panic(req, next, metrics).await }
         }))
         .with_state(state.clone());
-    let addr: SocketAddr = format!("{host}:{port}")
-        .parse()
-        .map_err(|e| format!("bind {host}:{port}: {e}"))?;
+    let app = protect_v1(app, api_key);
+    let addr = bind_addr(host, port)?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| format!("bind {addr}: {e}"))?;
@@ -228,11 +353,11 @@ async fn catch_panic(
         Ok(resp) => resp,
         Err(p) => {
             let trace = panic_text(&*p);
-            let msg = format!("internal error: {trace}");
-            metrics.record_error(&msg, &trace);
+            eprintln!("serve panic: {trace}");
+            metrics.record_error("internal error", &trace);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": {"message": msg, "type": "server_error"}})),
+                Json(json!({"error": {"message": "internal error", "type": "server_error"}})),
             )
                 .into_response()
         }
@@ -2116,5 +2241,98 @@ mod tests {
         let out = encode_all(AnthropicEncoder::new("m"), &events);
         // message_start, (block start, delta, stop) x2, message_delta, message_stop
         assert_eq!(out.len(), 9);
+    }
+
+    #[test]
+    fn require_bind_auth_allows_loopback_and_refuses_the_rest() {
+        for host in ["127.0.0.1", "127.0.0.2", "::1", "[::1]", "::ffff:127.0.0.1"] {
+            assert!(is_loopback_host(host), "{host}");
+            assert!(require_bind_auth(host, None).unwrap().is_none(), "{host}");
+        }
+        for host in ["0.0.0.0", "::", "[::]", "192.168.1.10", "localhost"] {
+            assert!(!is_loopback_host(host), "{host}");
+            let err = require_bind_auth(host, None).unwrap_err();
+            assert!(err.contains("--api-key"), "{host}: {err}");
+        }
+        let key = require_bind_auth("0.0.0.0", Some("sekret")).unwrap();
+        assert_eq!(key.as_deref(), Some("sekret"));
+        assert!(require_bind_auth("127.0.0.1", Some("  ")).is_err());
+        assert_eq!(bind_addr("::1", 8080).unwrap().port(), 8080);
+        assert!(bind_addr("[::1]", 9).unwrap().ip().is_loopback());
+        assert!(bind_addr("0.0.0.0", 1).unwrap().ip().is_unspecified());
+        assert!(keys_equal(b"sekret", b"sekret"));
+        assert!(!keys_equal(b"sekret", b"sekrut"));
+        assert!(!keys_equal(b"sekret", b"sek"));
+        assert_eq!(bearer_token("Bearer sekret"), Some("sekret"));
+        assert_eq!(bearer_token("bearer  sekret"), Some("sekret"));
+        assert!(bearer_token("Basic sekret").is_none());
+    }
+
+    #[test]
+    fn api_key_gates_v1_and_leaves_health_open() {
+        // Multi-thread runtime: the HTTP client below blocks, so the
+        // accept loop must run on a worker thread (a current-thread
+        // `tokio::test` deadlocks).
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let locked = Router::new()
+            .route("/health", get(|| async { "ok" }))
+            .route("/v1/models", get(|| async { "models" }))
+            .route("/v1/embeddings", post(|| async { "emb" }));
+        let locked = protect_v1(locked, Some("sekret".into()));
+        let addr = rt.block_on(spawn_router(locked));
+        assert_eq!(http_status(addr, "GET", "/health", None), 200);
+        assert_eq!(http_status(addr, "GET", "/v1/models", None), 401);
+        assert_eq!(http_status(addr, "GET", "/v1/models", Some("nope")), 401);
+        assert_eq!(http_status(addr, "GET", "/v1/models", Some("sekret")), 200);
+        assert_eq!(
+            http_status(addr, "POST", "/v1/embeddings", Some("sekret")),
+            200
+        );
+
+        let open = protect_v1(
+            Router::new().route("/v1/models", get(|| async { "models" })),
+            None,
+        );
+        let addr = rt.block_on(spawn_router(open));
+        assert_eq!(http_status(addr, "GET", "/v1/models", None), 200);
+    }
+
+    async fn spawn_router(app: Router) -> SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        addr
+    }
+
+    fn http_status(addr: SocketAddr, method: &str, path: &str, bearer: Option<&str>) -> u16 {
+        use std::io::{Read, Write};
+        let auth = bearer
+            .map(|token| format!("Authorization: Bearer {token}\r\n"))
+            .unwrap_or_default();
+        let req = format!(
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{auth}Content-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let mut last = String::new();
+        for _ in 0..50 {
+            match std::net::TcpStream::connect(addr) {
+                Ok(mut stream) => {
+                    stream
+                        .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                        .unwrap();
+                    stream.write_all(req.as_bytes()).unwrap();
+                    let _ = stream.read_to_string(&mut last);
+                    break;
+                }
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(10)),
+            }
+        }
+        // Do not format `last` or `path` into the panic: both can carry
+        // request or response bytes, and CodeQL treats that as log injection.
+        last.split_whitespace()
+            .nth(1)
+            .and_then(|code| code.parse().ok())
+            .unwrap_or_else(|| panic!("serve auth test: response had no HTTP status"))
     }
 }

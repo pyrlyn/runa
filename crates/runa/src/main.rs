@@ -195,6 +195,10 @@ enum Commands {
         /// Bind port. `0` picks an ephemeral port.
         #[arg(long, default_value_t = 8080)]
         port: u16,
+        /// Bearer token required on `/v1`. Required when `--host` is not
+        /// a loopback address (`127.0.0.0/8` or `::1`).
+        #[arg(long, value_name = "KEY")]
+        api_key: Option<String>,
         /// Compute mode: cpu | gpu | hybrid | auto.
         #[arg(long, default_value = "cpu")]
         mode: String,
@@ -443,6 +447,7 @@ fn main() {
             max_loaded,
             host,
             port,
+            api_key,
             mode,
             ctx,
             lora,
@@ -501,6 +506,7 @@ fn main() {
                         backend: requested,
                         host,
                         port,
+                        api_key,
                         mode,
                         ctx,
                         parallel,

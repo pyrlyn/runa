@@ -2,7 +2,8 @@
 
 Everything a reader needs beyond the root [`README.md`](../README.md): user
 guides, reference pages, engineering notes, and the task-claim registry.
-All prose in this repository is English (see [`../CONTRIBUTING.md`](../CONTRIBUTING.md)).
+All prose in this repository is English, except the translations in `docs/ru/` and
+`docs/uk/` (see [`../CONTRIBUTING.md`](../CONTRIBUTING.md)).
 
 | Audience | Start with |
 |----------|------------|
@@ -63,10 +64,11 @@ All prose in this repository is English (see [`../CONTRIBUTING.md`](../CONTRIBUT
 
 ## Adding or changing docs
 
-1. English prose. Document what the tree actually ships — no invented APIs,
+1. English prose; update the matching `docs/ru/` and `docs/uk/` translations in the
+   same change. Document what the tree actually ships — no invented APIs,
    flags, or config keys.
-2. One topic per file, with a one-line purpose in the H1 (the existing files
-   follow the `# <file> — <purpose>` pattern).
+2. One topic per file, with a short H1 title — no `docs/<file> —` prefix and
+   no plan codes; the H1 is the page title on the project site.
 3. Add the new file to this index **and** to the Docs table in
    [`../README.md`](../README.md) in the same change.
 4. A new or changed public method also needs a [`memory.md`](memory.md) entry

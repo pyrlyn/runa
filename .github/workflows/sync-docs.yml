@@ -1,19 +1,10 @@
-# Publishes this repo's docs/ to the public site repository pyrlyn/landing on its main branch; a
-# push there deploys https://pyrlyn.github.io/landing/ via GitHub Pages:
-#   - docs/site.md (the project card) -> content/projects/<this repo's name>.md; its front matter
-#     follows CONTENT_CONTRACT.md in pyrlyn/landing.
-#   - every other user-facing docs/**/*.md -> content/docs/<this repo's name>/ (internal pages
-#     are left out, see `internal` below; mirrored: files removed or left out here are removed
-#     there), plus _source.json with the source repo, commit and ref. The site renders
-#     them as /landing/<name>/docs/<page>/ and links other relative paths back to this repo at
-#     that commit. Page order and titles live in src/data/docs-nav.json in pyrlyn/landing.
-#
-# Auth is a write-enabled deploy key on pyrlyn/landing only; its private half is this repo's
-# SITE_DEPLOY_KEY secret. GITHUB_TOKEN stays read-only. This workflow is independent of the
-# pipeline gate and releases: it never builds, tests or deploys this repository.
-#
-# On a v* tag or release the card's `version:` front matter is set from the tag (v1.2.3 ->
-# "1.2.3"), so the site shows the released version even before docs/site.md is bumped on main.
+# Publishes this repo's docs/ to the public site repository pyrlyn/landing (pyrlyn/ci's
+# sync-docs.yml): docs/site.md becomes the project card, every other user-facing docs/**/*.md
+# goes to content/docs/runa/ (mirrored), and the ru/uk translations under docs/ru and docs/uk go
+# next to them (`locales`). Internal pages are left out by the shared filter plus
+# the list below. On a v* tag or release the card's `version:` is set from the tag. Auth: the
+# SITE_DEPLOY_KEY deploy key on pyrlyn/landing; GITHUB_TOKEN stays read-only.
+# Inputs: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
 name: sync-docs
 
 on:
@@ -22,15 +13,12 @@ on:
     # Path filters are not evaluated for tag pushes, so every v* tag syncs.
     paths: [docs/**, .github/workflows/sync-docs.yml]
     tags: ["v*"]
-  # A tag pushed with GITHUB_TOKEN triggers no workflow, so also sync when a release is published
-  # (its ref is the release tag, so the version below is set the same way); workflow_dispatch
-  # remains the manual fallback.
+  # A tag pushed with GITHUB_TOKEN triggers no workflow, so also sync when a release is published.
   release:
     types: [published]
   workflow_dispatch:
 
-# One sync at a time per source repo, never cancelled half-way; the push below fetches and
-# rebases (up to 5 attempts) when another repo's sync landed on pyrlyn/landing first.
+# One sync at a time per source repo, never cancelled half-way.
 concurrency:
   group: sync-docs
   cancel-in-progress: false
@@ -40,108 +28,22 @@ permissions:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: source
-          persist-credentials: false
-      - uses: actions/checkout@v7
-        with:
-          repository: pyrlyn/landing
-          ref: main
-          ssh-key: ${{ secrets.SITE_DEPLOY_KEY }}
-          path: site
-      - name: Copy docs/site.md into the site repository
-        env:
-          PROJECT: ${{ github.event.repository.name }}
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          dest="site/content/projects/${PROJECT}.md"
-          mkdir -p "$(dirname "$dest")"
-          cp source/docs/site.md "$dest"
-          if [ "$REF_TYPE" = "tag" ]; then
-            VERSION="${REF_NAME#v}" DEST="$dest" python3 - <<'PY'
-          import os, re
-          path, version = os.environ["DEST"], os.environ["VERSION"]
-          text = open(path, encoding="utf-8").read()
-          m = re.match(r"---\n(.*?\n)---\n", text, re.S)
-          if m:
-              fm = m.group(1)
-              line = f'version: "{version}"\n'
-              if re.search(r"^version:.*\n", fm, re.M):
-                  fm = re.sub(r"^version:.*\n", line, fm, count=1, flags=re.M)
-              else:
-                  fm += line
-              text = f"---\n{fm}---\n" + text[m.end():]
-              open(path, "w", encoding="utf-8").write(text)
-          PY
-          fi
-      - name: Mirror the other docs/**/*.md into the site repository
-        env:
-          PROJECT: ${{ github.event.repository.name }}
-          SOURCE: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.sha }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          dest="site/content/docs/${PROJECT}"
-          mkdir -p "$dest"
-          # Only user-facing docs are published. Internal pages stay in this repository and are
-          # left out here: research, QA audits, design notes and ADRs, proposals, plans and to-do,
-          # done and roadmap notes, agent instructions, maintainer runbooks and asset notes, plus
-          # this repository's own list (the last lines). The patterns carry no leading / so they
-          # match at any depth; --delete-excluded removes any copy already on the site.
-          internal=(
-            --exclude='research/' --exclude='research*.md'
-            --exclude='qa/' --exclude='*audit*.md'
-            --exclude='design/' --exclude='brand/' --exclude='assets/' --exclude='adr/' --exclude='notes/'
-            --exclude='proposals/' --exclude='*proposal*.md'
-            --exclude='plan*.md' --exclude='PLAN*.md' --exclude='todo*.md' --exclude='TODO*.md'
-            --exclude='next*.md' --exclude='done*.md' --exclude='roadmap*.md' --exclude='ideas.md'
-            --exclude='AGENTS.md' --exclude='CLAUDE.md' --exclude='agency.md'
-            --exclude='sonarcloud-setup.md' --exclude='release.md' --exclude='release-*.md'
-            --exclude='README.md' --exclude='tasks.md' --exclude='perf-nightly.md'
-            --exclude='baselines.md' --exclude='versions.md' --exclude='kernels.md'
-            --exclude='fit.md' --exclude='profiles.md' --exclude='memory.md'
-          )
-          rsync -a --delete --delete-excluded --prune-empty-dirs \
-            --exclude='/site.md' \
-            "${internal[@]}" \
-            --include='*/' --include='*.md' --exclude='*' \
-            source/docs/ "$dest/"
-          printf '{\n  "repo": "%s",\n  "sha": "%s",\n  "ref": "%s"\n}\n' \
-            "$SOURCE" "$SOURCE_SHA" "$REF_NAME" > "$dest/_source.json"
-      - name: Commit and push if changed
-        working-directory: site
-        env:
-          PROJECT: ${{ github.event.repository.name }}
-          SOURCE: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.sha }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          git add "content/projects/${PROJECT}.md" "content/docs/${PROJECT}"
-          # _source.json alone changes on every run; only commit when content changed.
-          if git diff --cached --quiet -- . ":(exclude)content/docs/${PROJECT}/_source.json"; then
-            echo "content/projects/${PROJECT}.md and content/docs/${PROJECT}/ are already up to date"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "content: sync ${PROJECT} from ${SOURCE}@${SOURCE_SHA:0:7} (${REF_NAME})"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "pushed $(git rev-parse HEAD) to pyrlyn/landing main"
-              exit 0
-            fi
-            echo "push rejected (attempt ${attempt}); rebasing onto the latest main"
-            sleep $((attempt * 3))
-            git fetch origin main
-            git rebase origin/main
-          done
-          echo "::error::could not push to pyrlyn/landing main after 5 attempts"
-          exit 1
+    uses: pyrlyn/ci/.github/workflows/sync-docs.yml@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+    permissions:
+      contents: read
+    with:
+      # ru and uk translations under docs/ru and docs/uk, published next to the English pages.
+      locales: ru uk
+      # Internal pages beyond the shared list.
+      extra-excludes: |
+        README.md
+        tasks.md
+        perf-nightly.md
+        baselines.md
+        versions.md
+        kernels.md
+        fit.md
+        profiles.md
+        memory.md
+    secrets:
+      SITE_DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}

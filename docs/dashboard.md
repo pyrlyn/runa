@@ -1,4 +1,4 @@
-# dashboard.md — serve live dashboard
+# Serve live dashboard
 
 `runa serve` hosts a local dashboard on the same host and port as the API.
 Open `http://<host>:<port>/dashboard`. The page is the built React app
@@ -14,7 +14,8 @@ the server does not send them anywhere else.
 | `GET /dashboard/ws` | WebSocket. A text frame with the same JSON about every 1s, and again when a request starts, waits, finishes, or fails |
 
 The UI loads `/dashboard/snapshot` once (TanStack Query), then applies each
-websocket frame on top of that cache.
+websocket frame on top of that cache. `--api-key` covers `/v1` only.
+`/dashboard` stays open on the same bind so a browser can load the page.
 
 ## Quotas
 

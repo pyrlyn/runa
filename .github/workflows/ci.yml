@@ -30,7 +30,7 @@ jobs:
       docs-only: ${{ steps.config.outputs.docs-only }}
     steps:
       - id: config
-        uses: pyrlyn/ci/.github/actions/config@f880dee803f157cd4268a503418b4ecaf4da7078 # main
+        uses: pyrlyn/ci/.github/actions/config@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
 
   ci:
     name: ${{ matrix.os }} (${{ matrix.target }})
@@ -149,6 +149,9 @@ jobs:
         # `llama-cpp-2`/`encoding_rs` wiring still in progress) are not
         # compiled as part of the test step — they are exercised separately
         # via `cargo build --workspace` and the P0.4 spike.
+        # P14.3: this step is the library half of the local fast path
+        # `moon run root:test-fast`. Fixture download and serve e2e below
+        # stay required; that command does not replace them.
         run: cargo test --workspace --lib
 
       - name: fetch qwen2 fixture (P0.7, git-ignored weights)
@@ -289,6 +292,6 @@ jobs:
     steps:
       # The shared action skips new branches, bot and earlier auto-revert commits and pushes
       # touching .github/ (GITHUB_TOKEN cannot push workflow files). No re-apply PR, as before.
-      - uses: pyrlyn/ci/.github/actions/revert-on-failure@0603d0ae610af9f792c5caf925041292a857e480
+      - uses: pyrlyn/ci/.github/actions/revert-on-failure@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
         with:
           reapply-pr: "false"

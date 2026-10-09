@@ -1,5 +1,6 @@
 # GPU feature variants (P6.3). cargo-dist ships portable CPU archives;
 # this workflow adds Metal / Vulkan / CUDA binaries to the same GitHub Release.
+# Built with the same `dist` profile as cargo-dist's archives (Cargo.toml).
 #
 # CUDA needs the NVIDIA toolkit on the runner. Vulkan needs libvulkan-dev.
 
@@ -39,12 +40,12 @@ jobs:
           prefix-key: v1-rust
           shared-key: release-macos-metal
       - name: Build Metal variant
-        run: cargo build --release -p runa --features metal
+        run: cargo build --profile dist -p runa --features metal
       - name: Pack
         run: |
           set -euo pipefail
           mkdir -p dist-variant
-          cp target/release/runa dist-variant/runa
+          cp target/dist/runa dist-variant/runa
           tar -C dist-variant -cJf "runa-aarch64-apple-darwin-metal.tar.xz" runa
       - name: Wait for GitHub Release then upload
         run: |
@@ -99,12 +100,12 @@ jobs:
           prefix-key: v1-rust
           shared-key: release-linux-vulkan
       - name: Build Vulkan variant
-        run: cargo build --release -p runa --features vulkan
+        run: cargo build --profile dist -p runa --features vulkan
       - name: Pack
         run: |
           set -euo pipefail
           mkdir -p dist-variant
-          cp target/release/runa dist-variant/runa
+          cp target/dist/runa dist-variant/runa
           tar -C dist-variant -cJf "runa-x86_64-unknown-linux-gnu-vulkan.tar.xz" runa
       - name: Wait for GitHub Release then upload
         run: |
@@ -143,12 +144,12 @@ jobs:
           prefix-key: v1-rust
           shared-key: release-linux-cuda
       - name: Build CUDA variant
-        run: cargo build --release -p runa --features cuda
+        run: cargo build --profile dist -p runa --features cuda
       - name: Pack
         run: |
           set -euo pipefail
           mkdir -p dist-variant
-          cp target/release/runa dist-variant/runa
+          cp target/dist/runa dist-variant/runa
           tar -C dist-variant -cJf "runa-x86_64-unknown-linux-gnu-cuda.tar.xz" runa
       - name: Wait for GitHub Release then upload
         run: |

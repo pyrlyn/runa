@@ -1,3 +1,6 @@
+> [!NOTE]
+> This project is under active development. We need "testing volunteers": try it and report what breaks.
+
 # runa
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=listepo_runa) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=listepo_runa&metric=coverage)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=coverage) [![Tests](https://img.shields.io/sonar/tests/listepo_runa?server=https%3A%2F%2Fsonarcloud.io&compact_message)](https://sonarcloud.io/component_measures?id=listepo_runa&metric=tests)
@@ -147,10 +150,14 @@ Toolchain: `rust-toolchain.toml` + `mise.toml` (see
 
 ```sh
 mise install                      # toolchain from mise.toml
-moon run :test                    # cargo test across the workspace
+moon run root:test-fast           # library tests plus weight-free integration tests
+moon run :test                    # cargo test per crate, including integration tests
 moon run root:lint-tasks          # registry lint over docs/tasks.md
-moon run root:test-with-cleanup   # full test, then drop downloaded weights and compact target/
+moon run root:test-with-cleanup   # full workspace test, then drop downloaded weights and compact target/
 ```
+
+`moon run root:test-fast` skips GGUF downloads and engine e2e (serve, generate,
+bench). `moon run :test` and `moon run root:test-with-cleanup` stay the full gate.
 
 CI: `cargo fmt --check`, `clippy -D warnings`, build + test on macOS / Linux /
 Windows, registry lint, fixture-size guard. Read
@@ -181,3 +188,12 @@ You can use this project under **any** of the following licenses, at your choice
 Commercial use not covered by the GPLv3 or the Royalty-free License requires a separate paid
 license — see [PRICING.md](PRICING.md).
 <!-- license-sync:end -->
+
+The `license` field in `Cargo.toml` (`[workspace.package]`) stays
+`GPL-3.0-or-later`. Of the three choices above, only the GPL has an identifier
+on the SPDX License List. crates.io accepts only those identifiers in `license`
+and rejects `LicenseRef-*` custom names, so the royalty-free and commercial
+terms cannot be written there. `license` and `license-file` cannot be set
+together; replacing the SPDX identifier with `license-file` would hide the GPL
+from license scanners. The field is the open-source choice. This section is
+the choice among all three.

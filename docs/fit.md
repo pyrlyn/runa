@@ -1,4 +1,4 @@
-# docs/fit.md — fit-checker internals
+# Fit checker internals
 
 Formulas, estimators and calibration for `runa fit` (plan P1, decisions
 D5/D6). Estimator sections land with their tasks (P1.5 compute buffer,

@@ -8,32 +8,27 @@ version: 1
 # `config` job reads the same verdict and turns the build/test matrix into no-ops (the required
 # `<os> (<target>)` checks still report), while `moon pipeline` still runs the registry lint
 # (docs/tasks.md, AGENTS.md). Documentation = any *.md except Markdown that is code or test
-# input: crates/, tests/, fuzz/, docs/config.md and docs/memory.md (asserted on by unit tests),
-# README.md and CHANGELOG.md (release). Anything else (.github/, mise.toml, a non-.md file) runs
-# the full CI.
+# input: crates/, tests/, fuzz/, docs/config.md and docs/memory.md (asserted on by unit tests).
+# README.md and CHANGELOG.md (release) are excluded by pyrlyn/ci's default `base-exclude`.
+# Anything else (.github/, mise.toml, a non-.md file) runs the full CI.
 docs-only:
   enabled: true
   exclude:
     - '^(crates|tests|fuzz)/'
     - '^docs/(config|memory)\.md$'
-    - '^(README|CHANGELOG)\.md$'
 
 codeql:
   # C/C++ is the vendored ggml-rpc and the first-party kernels; Python and JS are repo scripts.
   languages: [actions, c-cpp, javascript-typescript, python, rust]
 
 sonarcloud:
-  enabled: true
-  events: [push, pull_request, workflow_dispatch] # as the former sonarcloud.yml
+  enabled: true # push, pull_request and workflow_dispatch (pyrlyn/ci's default events)
   rust: true # llvm-tools-preview, cargo-llvm-cov
   coverage-command: cargo llvm-cov --workspace --lib --lcov --output-path coverage/lcov.info
 
-# Snyk is switched off (flag; SNYK_TOKEN stays): the snyk job is skipped and the gate counts it
-# as passed. `enabled: true` turns it back on.
-snyk:
-  enabled: false
+# License files against pyrlyn/ci's canonical ones (replaces license-check.yml).
+license:
+  enabled: true
 
-# actionlint stays off for now: dist-generated release.yml (never hand-edited) has shellcheck
-# findings. Turn on once .github/actionlint.yaml ignores that file.
-lint:
-  enabled: false
+# Snyk stays off and actionlint on (pyrlyn/ci's defaults); actionlint skips the dist-generated
+# release.yml.
