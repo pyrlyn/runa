@@ -115,6 +115,13 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
 Див. `docs/memory.md`.
 
+## Serve
+
+`runa serve` типово слухає `127.0.0.1`. `--host` має бути loopback-адресою
+(`127.0.0.0/8` або `::1`), якщо не задано `--api-key KEY`. З ключем кожен маршрут
+`/v1` вимагає `Authorization: Bearer <key>`; `/health` лишається відкритим. Ключа
+`runa.toml` для цього токена немає (вбудовані в TOML API-ключі відхиляються).
+
 ## Змінні середовища для хмари (не TOML)
 
 | Env | Призначення |

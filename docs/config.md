@@ -111,6 +111,14 @@ See `docs/media.md`.
 
 See `docs/memory.md`.
 
+## Serve
+
+`runa serve` binds `127.0.0.1` by default. `--host` must be a loopback
+address (`127.0.0.0/8` or `::1`) unless `--api-key KEY` is set. With a
+key, every `/v1` route requires `Authorization: Bearer <key>`; `/health`
+stays open. There is no `runa.toml` key for this token (inline API keys
+in TOML are rejected).
+
 ## Cloud env (not TOML)
 
 | Env | Use |
