@@ -2097,9 +2097,11 @@ mod tests {
                 Err(_) => std::thread::sleep(std::time::Duration::from_millis(10)),
             }
         }
+        // Do not format `last` or `path` into the panic: both can carry
+        // request or response bytes, and CodeQL treats that as log injection.
         last.split_whitespace()
             .nth(1)
             .and_then(|code| code.parse().ok())
-            .unwrap_or_else(|| panic!("no status from {addr} {path}: {last}"))
+            .unwrap_or_else(|| panic!("serve auth test: response had no HTTP status"))
     }
 }
