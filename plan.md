@@ -46,6 +46,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
+| K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
 
@@ -58,6 +59,31 @@ glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
+
+### K7. Fuzz testing with cargo-fuzz / libFuzzer
+
+Ivan, 2026-09-30: the same fuzz setup as ketch and rtok (ketch plan R4, rtok plan T314). Docs only here. Already in progress. Branch `test/cargo-fuzz` (worktree `_worktrees/runa-fuzz`) has uncommitted work and is not yet pushed to `pyrlyn/runa`; no PR exists yet. Link the PR here when it opens.
+
+Plan:
+1. `fuzz/`: a standalone cargo-fuzz workspace, not a member of the root workspace (`cargo-fuzz = true`, `libfuzzer-sys` 0.4, `arbitrary`), so `moon`, `cargo test --workspace` and CI never compile it. Targets that only need `runa-core`, `runa-fit` and `runa-cloud` depend on those crates directly. The targets that need the `runa` binary crate (argv, config, server body, daemon protocol) or `runa-engine` (tool-call parsing) pull in llama.cpp, so put them behind a fuzz-crate feature and the fast targets build without a C++ toolchain. An alternative is to move the pure tool-call parser out of `runa-engine` into a crate that does not link llama.cpp.
+2. Entry points: the `runa` crate is binary-only (`crates/runa/src/main.rs`, no `lib.rs`), so its surfaces get a `#[cfg(fuzzing)]` module (`fuzz_hooks.rs`) with in-process, side-effect-free functions: no model load, network, process spawn or file writes. Crate-private parsers in library crates (for example `runa-engine`'s `structured.rs` tool-call parser) get the same `#[cfg(fuzzing)]` pub shims.
+3. Targets:
+   - `cli-argv`: `Cli::try_parse_from` over arbitrary argv, plus the help/error rendering.
+   - `cli-config`: `runa.toml` / `config.toml` text through the `*_from_toml` readers in `crates/runa/src/config.rs` (threads, max load, `on_unfit`, think, memory, audio route, LoRA lists) and the alias table.
+   - `chat-template` / `tool-calls`: the Rust side of chat templates and tool calling: `structured.rs` (`parse` of model output into text plus `ToolCall`s, `tool_call_from_json`, grammar-trigger post-processing in `from_template`), including Harmony output. llama.cpp's own Jinja template renderer is C++. Fuzzing it through `llama-cpp-2` needs a full llama.cpp build and does not instrument the C++ code, so it is optional and gets its own target if kept.
+   - `gguf-header`: `runa_fit::gguf::Reader` over arbitrary bytes. It must never panic, allocate from an untrusted count without a bound, or loop forever. Add a truncated-file and huge-count corpus.
+   - `reasoning-stream`: `runa_core::reason::parse_stream` over arbitrary chunk splits for every `ReasonFamily`.
+   - `cloud-responses`: `runa_cloud::anthropic::{parse_message, parse_sse}` and the OpenAI message/tool-call readers.
+   - `model-refs`: `hf:<repo>:<file-or-quant>`, path and alias references (`pull.rs`).
+   - `serve-body` and `daemon-proto`: the OpenAI-compatible request bodies in `serve.rs` and the `daemon_proto.rs` frames.
+4. Verify: `cargo +nightly fuzz build` for every target, then a short run of each (`cargo +nightly fuzz run <target> -- -max_total_time=60`). Every crash becomes a minimized regression test with its fix in its own PR.
+5. Git LFS: large model fixtures are, or are about to be, in Git LFS (open PR #20, `test/smaller-fixtures`). Create worktrees and clones for this task with `GIT_LFS_SKIP_SMUDGE=1`, and build seed corpora from small synthetic files or truncated GGUF headers, never from full model files.
+6. Optional: a non-required nightly CI job (fast targets only, build plus a short run) on Linux.
+7. Deliver as a PR; do not merge it.
+
+Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
+
+Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
 
 ## Reference
 
