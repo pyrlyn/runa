@@ -42,6 +42,11 @@ tasks:
     command: 'python3 scripts/clean-fixtures.py'
     options:
       cache: false
+  test-fast:
+    description: 'library tests plus weight-free integration tests (no GGUF download, no engine e2e)'
+    command: 'bash scripts/test-fast.sh'
+    options:
+      cache: false
   test-with-cleanup:
     description: 'full workspace cargo test, then remove downloaded weights on a green pass'
     command: 'bash scripts/test-with-fixture-cleanup.sh --workspace'

@@ -149,10 +149,14 @@ Toolchain: `rust-toolchain.toml` + `mise.toml` (see
 
 ```sh
 mise install                      # toolchain from mise.toml
-moon run :test                    # cargo test across the workspace
+moon run root:test-fast           # library tests plus weight-free integration tests
+moon run :test                    # cargo test per crate, including integration tests
 moon run root:lint-tasks          # registry lint over docs/tasks.md
-moon run root:test-with-cleanup   # full test, then drop downloaded weights and compact target/
+moon run root:test-with-cleanup   # full workspace test, then drop downloaded weights and compact target/
 ```
+
+`moon run root:test-fast` skips GGUF downloads and engine e2e (serve, generate,
+bench). `moon run :test` and `moon run root:test-with-cleanup` stay the full gate.
 
 CI: `cargo fmt --check`, `clippy -D warnings`, build + test on macOS / Linux /
 Windows, registry lint, fixture-size guard. Read
