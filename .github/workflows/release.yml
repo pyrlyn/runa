@@ -148,19 +148,13 @@ jobs:
       - name: "Align MSVC CRT for release C++ builds (P14.2, Windows only)"
         if: "runner.os == 'Windows'"
         run: |
-          {
-            echo "CMAKE_C_FLAGS=/MD"
-            echo "CMAKE_CXX_FLAGS=/MD"
-            echo "CMAKE_C_FLAGS_RELEASE=/MD"
-            echo "CMAKE_CXX_FLAGS_RELEASE=/MD"
-            echo "LLAMA_STATIC_CRT=0"
-          } >> "$GITHUB_ENV"
+          echo "LLAMA_STATIC_CRT=1" >> "$GITHUB_ENV"
         shell: "bash"
       - name: "Cache Cargo build"
         uses: "Swatinem/rust-cache@v2"
         with:
           "cache-on-failure": true
-          "prefix-key": "v5-crt-md-flags"
+          "prefix-key": "v6-crt-mt"
           "shared-key": "release-dist"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}

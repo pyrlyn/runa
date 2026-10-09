@@ -6,11 +6,12 @@
 # GGML_NATIVE=ON: force = false lets the shell value win.
 GGML_NATIVE = { value = "OFF", force = false }
 # P14.2 note: the MSVC CRT alignment for the dist/Windows release lives in
-# .github/build-setup.yml (Windows-only, CMAKE_*_FLAGS_RELEASE=/MD +
-# LLAMA_STATIC_CRT=0). It is deliberately NOT here: /MD on a non-Windows
-# target would break C++ compiles, and whisper.cpp's vendored CMake declares
+# .github/build-setup.yml (Windows-only LLAMA_STATIC_CRT=1). It is
+# deliberately NOT here: a CRT flag on a non-Windows target would break
+# C++ compiles, and whisper.cpp's vendored CMake declares
 # cmake_minimum_required(VERSION 3.5), so CMAKE_MSVC_RUNTIME_LIBRARY is
-# ignored (CMP0091 stays OLD) — only the per-config flags take effect.
+# ignored (CMP0091 stays OLD). cmake-rs injects /MT itself when the Rust
+# link is the static CRT; do not override CMAKE_C_FLAGS.
 # Model-loading tests oversubscribe many-core machines: libtest defaults to
 # one thread per CPU, and each load fans out to P-core ggml threads (P10.2),
 # so 16 test threads starve serve/chat assertions into 120 s curl timeouts
