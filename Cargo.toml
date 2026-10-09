@@ -19,6 +19,10 @@ clap = "4"
 
 [workspace.package]
 edition = "2024"
+# Only the GPL choice has an SPDX identifier. The royalty-free and commercial
+# terms are not on the SPDX License List, and crates.io rejects LicenseRef
+# names, so they cannot be written here. README#license is the choice among
+# all three.
 license = "GPL-3.0-or-later"
 rust-version = "1.98"
 version = "0.1.0"

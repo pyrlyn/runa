@@ -183,3 +183,12 @@ You can use this project under **any** of the following licenses, at your choice
 Commercial use not covered by the GPLv3 or the Royalty-free License requires a separate paid
 license — see [PRICING.md](PRICING.md).
 <!-- license-sync:end -->
+
+The `license` field in `Cargo.toml` (`[workspace.package]`) stays
+`GPL-3.0-or-later`. Of the three choices above, only the GPL has an identifier
+on the SPDX License List. crates.io accepts only those identifiers in `license`
+and rejects `LicenseRef-*` custom names, so the royalty-free and commercial
+terms cannot be written there. `license` and `license-file` cannot be set
+together; replacing the SPDX identifier with `license-file` would hide the GPL
+from license scanners. The field is the open-source choice. This section is
+the choice among all three.
