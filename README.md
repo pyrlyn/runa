@@ -68,7 +68,7 @@ Full walkthrough with copy-paste examples:
 | `runa fit <model\|hf:repo:file>` | Verdict before any download. `--recommend [--use USE] [--top N] [--offline]` ranks the catalog |
 | `runa run [prompt]` | One-shot generation (stdin when piped) |
 | `runa chat [model]` | Interactive REPL (`/think`, `/mode`, `/model`, `/reset`); `--tui` for full-screen |
-| `runa serve [model]` | OpenAI-compatible HTTP server |
+| `runa serve [model]` | OpenAI-compatible HTTP server; live graphs at `/dashboard` |
 | `runa daemon [model]` | Keep models warm over `~/.cache/runa/runa.sock` |
 | `runa pull hf:<repo>:<file>` | Download a model; `runa models` lists cache + aliases |
 | `runa bench <model>` | Prefill/decode throughput; records into the calibration DB |
@@ -103,6 +103,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | [`docs/thinking.md`](docs/thinking.md) | `ThinkConfig` modes, show/hide, cloud mapping |
 | [`docs/media.md`](docs/media.md) | Audio routes, vision, ASR |
 | [`docs/structured.md`](docs/structured.md) | JSON Schema / GBNF, serve `response_format`, tools, MCP |
+| [`docs/dashboard.md`](docs/dashboard.md) | Live `/dashboard` for `runa serve` |
 | [`docs/memory.md`](docs/memory.md) | `MemoryManager`, `TaskRegistry` public methods |
 | [`docs/profiles.md`](docs/profiles.md) | Profiling and polyglot escape-hatch evaluation |
 | [`docs/versions.md`](docs/versions.md) | Version pins, cargo features, release artifacts |

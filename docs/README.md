@@ -28,6 +28,7 @@ All prose in this repository is English, except the translations in `docs/ru/` a
 | [`thinking.md`](thinking.md) | `ThinkConfig` modes, budget and effort levels, show/hide, the cloud mapping |
 | [`media.md`](media.md) | The three audio/vision routes (`native`, `asr`, cloud), video sampling, `mtmd` limits |
 | [`structured.md`](structured.md) | JSON Schema and GBNF grammars, `serve` `response_format`, tool calling, MCP tool loop |
+| [`dashboard.md`](dashboard.md) | Live `/dashboard` for `runa serve`: snapshot schema, websocket, quotas |
 | [`profiles.md`](profiles.md) | Profiling results and the polyglot escape-hatch evaluation (K3, K4, P5.1); figure in `profiles-p49.svg` |
 | [`prices.toml`](prices.toml) | User-editable cloud price table, USD per 1M tokens |
 | [`versions.md`](versions.md) | What each pin maps to upstream (D16), cargo feature flags, release artifacts and install variants, and the root `ketch.toml` package manifest |

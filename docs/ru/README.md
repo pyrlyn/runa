@@ -32,6 +32,7 @@ lang: ru
 | [`thinking.md`](thinking.md) | Режимы `ThinkConfig`, бюджет и уровни усилия, показ/скрытие, сопоставление для облака |
 | [`media.md`](media.md) | Три маршрута для аудио/изображений (`native`, `asr`, облако), выборка кадров видео, ограничения `mtmd` |
 | [`structured.md`](structured.md) | JSON Schema и грамматики GBNF, `response_format` в `serve`, вызов инструментов, цикл инструментов MCP |
+| [`dashboard.md`](dashboard.md) | Живая `/dashboard` для `runa serve`: схема снимка, websocket, квоты |
 | [`profiles.md`](profiles.md) | Результаты профилирования и оценка полиглотного «запасного выхода» (K3, K4, P5.1); график в `profiles-p49.svg` |
 | [`prices.toml`](../prices.toml) | Редактируемая пользователем таблица цен облака, USD за 1M токенов |
 | [`versions.md`](versions.md) | Чему соответствует каждый закреплённый пин в upstream (D16), флаги фич cargo, артефакты релиза и варианты установки, а также манифест пакета `ketch.toml` в корне |

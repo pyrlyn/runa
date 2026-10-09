@@ -32,6 +32,7 @@ lang: uk
 | [`thinking.md`](thinking.md) | Режими `ThinkConfig`, бюджет і рівні зусиль, показ/приховування, відображення на хмарних провайдерів |
 | [`media.md`](media.md) | Три маршрути для аудіо та зору (`native`, `asr`, хмара), вибірка кадрів відео, обмеження `mtmd` |
 | [`structured.md`](structured.md) | JSON Schema та граматики GBNF, `response_format` у `serve`, виклик інструментів, цикл інструментів MCP |
+| [`dashboard.md`](dashboard.md) | Жива `/dashboard` для `runa serve`: схема знімка, websocket, квоти |
 | [`profiles.md`](profiles.md) | Результати профілювання та оцінка поліглотного «запасного виходу» (K3, K4, P5.1); графік у `profiles-p49.svg` |
 | [`prices.toml`](../prices.toml) | Редагована користувачем таблиця хмарних цін, USD за 1M токенів |
 | [`versions.md`](versions.md) | Чому відповідає кожен закріплений pin в upstream (D16), прапорці функцій cargo, артефакти релізу та варіанти встановлення, а також кореневий маніфест пакета `ketch.toml` |

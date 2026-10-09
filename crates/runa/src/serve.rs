@@ -8,7 +8,7 @@
 //! `/v1/audio/transcriptions`, and multimodal chat `content` parts.
 //! The default model loads at startup (P8.8): `/health` answers 503
 //! `loading` until it is ready, and a panic answers 500 instead of dropping
-//! the connection.
+//! the connection. `GET /dashboard` is the live local dashboard (P14.4).
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{DefaultBodyLimit, Multipart, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
@@ -249,14 +250,21 @@ async fn listen(
         Box::new(runa_memory::SysinfoBackend::new()),
     ));
     let pool = Arc::new(Mutex::new(pool.with_idle_timeout(idle_timeout)));
+    let metrics = Arc::new(crate::dashboard::DashboardMetrics::new(
+        Arc::new(Semaphore::new(parallel)),
+        parallel,
+    ));
+    let (snap_tx, snap_rx) = tokio::sync::watch::channel(String::new());
     let state = AppState {
         pool: Arc::clone(&pool),
         models,
         warm: Arc::new(Warmup::new(default_id.clone(), Arc::clone(&progress))),
         default_id,
-        parallel: Arc::new(Semaphore::new(parallel)),
         mm: Arc::clone(&mm),
+        metrics,
+        snap: snap_rx,
     };
+    let metrics_for_panic = Arc::clone(&state.metrics);
     let app = Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(list_models))
@@ -264,8 +272,17 @@ async fn listen(
         .route("/v1/messages", post(anthropic_messages))
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/audio/transcriptions", post(audio_transcriptions))
+        .route("/dashboard", get(dashboard_index))
+        .route("/dashboard/", get(dashboard_index))
+        .route("/dashboard/snapshot", get(dashboard_snapshot))
+        .route("/dashboard/ws", get(dashboard_ws))
+        .route("/dashboard/dashboard.js", get(dashboard_js))
+        .route("/dashboard/dashboard.css", get(dashboard_css))
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
-        .layer(middleware::from_fn(catch_panic))
+        .layer(middleware::from_fn(move |req, next| {
+            let metrics = Arc::clone(&metrics_for_panic);
+            async move { catch_panic(req, next, metrics).await }
+        }))
         .with_state(state.clone());
     let app = protect_v1(app, api_key);
     let addr = bind_addr(host, port)?;
@@ -274,6 +291,7 @@ async fn listen(
         .map_err(|e| format!("bind {addr}: {e}"))?;
     let bound = listener.local_addr().map_err(|e| e.to_string())?;
     eprintln!("listening on http://{bound}");
+    eprintln!("dashboard on http://{bound}/dashboard");
     // Requests that arrive meanwhile queue on the pool lock the warm-up holds.
     let (pool, warm) = (Arc::clone(&state.pool), Arc::clone(&state.warm));
     tokio::task::spawn_blocking(move || runa_pool::pool::warm_up(&pool, &warm, "serve"));
@@ -291,15 +309,48 @@ async fn listen(
             runa_pool::pool::idle_tick(&tick_pool, &tick_mm, "serve").await;
         }
     });
+    spawn_dashboard_publisher(state.clone(), snap_tx);
     axum::serve(listener, app).await.map_err(|e| e.to_string())
 }
 
+fn spawn_dashboard_publisher(state: AppState, tx: tokio::sync::watch::Sender<String>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // `interval` fires immediately; skip that tick so the loop waits.
+        tick.tick().await;
+        publish_snapshot(&state, &tx);
+        loop {
+            tokio::select! {
+                _ = tick.tick() => {}
+                _ = state.metrics.changed() => {}
+            }
+            publish_snapshot(&state, &tx);
+        }
+    });
+}
+
+fn publish_snapshot(state: &AppState, tx: &tokio::sync::watch::Sender<String>) {
+    let loaded = runa_pool::pool::lock(&state.pool).loaded_weight_bytes();
+    let body = state
+        .metrics
+        .to_json(&loaded, state.models.len())
+        .to_string();
+    let _ = tx.send(body);
+}
+
 /// A handler panic answers 500 JSON instead of closing the socket.
-async fn catch_panic(req: Request, next: Next) -> Response {
+async fn catch_panic(
+    req: Request,
+    next: Next,
+    metrics: Arc<crate::dashboard::DashboardMetrics>,
+) -> Response {
     match AssertUnwindSafe(next.run(req)).catch_unwind().await {
         Ok(resp) => resp,
         Err(p) => {
-            eprintln!("serve panic: {}", panic_text(&*p));
+            let trace = panic_text(&*p);
+            eprintln!("serve panic: {trace}");
+            metrics.record_error("internal error", &trace);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": {"message": "internal error", "type": "server_error"}})),
@@ -316,15 +367,20 @@ struct AppState {
     models: Arc<[String]>,
     warm: Arc<Warmup>,
     default_id: String,
-    parallel: Arc<Semaphore>,
     /// Adaptive memory (P10.5): touched by generation-bearing endpoints
     /// only — `/health` and `/v1/models` polls must not hold engines awake.
     mm: Arc<MemoryManager>,
+    metrics: Arc<crate::dashboard::DashboardMetrics>,
+    /// Latest dashboard JSON. The publisher task owns the sender.
+    snap: tokio::sync::watch::Receiver<String>,
 }
 
 /// Owned so a streaming reply can hold the slot until its last event.
-async fn acquire_parallel(st: &AppState) -> Result<OwnedSemaphorePermit, (StatusCode, String)> {
-    Arc::clone(&st.parallel).acquire_owned().await.map_err(|_| {
+async fn acquire_parallel(
+    st: &AppState,
+    route: &'static str,
+) -> Result<crate::dashboard::Admission, (StatusCode, String)> {
+    st.metrics.admit(route).await.map_err(|_| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             "server shutting down".into(),
@@ -393,36 +449,81 @@ async fn list_models(State(st): State<AppState>) -> Json<Value> {
     Json(json!({"object": "list", "data": data}))
 }
 
+fn dashboard_headers(content_type: &'static str) -> [(axum::http::HeaderName, &'static str); 2] {
+    [
+        (axum::http::header::CONTENT_TYPE, content_type),
+        (axum::http::header::CACHE_CONTROL, "no-cache"),
+    ]
+}
+
+async fn dashboard_index() -> impl IntoResponse {
+    (
+        dashboard_headers("text/html; charset=utf-8"),
+        crate::dashboard::index_html(),
+    )
+}
+
+async fn dashboard_js() -> impl IntoResponse {
+    (
+        dashboard_headers("text/javascript; charset=utf-8"),
+        crate::dashboard::dashboard_js(),
+    )
+}
+
+async fn dashboard_css() -> impl IntoResponse {
+    (
+        dashboard_headers("text/css; charset=utf-8"),
+        crate::dashboard::dashboard_css(),
+    )
+}
+
+async fn dashboard_snapshot(State(st): State<AppState>) -> Json<Value> {
+    let loaded = runa_pool::pool::lock(&st.pool).loaded_weight_bytes();
+    Json(st.metrics.to_json(&loaded, st.models.len()))
+}
+
+async fn dashboard_ws(ws: WebSocketUpgrade, State(st): State<AppState>) -> impl IntoResponse {
+    let rx = st.snap.clone();
+    ws.on_upgrade(move |socket| crate::dashboard::push_snapshots(socket, rx))
+}
+
 async fn chat_completions(
     State(st): State<AppState>,
     Json(body): Json<ChatCompletionBody>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
-    let permit = acquire_parallel(&st).await?;
+    let crate::dashboard::Admission { permit, mut flight } =
+        acquire_parallel(&st, "/v1/chat/completions").await?;
     // P10.5: real work arrived — hold off the idle sweep.
     st.mm.touch();
     let think = think_from_request(
         body.reasoning_effort.as_deref(),
         body.reasoning_budget_tokens,
     )
-    .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
+    note_think(&mut flight, &think);
     let max_tokens = checked_max_tokens(body.max_completion_tokens.or(body.max_tokens))
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    let parsed = messages_from_body(&body.messages).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
+    let parsed = messages_from_body(&body.messages)
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     let temps = parsed.temps;
     let messages = parsed.messages;
     let images = parsed.images;
     let audio_pcm = parsed.audio_pcm;
     if messages.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "messages must be non-empty".into()));
+        return Err(deny(
+            &mut flight,
+            StatusCode::BAD_REQUEST,
+            "messages must be non-empty",
+        ));
     }
     let sampling = SamplingConfig {
         temperature: body.temperature.unwrap_or(0.8),
         ..SamplingConfig::default()
     };
     let json_schema = schema_from_response_format(body.response_format.as_ref())
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     let (tools, tool_choice) = engine_tools(body.tools.unwrap_or_default(), body.tool_choice)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     let req = GenerateRequest {
         messages,
         sampling,
@@ -439,15 +540,24 @@ async fn chat_completions(
         .model
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| st.default_id.clone());
-    let jobs = with_engine(&st.pool, &model_id).await?;
+    flight.set_model(&model_id);
+    let jobs = match with_engine(&st.pool, &model_id).await {
+        Ok(jobs) => jobs,
+        Err((status, msg)) => return Err(deny(&mut flight, status, msg)),
+    };
     if body.stream.unwrap_or(false) {
         let enc = ChatEncoder::new(&model_id);
-        return stream_reply(&jobs, req, enc, (permit, temps)).await;
+        return stream_reply(&jobs, req, enc, (permit, temps), flight).await;
     }
-    let events = runa_pool::generate_on(&jobs, req)
-        .await
-        .map_err(engine_status)?;
-    let _keep_temps = temps;
+    let events = match runa_pool::generate_on(&jobs, req).await {
+        Ok(events) => events,
+        Err(e) => {
+            let (status, msg) = engine_status(e);
+            return Err(deny(&mut flight, status, msg));
+        }
+    };
+    note_events(&mut flight, &events);
+    let _keep = (permit, temps);
     Ok(Json(non_stream_body(&model_id, &events)).into_response())
 }
 
@@ -455,18 +565,20 @@ async fn anthropic_messages(
     State(st): State<AppState>,
     Json(body): Json<MessagesBody>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
-    let permit = acquire_parallel(&st).await?;
+    let crate::dashboard::Admission { permit, mut flight } =
+        acquire_parallel(&st, "/v1/messages").await?;
     // P10.5: real work arrived — hold off the idle sweep.
     st.mm.touch();
-    let think =
-        think_from_anthropic(body.thinking.as_ref()).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    let max_tokens =
-        checked_max_tokens(body.max_tokens).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    let think = think_from_anthropic(body.thinking.as_ref())
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
+    note_think(&mut flight, &think);
+    let max_tokens = checked_max_tokens(body.max_tokens)
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     let mut temps = Vec::new();
     let mut messages = Vec::new();
     if let Some(sys) = body.system.as_ref() {
         let text = content_text(Some(sys), &mut Vec::new(), &mut None, &mut temps)
-            .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+            .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
         if !text.is_empty() {
             messages.push(ChatMessage {
                 role: "system".into(),
@@ -475,16 +587,22 @@ async fn anthropic_messages(
             });
         }
     }
-    let parsed = messages_from_body(&body.messages).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    let parsed = messages_from_body(&body.messages)
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     temps.extend(parsed.temps);
     messages.extend(parsed.messages);
     if messages.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "messages must be non-empty".into()));
+        return Err(deny(
+            &mut flight,
+            StatusCode::BAD_REQUEST,
+            "messages must be non-empty",
+        ));
     }
     if !parsed.images.is_empty() || parsed.audio_pcm.is_some() {
-        return Err((
+        return Err(deny(
+            &mut flight,
             StatusCode::BAD_REQUEST,
-            "multimodal content on /v1/messages is not supported; use /v1/chat/completions".into(),
+            "multimodal content on /v1/messages is not supported; use /v1/chat/completions",
         ));
     }
     let sampling = SamplingConfig {
@@ -493,7 +611,7 @@ async fn anthropic_messages(
     };
     let (tools, tool_choice) =
         anthropic_tools(body.tools.unwrap_or_default(), body.tool_choice.as_ref())
-            .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+            .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     let req = GenerateRequest {
         messages,
         sampling,
@@ -507,15 +625,24 @@ async fn anthropic_messages(
         .model
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| st.default_id.clone());
-    let jobs = with_engine(&st.pool, &model_id).await?;
+    flight.set_model(&model_id);
+    let jobs = match with_engine(&st.pool, &model_id).await {
+        Ok(jobs) => jobs,
+        Err((status, msg)) => return Err(deny(&mut flight, status, msg)),
+    };
     if body.stream.unwrap_or(false) {
         let enc = AnthropicEncoder::new(&model_id);
-        return stream_reply(&jobs, req, enc, (permit, temps)).await;
+        return stream_reply(&jobs, req, enc, (permit, temps), flight).await;
     }
-    let events = runa_pool::generate_on(&jobs, req)
-        .await
-        .map_err(engine_status)?;
-    let _keep_temps = temps;
+    let events = match runa_pool::generate_on(&jobs, req).await {
+        Ok(events) => events,
+        Err(e) => {
+            let (status, msg) = engine_status(e);
+            return Err(deny(&mut flight, status, msg));
+        }
+    };
+    note_events(&mut flight, &events);
+    let _keep = (permit, temps);
     Ok(Json(anthropic_message_body(&model_id, &events)).into_response())
 }
 
@@ -536,7 +663,10 @@ async fn embeddings(
     State(st): State<AppState>,
     Json(body): Json<EmbeddingsBody>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let _permit = acquire_parallel(&st).await?;
+    let crate::dashboard::Admission {
+        permit: _permit,
+        mut flight,
+    } = acquire_parallel(&st, "/v1/embeddings").await?;
     // P10.5: real work arrived — hold off the idle sweep.
     st.mm.touch();
     let inputs = match body.input {
@@ -544,17 +674,31 @@ async fn embeddings(
         EmbeddingsInput::Many(v) => v,
     };
     if inputs.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "input must be non-empty".into()));
+        return Err(deny(
+            &mut flight,
+            StatusCode::BAD_REQUEST,
+            "input must be non-empty",
+        ));
     }
     let model_id = body
         .model
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| st.default_id.clone());
-    let jobs = with_engine(&st.pool, &model_id).await?;
+    flight.set_model(&model_id);
+    let jobs = match with_engine(&st.pool, &model_id).await {
+        Ok(jobs) => jobs,
+        Err((status, msg)) => return Err(deny(&mut flight, status, msg)),
+    };
     let mut data = Vec::new();
     let mut total_tokens = 0u32;
     for (index, text) in inputs.iter().enumerate() {
-        let (vec, n_tokens) = embed_vector(&jobs, text).await.map_err(engine_status)?;
+        let (vec, n_tokens) = match embed_vector(&jobs, text).await {
+            Ok(v) => v,
+            Err(e) => {
+                let (status, msg) = engine_status(e);
+                return Err(deny(&mut flight, status, msg));
+            }
+        };
         total_tokens += n_tokens;
         data.push(json!({
             "object": "embedding",
@@ -562,6 +706,7 @@ async fn embeddings(
             "index": index
         }));
     }
+    flight.add_tokens(total_tokens, 0, 0, 0.0);
     Ok(Json(json!({
         "object": "list",
         "data": data,
@@ -577,7 +722,10 @@ async fn audio_transcriptions(
     State(st): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let _permit = acquire_parallel(&st).await?;
+    let crate::dashboard::Admission {
+        permit: _permit,
+        mut flight,
+    } = acquire_parallel(&st, "/v1/audio/transcriptions").await?;
     // P10.5: real work arrived — hold off the idle sweep.
     st.mm.touch();
     let mut file_bytes: Option<Vec<u8>> = None;
@@ -585,7 +733,7 @@ async fn audio_transcriptions(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e.to_string()))?
     {
         match field.name() {
             Some("file") => {
@@ -593,7 +741,7 @@ async fn audio_transcriptions(
                     field
                         .bytes()
                         .await
-                        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+                        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e.to_string()))?
                         .to_vec(),
                 );
             }
@@ -601,19 +749,23 @@ async fn audio_transcriptions(
                 whisper_model = field
                     .text()
                     .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+                    .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e.to_string()))?;
             }
             _ => {}
         }
     }
-    let bytes = file_bytes.ok_or((
-        StatusCode::BAD_REQUEST,
-        "multipart field `file` is required".into(),
-    ))?;
+    let Some(bytes) = file_bytes else {
+        return Err(deny(
+            &mut flight,
+            StatusCode::BAD_REQUEST,
+            "multipart field `file` is required",
+        ));
+    };
     let kind = runa_media::WhisperKind::parse(&whisper_model)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| deny(&mut flight, StatusCode::BAD_REQUEST, e))?;
     if runa_media::ensure_whisper_model(kind, false).is_err() {
-        return Err((
+        return Err(deny(
+            &mut flight,
             StatusCode::SERVICE_UNAVAILABLE,
             format!(
                 "whisper weights missing for {whisper_model}; run `runa media transcribe` once to pull, or set RUNA_WHISPER=1 in dev"
@@ -623,9 +775,20 @@ async fn audio_transcriptions(
     let mut tmp = tempfile::Builder::new()
         .prefix("runa-audio-")
         .tempfile()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    tmp.write_all(&bytes)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            deny(
+                &mut flight,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+            )
+        })?;
+    tmp.write_all(&bytes).map_err(|e| {
+        deny(
+            &mut flight,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+        )
+    })?;
     let transcript = runa_media::transcribe_file(
         tmp.path(),
         &runa_media::AsrOptions {
@@ -634,8 +797,43 @@ async fn audio_transcriptions(
             ..runa_media::AsrOptions::default()
         },
     )
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        deny(
+            &mut flight,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+        )
+    })?;
     Ok(Json(json!({"text": transcript.text})))
+}
+
+fn deny(
+    flight: &mut crate::dashboard::Flight,
+    status: StatusCode,
+    msg: impl std::fmt::Display,
+) -> (StatusCode, String) {
+    let msg = msg.to_string();
+    flight.fail(&msg, &crate::dashboard::short_trace());
+    (status, msg)
+}
+
+fn note_think(flight: &mut crate::dashboard::Flight, think: &ThinkConfig) {
+    if let runa_core::ThinkMode::Budget { tokens, .. } = think.mode {
+        flight.note_budget(tokens);
+    }
+}
+
+fn note_events(flight: &mut crate::dashboard::Flight, events: &[GenEvent]) {
+    for ev in events {
+        if let GenEvent::Usage(u) = ev {
+            flight.add_tokens(
+                u.prompt_tokens,
+                u.generated_tokens,
+                u.reasoning_tokens,
+                u.tg_toks_per_s,
+            );
+        }
+    }
 }
 
 fn engine_status(err: String) -> (StatusCode, String) {
@@ -743,8 +941,15 @@ async fn stream_reply<E: SseEncoder>(
     req: GenerateRequest,
     mut enc: E,
     guards: StreamGuards,
+    mut flight: crate::dashboard::Flight,
 ) -> Result<Response, (StatusCode, String)> {
-    let mut rx = runa_pool::generate_stream_on(jobs, req, STREAM_BACKLOG).map_err(engine_status)?;
+    let mut rx = match runa_pool::generate_stream_on(jobs, req, STREAM_BACKLOG) {
+        Ok(rx) => rx,
+        Err(e) => {
+            let (status, msg) = engine_status(e);
+            return Err(deny(&mut flight, status, msg));
+        }
+    };
     // The prompt length comes first, but errors such as an oversized prompt
     // surface after it, so wait for the first real event before answering.
     let mut input_tokens = None;
@@ -757,28 +962,38 @@ async fn stream_reply<E: SseEncoder>(
     let mut queue: std::collections::VecDeque<Event> = enc.start(input_tokens).into();
     let mut open = true;
     match first {
-        Some(Ok(Streamed::Event(ev))) => queue.extend(enc.push(ev)),
+        Some(Ok(Streamed::Event(ev))) => {
+            note_events(&mut flight, std::slice::from_ref(&ev));
+            queue.extend(enc.push(ev));
+        }
         Some(Ok(Streamed::Prompt(_))) => {}
-        Some(Err(e)) => return Err(engine_status(e)),
+        Some(Err(e)) => {
+            let (status, msg) = engine_status(e);
+            return Err(deny(&mut flight, status, msg));
+        }
         None => open = false,
     }
     let body = stream::unfold(
-        (rx, enc, queue, open, guards),
-        |(mut rx, mut enc, mut queue, mut open, guards)| async move {
+        (rx, enc, queue, open, guards, flight),
+        |(mut rx, mut enc, mut queue, mut open, guards, mut flight)| async move {
             loop {
                 if let Some(ev) = queue.pop_front() {
                     return Some((
                         Ok::<_, std::convert::Infallible>(ev),
-                        (rx, enc, queue, open, guards),
+                        (rx, enc, queue, open, guards, flight),
                     ));
                 }
                 if !open {
                     return None;
                 }
                 match rx.recv().await {
-                    Some(Ok(Streamed::Event(ev))) => queue.extend(enc.push(ev)),
+                    Some(Ok(Streamed::Event(ev))) => {
+                        note_events(&mut flight, std::slice::from_ref(&ev));
+                        queue.extend(enc.push(ev));
+                    }
                     Some(Ok(Streamed::Prompt(_))) => {}
                     Some(Err(e)) => {
+                        flight.fail(&e, &crate::dashboard::short_trace());
                         queue.extend(enc.error(&e));
                         open = false;
                     }
@@ -1882,7 +2097,19 @@ mod tests {
         enc: impl SseEncoder,
     ) -> Result<Response, (StatusCode, String)> {
         let permit = Arc::new(Semaphore::new(1)).acquire_owned().await.unwrap();
-        stream_reply(jobs, GenerateRequest::default(), enc, (permit, Vec::new())).await
+        let metrics = Arc::new(crate::dashboard::DashboardMetrics::new(
+            Arc::new(Semaphore::new(1)),
+            1,
+        ));
+        let flight = metrics.start("/v1/chat/completions");
+        stream_reply(
+            jobs,
+            GenerateRequest::default(),
+            enc,
+            (permit, Vec::new()),
+            flight,
+        )
+        .await
     }
 
     async fn start_chat_stream(

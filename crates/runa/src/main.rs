@@ -37,6 +37,7 @@ mod cloud;
 mod config;
 mod daemon;
 mod daemon_proto;
+mod dashboard;
 mod fit;
 #[cfg(fuzzing)]
 mod fuzz_hooks;
