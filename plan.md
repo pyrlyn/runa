@@ -48,6 +48,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | P14.2 | in progress | high | S | ready | Muse Spark |
 | P14.3 | todo | medium | M | ready | — |
 | P14.4 | todo | medium | M | ready | — |
+| P17.8 | in progress | medium | S | ready | Cursor Grok 4.7 |
 
 ## Tasks
 
@@ -87,6 +88,17 @@ Plan: add a web dashboard showing, in real time, with graphs:
 Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
 
 Machine check: TBD.
+
+### P17.8. Refuse a non-loopback `runa serve` bind without `--api-key`
+
+Plan: `runa serve` binds `127.0.0.1` by default and has no auth on `/v1`.
+`--host 0.0.0.0` (and any other non-loopback address) must fail closed
+unless `--api-key` is set. When the key is set, every `/v1` route requires
+`Authorization: Bearer <key>`; `/health` stays open. Loopback (`127.0.0.0/8`,
+`::1`) keeps working without a key.
+
+Machine check: `cargo test -p runa --bin runa require_bind_auth api_key_gates`
+and `cargo test -p runa --test security --test trycmd`.
 
 ## Reference
 
