@@ -1,8 +1,12 @@
 # Configuration: `runa.toml` and environment keys
 
 Search order (later files win): `~/.config/runa/config.toml`, then `./runa.toml`.
-CLI flags beat `RUNA_*` env vars, which beat the files. Inline API keys in TOML
-are rejected (P3.8).
+Home is `$HOME`, or `$USERPROFILE` on Windows when `HOME` is unset. CLI flags
+beat `RUNA_*` env vars, which beat the files. Inline API keys in TOML are
+rejected (P3.8). Later `[memory]` files overlay only the keys they set; earlier
+keys stay. Cloud prices follow the same later-wins overlay:
+`docs/prices.toml` (when the process cwd is the repo), then
+`~/.config/runa/prices.toml`.
 
 ## Top level
 
@@ -102,6 +106,9 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 See `docs/media.md`.
 
 ## `[memory]`
+
+Later files overlay only the keys they set (a project `floor_mib` does not
+reset `idle_timeout_s` from the user file).
 
 | Key | Values | Env |
 |-----|--------|-----|

@@ -8,7 +8,6 @@ rust-version.workspace = true
 
 [features]
 default = []
-parakeet = []
 
 [dependencies]
 # P4.1 audio decode.

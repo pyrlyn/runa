@@ -97,8 +97,10 @@ pub fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 
 /// Run one engine/pool step; a panic becomes an error, not a dead thread.
 pub fn catch_job<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-        .unwrap_or_else(|p| Err(format!("internal error: {}", panic_text(&*p))))
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
+        eprintln!("engine panic: {}", panic_text(&*p));
+        Err("internal error".into())
+    })
 }
 
 /// One item on a streaming generation channel.
@@ -447,7 +449,10 @@ pub fn ensure_engine(
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         spawn_engine(start.path, start.kind, start.placement, start.config)
     }))
-    .unwrap_or_else(|p| Err(format!("internal error: {}", panic_text(&*p))));
+    .unwrap_or_else(|p| {
+        eprintln!("engine panic: {}", panic_text(&*p));
+        Err("internal error".into())
+    });
     lock(pool).complete_load(&start.id, outcome)
 }
 
@@ -727,7 +732,7 @@ mod tests {
     #[test]
     fn jobs_survive_panics() {
         let r: Result<(), String> = catch_job(|| panic!("boom"));
-        assert_eq!(r, Err("internal error: boom".into()));
+        assert_eq!(r, Err("internal error".into()));
     }
 
     #[test]

@@ -340,10 +340,7 @@ async fn serve_request(
 // --- supervision units (std only) ------------------------------------------
 
 fn home_dir() -> Result<PathBuf, String> {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .ok_or_else(|| "HOME is not set".to_string())
+    crate::config::home_dir().ok_or_else(|| "HOME or USERPROFILE is not set".to_string())
 }
 
 /// `~/Library/LaunchAgents/ai.runa.daemon.plist`.

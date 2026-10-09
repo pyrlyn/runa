@@ -299,10 +299,10 @@ async fn catch_panic(req: Request, next: Next) -> Response {
     match AssertUnwindSafe(next.run(req)).catch_unwind().await {
         Ok(resp) => resp,
         Err(p) => {
-            let msg = format!("internal error: {}", panic_text(&*p));
+            eprintln!("serve panic: {}", panic_text(&*p));
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": {"message": msg, "type": "server_error"}})),
+                Json(json!({"error": {"message": "internal error", "type": "server_error"}})),
             )
                 .into_response()
         }
@@ -1766,6 +1766,15 @@ mod tests {
         assert_eq!(v["choices"][0]["finish_reason"], "length");
         let v = anthropic_message_body("m", &truncated);
         assert_eq!(v["stop_reason"], "max_tokens");
+    }
+
+    #[test]
+    fn numeric_loopback_is_loopback_and_localhost_is_not() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("::1"));
+        assert!(!is_loopback_host("localhost"));
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("192.168.1.2"));
     }
 
     #[test]

@@ -6,6 +6,9 @@
 
 name: release-variants
 
+permissions:
+  contents: read
+
 # Dispatched by bump.yml (pyrlyn/ci) with `--ref <tag> -f tag=<tag>` right
 # after it creates the tag and the draft release; no tag-push trigger, since
 # bump is the only tagger and a tag it pushes with GITHUB_TOKEN starts nothing.

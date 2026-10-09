@@ -18,6 +18,10 @@ lang: uk
 
 - **native** без аудіо-mmproj (або на Anthropic / OpenAI-моделі без аудіо) завершується помилкою.
 - **asr** завжди транскрибує (`runa media transcribe` використовує той самий рушій).
+  Файли ggml Whisper `base` і `large-v3-turbo` закріплено за SHA-256 і розміром
+  (заголовки Hugging Face `x-linked-etag` / `x-linked-size`). Silero VAD необов'язковий
+  і обмежений за розміром; якщо файлу немає, використовується енергетичний VAD.
+  Parakeet-TDT поки недоступний.
 - PCM — 16 kHz моно f32 (`runa-media`). Нативний маршрут OpenAI загортає WAV у base64.
 
 Сусідній файл `*mmproj*.gguf` підхоплюється лише тоді, коли він потрібен нативному аудіо або `--image`/`--video`.

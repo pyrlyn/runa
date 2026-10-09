@@ -6232,8 +6232,6 @@ dependencies = [
  "predicates",
  "pretty_assertions",
  "ratatui",
- "raw-cpuid",
- "rayon",
  "rmcp",
  "runa-cloud",
  "runa-core",

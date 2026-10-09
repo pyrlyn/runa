@@ -4,7 +4,8 @@
 
 //! runa-media — media pipeline in Rust, encoders in C (plan D8): audio
 //! decode (`symphonia`/`hound`) → f32 mono 16 kHz (`rubato`), video via
-//! `ffmpeg-sidecar` → sampled frames, ASR bridge through `whisper-rs`.
+//! `ffmpeg-sidecar` → sampled frames, ASR bridge through `whisper-rs`
+//! (pinned ggml SHA-256). Parakeet-TDT is not available yet.
 //!
 //! P4.1 implements audio decode + probe. whisper-rs pin: docs/versions.md.
 

@@ -80,18 +80,19 @@ impl std::fmt::Display for OnUnfit {
     }
 }
 
+/// `$HOME`, or `$USERPROFILE` on Windows when `HOME` is unset.
+pub(crate) fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var_os("USERPROFILE").filter(|s| !s.is_empty()))
+        .map(PathBuf::from)
+}
+
 /// Candidate config files in increasing precedence.
 pub fn config_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
-    if let Ok(home) = std::env::var("HOME")
-        && !home.is_empty()
-    {
-        out.push(
-            PathBuf::from(home)
-                .join(".config")
-                .join("runa")
-                .join("config.toml"),
-        );
+    if let Some(home) = home_dir() {
+        out.push(home.join(".config").join("runa").join("config.toml"));
     }
     out.push(PathBuf::from("runa.toml"));
     out
@@ -528,9 +529,7 @@ fn memory_policy_from_files(
         let Some(text) = read_config_text(path)? else {
             continue;
         };
-        if let Some(parsed) = memory_from_toml(&text, &path.display().to_string())? {
-            p = parsed;
-        }
+        overlay_memory_toml(&mut p, &text, &path.display().to_string())?;
     }
     Ok(p)
 }
@@ -560,13 +559,24 @@ fn parse_env_u64(name: &str) -> Result<Option<u64>, String> {
     }
 }
 
-fn memory_from_toml(text: &str, origin: &str) -> Result<Option<runa_memory::MemoryPolicy>, String> {
+fn overlay_memory_toml(
+    p: &mut runa_memory::MemoryPolicy,
+    text: &str,
+    origin: &str,
+) -> Result<(), String> {
     let value: toml::Value =
         toml::from_str(text).map_err(|e| format!("{origin}: invalid TOML: {e}"))?;
     let Some(table) = value.get("memory").and_then(|v| v.as_table()) else {
-        return Ok(None);
+        return Ok(());
     };
-    let mut p = runa_memory::MemoryPolicy::default();
+    apply_memory_table(p, table, origin)
+}
+
+fn apply_memory_table(
+    p: &mut runa_memory::MemoryPolicy,
+    table: &toml::map::Map<String, toml::Value>,
+    origin: &str,
+) -> Result<(), String> {
     if let Some(v) = table.get("idle_timeout_s") {
         p.idle_timeout_s = u64::from(toml_u32(v, origin, "idle_timeout_s")?);
     }
@@ -576,6 +586,18 @@ fn memory_from_toml(text: &str, origin: &str) -> Result<Option<runa_memory::Memo
     if let Some(v) = table.get("max_growth_mib") {
         p.max_growth_mib = u64::from(toml_u32(v, origin, "max_growth_mib")?);
     }
+    Ok(())
+}
+
+#[cfg(any(test, fuzzing))]
+fn memory_from_toml(text: &str, origin: &str) -> Result<Option<runa_memory::MemoryPolicy>, String> {
+    let value: toml::Value =
+        toml::from_str(text).map_err(|e| format!("{origin}: invalid TOML: {e}"))?;
+    let Some(table) = value.get("memory").and_then(|v| v.as_table()) else {
+        return Ok(None);
+    };
+    let mut p = runa_memory::MemoryPolicy::default();
+    apply_memory_table(&mut p, table, origin)?;
     Ok(Some(p))
 }
 
@@ -1312,6 +1334,30 @@ source = "./tiny.gguf"
             Some(v) => unsafe { std::env::set_var("RUNA_MEMORY_IDLE_TIMEOUT_S", v) },
             None => unsafe { std::env::remove_var("RUNA_MEMORY_IDLE_TIMEOUT_S") },
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn later_memory_file_overlays_only_keys_it_sets() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-cfg-partial-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let user = dir.join("user.toml");
+        let project = dir.join("project.toml");
+        std::fs::write(&user, "[memory]\nidle_timeout_s = 111\nfloor_mib = 256\n").unwrap();
+        std::fs::write(&project, "[memory]\nfloor_mib = 50\n").unwrap();
+        let policy = memory_policy_from_files(&[user, project]).unwrap();
+        assert_eq!(
+            policy.idle_timeout_s, 111,
+            "unset keys must keep the earlier file"
+        );
+        assert_eq!(policy.floor_mib, 50);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

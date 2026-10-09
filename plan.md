@@ -10,19 +10,11 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 
 | ID | Priority | Kind | Status | Where | Fix |
 | --- | --- | --- | --- | --- | --- |
-| P17.2 | high (P1) | bug | confirmed | `crates/runa-cloud/src/prices.rs:43-50`, `:117-125` | The price table loads the first readable file, and `cwd/docs/prices.toml` comes before `~/.config/runa/prices.toml`, although the docstring (`:5`) says the user file wins. Use the `config_paths()` later-wins order and add a test. |
-| P17.3 | high (P1) | bug | confirmed | `crates/runa/src/config.rs:531-532`, `:563-579` | A later `[memory]` table resets the keys it does not set: user `idle_timeout_s = 111` plus project `floor_mib = 50` gives idle 300. Merge onto the accumulator; add a partial-table test. |
-| P17.4 | high (P1) | bug | confirmed | `crates/runa/src/config.rs:86`; `crates/runa/src/pull.rs:38`; `crates/runa-media/src/asr.rs:75`; `crates/runa/src/daemon.rs:343` | Config and data paths use `HOME` only, on a Tier 2 Windows target (D13). Use `USERPROFILE`/`LOCALAPPDATA`, like `cache_root` (`crates/runa-fit/src/remote.rs:157-161`). |
-| P17.5 | high (P1) | bug | confirmed | `crates/runa-media/src/asr.rs:274-294` | The Whisper model download has no size cap, so a bad redirect can fill the disk. Cap it like `pull.rs:108` (`MAX_MODEL_BYTES`) and fail closed; pin a sha256 per model file. |
-| P17.6 | high (P1) | dead code | confirmed | `crates/runa-media/Cargo.toml:11` (`parakeet = []`); `crates/runa-media/src/asr.rs:445-450`; re-export in `lib.rs:19` | The `parakeet` feature changes nothing and `transcribe_parakeet` always errors. Wire `sherpa-onnx`, or drop the feature and say "not available yet". |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
-| P17.9 | medium (P2) | bug | confirmed | `crates/runa/src/serve.rs:181-184` | `catch_panic` returns the panic text in `error.message`. Return a generic 500 and log the panic server-side. |
 | P17.10 | medium (P2) | bug | suspected | `crates/runa/src/daemon.rs:206-212` | After `ConnectionRefused`, `remove_file` then `bind` is not atomic, so two starters can still race (the live-daemon steal itself is fixed). Take a `flock` on a lock file first. |
 | P17.11 | medium (P2) | bug | suspected | `crates/runa-engine/src/generate.rs:859-866` | `add_close_bias` casts the shared slice from `get_logits_ith` to mutable and writes through it, which is UB unless the callee guarantees exclusive access. Use a mutable logits API. |
 | P17.12 | medium (P2) | bug | confirmed | `crates/runa-media/src/video.rs:224` | `ffmpeg_sidecar::download::auto_download()` runs with no hash check. Prefer ffmpeg from `PATH`/mise; pin a hash if auto-download stays. |
 | P17.13 | medium (P2) | bug | confirmed | `crates/runa-pool/src/pool.rs:62-80`; `crates/runa-memory/src/memory.rs:187` | Library crates print to stderr, which an embedder (P16.2) cannot silence (issue #37 class). Use `tracing` or a callback. |
-| P17.14 | medium (P2) | bug | confirmed | `crates/runa-core/src/lib.rs:5`; only `BackendKind` exists (`backend.rs:19`) | The crate docs, and this plan's features audit, advertise a `Backend` trait, `Request`/`Event` and `Mode` that do not exist. Fix the docs, or add the trait in `runa-core` (move M6). |
-| P17.15 | medium (P2) | dead code | confirmed (grep only, no `cargo-udeps`) | `crates/runa/Cargo.toml:37` (`raw-cpuid`), `:39` (`rayon`) | Neither crate is used in `crates/runa` (`raw-cpuid` was planned in P1.6 and never wired). Remove both. |
 | P17.16 | medium (P2) | dead code | confirmed | `crates/runa-kernels/c/{avx2,neon,scalar}.c`; `crates/runa-kernels/src/lib.rs:8` | The C kernels are "reference only" and nothing builds them; the Zig archive is what links. Move them to `docs/` or drop them. |
 | P17.17 | medium (P2) | dead code | confirmed | `crates/runa-fit/src/gguf.rs:241`; matched in `remote.rs:633` | `parse()` never constructs `ReadError::TensorTableTruncated`. Construct it on a truncated tensor table, or delete the variant. |
 | P17.18 | medium (P2) | dead code | confirmed | `report.html` (tracked, not ignored, not used by build or CI) | The reviewer suggests deleting or ignoring it; the Reference above lists it as a companion document, so decide whether to keep it. |
@@ -36,7 +28,15 @@ Stale review items, closed and not added. The review checked the older roadmap l
 - E4, GGUF `n_dims` over-allocation and divide by zero: fixed. Capacity is capped (`gguf.rs:324-329`), alignment is checked (`:346-348`), `head_dim` uses `checked_div` (`descriptor.rs:138`), `tensor_bytes` uses `checked_mul` (`ggml_types.rs:87-89`).
 - E5, daemon unlinks a live socket: fixed in P15.1. `daemon.rs:196-215` connects first and unlinks only on `ConnectionRefused`/`NotFound`; test `second_daemon_does_not_unlink_a_live_socket`. The leftover race is P17.10.
 - E6, dead website link in the README: not a bug. `README.md:7` no longer links a Pages URL; the landing is `pyrlyn.github.io/landing` (HTTP 200 on 2026-10-08).
-- E8, config precedence for `[audio]`/`[memory]`: fixed in P15.1. CLI, then env, then files (`config.rs:495-520`); test `later_config_file_overrides_memory_and_audio`. Prices and partial `[memory]` tables are P17.2 and P17.3.
+- E8, config precedence for `[audio]`/`[memory]`: fixed in P15.1. CLI, then env, then files (`config.rs:495-520`); test `later_config_file_overrides_memory_and_audio`. Prices and partial `[memory]` tables are fixed in the PR #62 audit bundle (`done.md`).
+- P17.2, price-table later-wins: fixed in the PR #62 audit bundle (`done.md`).
+- P17.3, partial `[memory]` overlay: fixed in the PR #62 audit bundle (`done.md`).
+- P17.4, `USERPROFILE` when `HOME` is unset: fixed in the PR #62 audit bundle (`done.md`).
+- P17.5, Whisper download cap and SHA-256 pins: fixed in the PR #62 audit bundle (`done.md`).
+- P17.6, empty `parakeet` feature: removed; `transcribe_parakeet` says "not available yet" (`done.md`).
+- P17.9, panic text in `error.message`: fixed. `catch_panic` returns `"internal error"` and logs the panic (`done.md`).
+- P17.14, `runa-core` docs advertised a `Backend` trait: crate docs now name `BackendKind` (`done.md`).
+- P17.15, unused `raw-cpuid` and `rayon` on the CLI crate: removed (`done.md`).
 - E15, wrong origin / dirty checkout: not a bug. `origin` is `pyrlyn/runa` and the checkout is `main`.
 - E22, move `theme.js` to the brand repo: not a bug. There is no `site/` tree.
 - E23, streaming collect-then-replay: fixed in P16.1 (`done.md`). `serve.rs:620-626` streams through `generate_stream_on`; test `first_token_reaches_the_client_before_generation_ends`.

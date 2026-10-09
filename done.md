@@ -1328,3 +1328,42 @@ they now match the English note. `crates/runa-core` test
 and the explanation.
 
 Check (evidence): `cargo test -p runa-core --lib cargo_license_is_spdx_gpl` 1 passed; `cargo test --workspace --lib` passed (runa-core 36, runa-cloud 37, runa-engine 51, runa-fit 82, runa-kernels 9, runa-media 25, runa-memory 18, runa-pool 6); `cargo clippy --workspace -- -D warnings` clean; `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held.
+
+### Audit bundle. 2026-10-08 review fixes
+
+Completed 2026-10-08 (Cursor Grok 4.6), merged with `main` on 2026-10-09.
+Land the confirmed, still-open audit items without the large architecture
+splits. This bundle is not P17.1: that id is the licence note above.
+
+- Moon CI no longer `|| echo`s success. `moon ci --affected
+  --remote=false` is invalid on moon 2.5.4 and used to fail instantly
+  behind the echo. Full `moon ci` of this affected set exceeded the 5
+  min P11.9 budget (cancelled at 5m17s); the moon job now runs
+  `moon projects` + `moon run root:lint-tasks`, and the cargo matrix
+  remains the test gate.
+- Workflows get `permissions: contents: read`.
+- `prices.toml` later-wins overlay (user file after shipped
+  `docs/prices.toml`; models not named stay). Closes P17.2.
+- `[memory]` later files overlay only the keys they set. Closes P17.3.
+- Home paths use `$HOME` then `$USERPROFILE` (Windows). Closes P17.4.
+- Whisper `base` / `large-v3-turbo` pinned by SHA-256 + size (HF
+  `x-linked-etag` / `x-linked-size`, 2026-10-08); downloads size-capped;
+  Silero VAD optional with a cap only (Hub path 404s; no invented hash).
+  Closes P17.5.
+- Parakeet stub says "not available yet"; empty `parakeet` feature
+  removed. Closes P17.6.
+- Sidecar write failures log a warning; `docs_lint` man pages go to a
+  tempdir; serve/engine panics answer generic `"internal error"`
+  (P17.9); `MemoryManager` recovers poisoned mutexes.
+- Unused `raw-cpuid` / `rayon` dropped from the CLI crate and lockfile.
+  Closes P17.15.
+- `runa-core` crate docs no longer claim a `Backend` trait. Closes P17.14.
+
+Check (evidence): `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors
+(P14.2 stale-claim warning only); `cargo test -p runa-cloud --lib` 39
+passed; `cargo test -p runa-memory` 18 passed; `cargo test -p runa-media
+--lib` 28 passed; `cargo test -p runa --bin runa` 109 passed (1
+pre-existing flake: `second_daemon_does_not_unlink_a_live_socket` inode
+reuse); `cargo fmt --all -- --check` clean; `cargo clippy --workspace --
+-D warnings` clean. GitHub Actions on `4d0349f` (PR #62): 24 checks
+green, including `moon pipeline (K5, D22)`.

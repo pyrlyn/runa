@@ -14,6 +14,10 @@ Preference: CLI `--audio-route` > `RUNA_AUDIO_ROUTE` > `[audio] route` > `auto`.
 
 - **native** without an audio mmproj (or on Anthropic / non-audio OpenAI) errors.
 - **asr** always transcribes (`runa media transcribe` uses the same engine).
+  Whisper `base` / `large-v3-turbo` ggml files are pinned by SHA-256 and byte
+  size (Hugging Face `x-linked-etag` / `x-linked-size`). Silero VAD is optional
+  and size-capped; a missing file falls back to energy VAD. Parakeet-TDT is
+  not available yet.
 - PCM is 16 kHz mono f32 (`runa-media`). OpenAI native wraps WAV base64.
 
 Sibling `*mmproj*.gguf` is picked only when native audio or `--image`/`--video`

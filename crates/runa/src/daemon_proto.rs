@@ -49,9 +49,17 @@ fn cache_dir() -> PathBuf {
     {
         return PathBuf::from(p).join("runa");
     }
-    match std::env::var_os("HOME") {
-        Some(home) => PathBuf::from(home).join(".cache").join("runa"),
-        None => std::env::temp_dir().join("runa"),
+    match crate::config::home_dir() {
+        Some(home) => home.join(".cache").join("runa"),
+        None => {
+            #[cfg(windows)]
+            if let Ok(local) = std::env::var("LOCALAPPDATA")
+                && !local.is_empty()
+            {
+                return PathBuf::from(local).join("runa");
+            }
+            std::env::temp_dir().join("runa")
+        }
     }
 }
 
