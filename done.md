@@ -1223,6 +1223,40 @@ Completed 2026-10-07 (Grok 4.7 P14.3).
 
 Check (evidence): `python3 scripts/lint-tasks.py docs/tasks.md` → `0 error(s)` while the claim was in progress. `moon run root:test-fast` (moon 2.5.4) → exit 0 in 2.8s warm: lib 263 passed (cloud 37, core 35, engine 51, fit 82, kernels 9, media 25, memory 18, pool 6) and integration 22 passed (fuzz_regressions 1, gguf 14, openai 4, embed 3); 0 failed.
 
+### P14.4. Add web dashboard
+
+Plan: add a web dashboard showing, in real time, with graphs:
+
+- token speed;
+- the in-flight request/response pairs;
+- the system load attributable to this app;
+- latency percentiles (p50, p95, p99);
+- errors: a counter and the most recent failures with tracebacks;
+- quotas and limits (tokens per minute, requests per second), showing whether
+  the app is hitting the ceiling;
+- warm daemon status: alive or not;
+- loaded models: how many and how much memory they use;
+- active MCP tools;
+- the request queue while the server is up;
+- reasoning budget: current spend.
+
+Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
+
+`runa serve` records requests in `crates/runa/src/dashboard.rs` and serves
+`GET /dashboard` (embedded Vite build), `GET /dashboard/snapshot`, and
+`GET /dashboard/ws` on the same host and port. No new config keys. Daemon
+status is `not_this_process`. MCP tools are an empty list. Loaded-model
+bytes are on-disk weight size (`ModelPool::loaded_weight_bytes`).
+
+Machine check: `cargo test -p runa --bin runa dashboard` and
+`python3 scripts/lint-tasks.py docs/tasks.md`.
+
+Check (evidence): `cargo test -p runa --bin runa dashboard` → 10 passed
+(percentile, ceiling flag, semaphore saturation, token window, stale window,
+error ring, latency snapshot, queue/in-flight, axum snapshot keys);
+`cargo clippy -p runa -p runa-pool --all-targets -- -D warnings` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` → 0 error(s).
+
 ### P15.1. Fix the 2026-10-01 QA audit findings
 
 The find-only audit (PR 26) lists 20 confirmed bugs. Fix all of them
