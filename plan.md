@@ -63,7 +63,7 @@ Document that in a `Cargo.toml` comment and in the README license section
 `docs/getting-started.md` plus `docs/ru` and `docs/uk`. A test locks the
 field and the README explanation.
 
-Machine check: `cargo test -p runa --test license`.
+Machine check: `cargo test -p runa-core --lib cargo_license_is_spdx_gpl`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 

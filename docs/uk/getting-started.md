@@ -121,4 +121,5 @@ route = "auto"
 | [memory.md](memory.md) | API адаптивної пам'яті та реєстру задач |
 | [README.md](README.md) | Повний покажчик документації |
 
-Цільова ліцензія: MIT OR Apache-2.0. Без телеметрії.
+Ліцензія: на ваш вибір GPL-3.0-or-later, royalty-free або комерційна (див. README). Поле `license` у Cargo називає лише `GPL-3.0-or-later` — єдиний із трьох варіантів з ідентифікатором SPDX; crates.io відхиляє імена `LicenseRef`.
+Без телеметрії.
