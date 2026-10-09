@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{DefaultBodyLimit, Multipart, Request, State};
 use axum::http::StatusCode;
@@ -25,17 +26,16 @@ use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
-use axum::Router;
 use base64::Engine;
-use futures::{stream, FutureExt, Stream};
+use futures::{FutureExt, Stream, stream};
 use runa_core::{BackendKind, Effort, ThinkConfig, ThinkOverrides};
 use runa_engine::{
     ChatMessage, GenEvent, GenerateRequest, LoadConfig, SamplingConfig, StopReason, ToolCall,
     VisionFrame, VisionSource,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
-use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
+use serde_json::{Value, json};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
 use runa_memory::MemoryManager;
 use runa_pool::pool::{lock, panic_text};
@@ -171,11 +171,7 @@ fn bearer_token(header: &str) -> Option<&str> {
         return None;
     }
     let token = rest.trim();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token)
-    }
+    if token.is_empty() { None } else { Some(token) }
 }
 
 fn unauthorized() -> Response {
