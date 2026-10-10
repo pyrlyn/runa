@@ -1401,3 +1401,26 @@ pre-existing flake: `second_daemon_does_not_unlink_a_live_socket` inode
 reuse); `cargo fmt --all -- --check` clean; `cargo clippy --workspace --
 -D warnings` clean. GitHub Actions on `4d0349f` (PR #62): 24 checks
 green, including `moon pipeline (K5, D22)`.
+
+### P18.1. Usage stats command and live web page
+
+Completed 2026-10-10.
+
+`runa stats` prints the local usage journal (requests, prompt / generated /
+reasoning tokens, decode tok/s, by model, by day, recent rows; `--json`,
+`--since 24h|7d`). `runa web` serves that same snapshot on loopback and
+pushes a new one over `/ws` when the journal grows. `run`, `chat`, and
+`serve` append one JSON line per finished generation
+(`$XDG_CACHE_HOME/runa/usage.jsonl`, `RUNA_USAGE_LOG` overrides).
+
+The shape follows rtok (`stats` + `web`, Vite + React + TanStack Query,
+dist embedded in the binary). The page uses the runa brand (warm ash,
+charcoal, ember).
+
+Check (evidence): `cargo test -p runa --bin runa` 129 passed;
+`cargo test -p runa --bin runa -- usage_log:: stats_web:: dashboard::` 17 passed;
+`cargo clippy -p runa --bin runa -- -D warnings` clean;
+`cargo fmt -p runa -- --check` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors (K7 stale-claim warning);
+`runa stats` and `runa web --port 0` served `/health`, `/api/snapshot`, `/`, `/stats.js`, `/stats.css` on loopback.
+`runa web --host 1.2.3.4` refused.

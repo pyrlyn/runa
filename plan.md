@@ -47,7 +47,6 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
-| P18.1 | in progress | medium | M | ready | Cursor Grok 4.7 |
 
 ## Tasks
 
@@ -85,32 +84,6 @@ Plan:
 Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
 Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
-
-### P18.1. Usage stats command and live web page
-
-`runa stats` prints the local usage journal (requests, prompt / generated /
-reasoning tokens, decode tok/s, by model, by day, recent rows; `--json`,
-`--since 24h|7d`). `runa web` serves that same snapshot on loopback and
-pushes a new one over `/ws` when the journal grows. `run`, `chat`, and
-`serve` append one JSON line per finished generation
-(`$XDG_CACHE_HOME/runa/usage.jsonl`, `RUNA_USAGE_LOG` overrides).
-
-The shape follows rtok (`stats` + `web`, Vite + React + TanStack Query,
-dist embedded in the binary). The page uses the runa brand (warm ash,
-charcoal, ember), not the rtok admin chrome.
-
-Plan:
-1. Append-only journal and a pure aggregator (`usage_log`), with `--since`
-   and a text table plus JSON.
-2. Record from `finish_run`, chat turns (REPL and TUI), and serve
-   `Flight` completion (including embeddings).
-3. `runa web` (axum, loopback only) embeds `web/dist` and polls the
-   journal. The SPA is one overview: totals, 24h bars, models, recent.
-4. Docs: `docs/stats.md` plus ru/uk, CLI table, man page, config env.
-
-Machine check: `cargo test -p runa --bin runa -- usage_log:: stats_web:: dashboard::`
-passes (`runa` is a binary crate); `runa stats --help` and `runa web --help`
-list the flags; `web/dist/index.html` is the built page.
 
 ## Reference
 
