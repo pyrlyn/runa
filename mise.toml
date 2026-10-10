@@ -3,6 +3,7 @@
 # version; this file exists so `mise install` bootstraps a matching toolchain
 # for contributors who manage tools with mise. Keep the two files in sync.
 [tools]
+sccache = { version = "0.18.0", os = ["linux", "macos"] } # compiler cache; the [env] block below makes it the rustc wrapper where it is installed
 # rust-toolchain.toml stays the rustup source of truth for direct rustup runs;
 # mise only reads its components when the pin itself comes from that file, so
 # the components are mirrored here (CI runs under RUSTUP_TOOLCHAIN, which
@@ -33,3 +34,11 @@ zig = "0.16.0"
 # changelog for releases (P13.3): CHANGELOG.md is generated from git history,
 # config in cliff.toml. Same pin style as the rest of this file (D16).
 git-cliff = "2.13.1"
+
+[env]
+# sccache as the rustc wrapper only where mise has it installed; empty means no wrapper (CI jobs
+# that install just Rust, Windows, machines without the tool). Not in .cargo/config.toml: there a
+# missing sccache would break every build. The probe variable stops `mise which` from recursing
+# into this same template. CI backend (R2): CI keeps its own sccache setup in ci.yml (GitHub Actions cache backend).
+RUSTC_WRAPPER = "{% if os() != 'windows' and get_env(name='MISE_SCCACHE_PROBE', default='') == '' %}{{ exec(command='MISE_SCCACHE_PROBE=1 \"' ~ mise_bin ~ '\" which sccache 2>/dev/null || true') }}{% endif %}"
+

@@ -30,6 +30,7 @@ P0.1); цей файл фіксує, **чому відповідає кожен 
 | node | `24.21.0` (`mise.toml`) | Node `24.21.0` LTS | 2026-09-15 | P3.9/P6.2 смоук-тести SDK (EOL 20.x — 2026-04) |
 | cargo-dist | `0.33.0` (`mise.toml` `aqua:axodotdev/cargo-dist`) | cargo-dist `0.33.0` | 2026-09-15 | P6.3 пакування. Готовий бінарник через aqua з 2026-09-14 (раніше був бекенд `cargo:`, який компілював із вихідного коду й змагався із завантаженнями rustup у CI) |
 | cargo-cache | `0.8.3` (`mise.toml` `cargo:cargo-cache`) | cargo-cache `0.8.3` | 2023-09-01 | утиліта розробника: `moon run root:cache` / `cache-dry-run` / `cache-autoclean`; не є залежністю крейтів |
+| sccache | `0.18.0` (`mise.toml` `sccache`) | sccache `0.18.0` | 2024-04-17 | кеш компілятора; `[env]` у `mise.toml` робить його обгорткою rustc на Linux і macOS, де він встановлений |
 | zig | `0.16.0` (`mise.toml`) | zig `0.16.0` | 2026-09-15 | D23 власні ядра (`runa-kernels`) |
 | keyring | `4.2.0` | — | 2026-09-15 | P3.8 сховище ключів ОС (`service = runa`) |
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 декодування аудіо |
