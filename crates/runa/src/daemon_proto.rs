@@ -43,7 +43,7 @@ pub fn default_socket_path() -> PathBuf {
     cache_dir().join("runa.sock")
 }
 
-fn cache_dir() -> PathBuf {
+pub(crate) fn cache_dir() -> PathBuf {
     if let Ok(p) = std::env::var("XDG_CACHE_HOME")
         && !p.is_empty()
     {

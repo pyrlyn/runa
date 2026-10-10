@@ -129,6 +129,17 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 `/v1` требует `Authorization: Bearer <key>`; `/health` остаётся открытым. Ключа
 `runa.toml` для этого токена нет (ключи API, вписанные прямо в TOML, отклоняются).
 
+## Журнал использования
+
+`run`, `chat` и `serve` дописывают одну JSON-строку на каждую завершённую
+генерацию. `runa stats` и `runa web` читают её. Ключа в `runa.toml` нет.
+
+| Переменная окружения | Назначение |
+|-----|-----|
+| `RUNA_USAGE_LOG` | Путь к журналу. По умолчанию: `$XDG_CACHE_HOME/runa/usage.jsonl` или `~/.cache/runa/usage.jsonl` |
+
+См. [`stats.md`](stats.md).
+
 ## Облачные переменные окружения (не TOML)
 
 | Переменная окружения | Назначение |

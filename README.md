@@ -75,6 +75,8 @@ Full walkthrough with copy-paste examples:
 | `runa doctor` | Compiled-in backends and native-build flags |
 | `runa media probe\|video\|transcribe` | Inspect / sample / ASR via whisper.cpp |
 | `runa tasks list\|claim\|release` | Claim registry in `docs/tasks.md` (contributors) |
+| `runa stats` | Token totals from the local journal (`--since`, `--json`) |
+| `runa web` | Live usage page on loopback (`127.0.0.1:3939`) |
 
 Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 (`man ./docs/runa.1`). Every flag and `runa.toml` key:
@@ -90,6 +92,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | **MCP / tools** | `--mcp` stdio servers; tool loop in `run` / `chat`; serve tool calling | [`docs/structured.md`](docs/structured.md) |
 | **Media** | native / asr / auto audio routes; `--image` / `--video`; whisper ASR | [`docs/media.md`](docs/media.md) |
 | **Memory** | Idle shrink, heavy grow; `MemoryManager` / `TaskRegistry` API | [`docs/memory.md`](docs/memory.md) |
+| **Stats** | Journal of `run` / `chat` / `serve`; `runa stats` and live `runa web` | [`docs/stats.md`](docs/stats.md) |
 
 ## Docs
 
@@ -104,6 +107,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | [`docs/media.md`](docs/media.md) | Audio routes, vision, ASR |
 | [`docs/structured.md`](docs/structured.md) | JSON Schema / GBNF, serve `response_format`, tools, MCP |
 | [`docs/dashboard.md`](docs/dashboard.md) | Live `/dashboard` for `runa serve` |
+| [`docs/stats.md`](docs/stats.md) | `runa stats` and live `runa web` |
 | [`docs/memory.md`](docs/memory.md) | `MemoryManager`, `TaskRegistry` public methods |
 | [`docs/profiles.md`](docs/profiles.md) | Profiling and polyglot escape-hatch evaluation |
 | [`docs/versions.md`](docs/versions.md) | Version pins, cargo features, release artifacts |

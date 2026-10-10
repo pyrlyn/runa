@@ -45,7 +45,9 @@ mod mcp;
 mod placer;
 mod pull;
 mod serve;
+mod stats_web;
 mod tui;
+mod usage_log;
 
 use runa_pool::engine;
 
@@ -281,6 +283,24 @@ enum Commands {
     Tasks {
         #[command(subcommand)]
         action: TaskAction,
+    },
+    /// Usage totals from the local journal (`run`, `chat`, `serve`).
+    Stats {
+        /// How far back to read (`24h`, `7d`, `60d`).
+        #[arg(long, value_name = "SPAN")]
+        since: Option<String>,
+        /// JSON instead of the table.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Live usage page on this machine (websocket, loopback only).
+    Web {
+        /// Bind address. Must be a loopback address.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Bind port. `0` picks an ephemeral port.
+        #[arg(long, default_value_t = 3939)]
+        port: u16,
     },
 }
 
@@ -583,6 +603,8 @@ fn main() {
             Ok(())
         }
         Commands::Tasks { action } => cmd_tasks(action),
+        Commands::Stats { since, json } => cmd_stats(since.as_deref(), json),
+        Commands::Web { host, port } => stats_web::cmd_web(&host, port),
     };
     if let Err(e) = rc {
         let (code, msg) = if let Some(msg) = e.strip_prefix("unfit: ") {
@@ -1501,7 +1523,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), String> {
         },
     )?;
     let turn = last.expect("tool_loop runs at least one round");
-    finish_run(&turn, args.json);
+    finish_run(&turn, args.json, &args.model);
     Ok(())
 }
 
@@ -1590,7 +1612,7 @@ fn cmd_run_mistral(
     };
     let stream = engine.generate(req)?;
     let turn = drain_local(stream, !args.json)?;
-    finish_run(&turn, args.json);
+    finish_run(&turn, args.json, &args.model);
     Ok(())
 }
 
@@ -1647,7 +1669,7 @@ fn try_daemon_run(
         Ok(events) => events,
         Err(_) => return None,
     };
-    Some(drain_daemon(&events, !args.json).map(|turn| finish_run(&turn, args.json)))
+    Some(drain_daemon(&events, !args.json).map(|turn| finish_run(&turn, args.json, &args.model)))
 }
 
 /// Send one request to the daemon; transport errors mean "no daemon".
@@ -1713,7 +1735,7 @@ fn drain_daemon(events: &[daemon_proto::DaemonEvent], print: bool) -> Result<Loc
 
 /// Shared `run` epilogue (local and daemon paths): `--json` object or a
 /// trailing newline plus the usage line on stderr.
-fn finish_run(turn: &LocalTurn, json: bool) {
+fn finish_run(turn: &LocalTurn, json: bool, model: &str) {
     let usage = turn.usage.clone().unwrap_or(Usage {
         prompt_tokens: 0,
         generated_tokens: 0,
@@ -1721,6 +1743,9 @@ fn finish_run(turn: &LocalTurn, json: bool) {
         pp_toks_per_s: 0.0,
         tg_toks_per_s: 0.0,
     });
+    if let Some(u) = &turn.usage {
+        usage_log::record_usage("run", model, u);
+    }
     if json {
         println!("{}", run_json(&turn.text, &usage, &turn.reason));
     } else {
@@ -2311,6 +2336,35 @@ fn reload_local(
     Ok(())
 }
 
+fn model_label(path: &Path) -> String {
+    path.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+fn store_chat_usage(session: &mut Session, usage: Option<Usage>) -> Option<Usage> {
+    if let Some(u) = &usage {
+        usage_log::record_usage("chat", &model_label(&session.path), u);
+        session.last_usage = Some(u.clone());
+    }
+    usage
+}
+
+fn cmd_stats(since: Option<&str>, json: bool) -> Result<(), String> {
+    let window = match since {
+        Some(s) => Some(usage_log::parse_since(s)?),
+        None => None,
+    };
+    let report = usage_log::load_default(window)?;
+    if json {
+        println!("{}", report.to_json()?);
+    } else {
+        print!("{}", report.to_table());
+    }
+    Ok(())
+}
+
 fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
     let (messages, trimmed) = turn_messages(session, input, engine);
     if trimmed {
@@ -2342,9 +2396,7 @@ fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
                     Ok(push_tool_calls(&mut req.messages, &turn, true))
                 },
             );
-            if usage.is_some() {
-                session.last_usage = usage;
-            }
+            store_chat_usage(session, usage);
             match done {
                 Ok(()) => {
                     commit_history(session, &req.messages, &answer);
@@ -2368,7 +2420,7 @@ fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
                     Ok(turn) => {
                         commit_history(session, &req.messages, &turn.text);
                         println!();
-                        session.last_usage = turn.usage;
+                        store_chat_usage(session, turn.usage);
                     }
                     Err(e) => eprintln!("\ngenerate: {e}"),
                 }
@@ -2391,9 +2443,7 @@ fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
                     Ok(push_tool_calls(&mut req.messages, &turn, true))
                 },
             );
-            if usage.is_some() {
-                session.last_usage = usage;
-            }
+            store_chat_usage(session, usage);
             match done {
                 Ok(()) => {
                     commit_history(session, &req.messages, &answer);
@@ -2691,9 +2741,7 @@ fn tui_turn(
                 },
             );
             tui.set_busy(false);
-            if usage.is_some() {
-                session.last_usage = usage.clone();
-            }
+            let usage = store_chat_usage(session, usage);
             if done.is_ok() {
                 commit_history(session, &req.messages, &answer);
             }
@@ -2755,9 +2803,7 @@ fn tui_turn(
                                 break;
                             }
                         }
-                        if usage.is_some() {
-                            session.last_usage = usage;
-                        }
+                        store_chat_usage(session, usage);
                         commit_history(session, &req.messages, &answer);
                     }
                     Err(e) => tui.push(tui::Message::notice(&format!("generate: daemon: {e}"))),
@@ -2808,9 +2854,7 @@ fn tui_turn(
                 },
             );
             tui.set_busy(false);
-            if usage.is_some() {
-                session.last_usage = usage.clone();
-            }
+            let usage = store_chat_usage(session, usage);
             if done.is_ok() {
                 commit_history(session, &req.messages, &answer);
             }
