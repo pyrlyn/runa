@@ -27,7 +27,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 - E3, local `image_url` paths: fixed in P15.1 (`done.md`). `serve.rs:1381-1382` rejects anything but `data:` before any stat; test `image_url_rejects_local_paths_without_statting`.
 - E4, GGUF `n_dims` over-allocation and divide by zero: fixed. Capacity is capped (`gguf.rs:324-329`), alignment is checked (`:346-348`), `head_dim` uses `checked_div` (`descriptor.rs:138`), `tensor_bytes` uses `checked_mul` (`ggml_types.rs:87-89`).
 - E5, daemon unlinks a live socket: fixed in P15.1. `daemon.rs:196-215` connects first and unlinks only on `ConnectionRefused`/`NotFound`; test `second_daemon_does_not_unlink_a_live_socket`. The leftover race is P17.10.
-- E6, dead website link in the README: not a bug. `README.md:7` no longer links a Pages URL; the landing is `pyrlyn.github.io/landing` (HTTP 200 on 2026-10-08).
+- E6, dead website link in the README: not a bug. `README.md:7` no longer links a Pages URL.
 - E8, config precedence for `[audio]`/`[memory]`: fixed in P15.1. CLI, then env, then files (`config.rs:495-520`); test `later_config_file_overrides_memory_and_audio`. Prices and partial `[memory]` tables are fixed in the PR #62 audit bundle (`done.md`).
 - P17.2, price-table later-wins: fixed in the PR #62 audit bundle (`done.md`).
 - P17.3, partial `[memory]` overlay: fixed in the PR #62 audit bundle (`done.md`).
