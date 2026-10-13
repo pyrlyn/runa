@@ -1,0 +1,12 @@
+# Opt-in mold linker for Linux; the default build is unchanged. Read only through --config:
+#   cargo --config .cargo/mold.toml build        (also check, test, run)
+# Needs mold (pinned in mise.toml for Linux) and clang as the driver. macOS keeps Apple ld;
+# Windows always links with rust-lld through .cargo/config.toml. RUSTFLAGS, when set,
+# replaces the rustflags below.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
