@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StoreConfig",
+  "description": "Where models are stored and looked up.",
+  "type": "object",
+  "properties": {
+    "cache_dir": {
+      "description": "Download store. Absolute or `~/`. Default: `<data dir>/models`.",
+      "type": "string"
+    },
+    "dirs": {
+      "description": "Extra folders searched for model files after the download store, in\norder. Each is absolute or starts with `~/`.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "max_bytes": {
+      "description": "Largest fresh download, in bytes. Default: 3 GiB.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1
+    }
+  },
+  "$comment": "Generated from runa_models::StoreConfig; regenerate with RUNA_BLESS_SCHEMA=1 cargo test -p runa-models",
+  "additionalProperties": false
+}

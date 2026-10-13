@@ -509,3 +509,59 @@ Rust
 - Rust 1.98: https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/ · SVE/SME 2026 goal: https://rust-lang.github.io/rust-project-goals/2026/scalable-vectors.html · AMX: https://github.com/rust-lang/rust/issues/126622 · portable SIMD: https://github.com/rust-lang/portable-simd
 - GPU: https://crates.io/crates/cudarc · https://docs.rs/objc2-metal · https://crates.io/crates/ash · https://wgpu.rs/
 - Media: https://crates.io/crates/symphonia · https://crates.io/crates/rubato · https://crates.io/crates/ffmpeg-sidecar · https://crates.io/crates/cpal · https://crates.io/crates/rsmpeg
+
+---
+
+## 15. Model sources and loading (P18)
+
+Checked 2026-10-14. Feeds plan P18 (`runa-models` crate, `roadmap.md`). A fact backed only by secondary sources is marked **unverified**.
+
+### 15.1 What runa already ships
+
+- `runa pull hf:<repo>:<file|quant>` downloads through `hf-hub` into `<data dir>/models/<owner>--<name>/`, checks size and SHA-256 against the Hub's `x-linked-size` / `x-linked-etag`, and records a `.verified` sidecar (`crates/runa/src/pull.rs`).
+- `runa-fit` parses `hf:` / `https://` / local refs and reads GGUF headers over HTTP ranges with a header cache (`crates/runa-fit/src/remote.rs`).
+- API keys come from the environment or the OS keychain and are rejected in config files (`crates/runa-cloud/src/secrets.rs`, P3.8).
+
+### 15.2 Hugging Face sign-in
+
+| Fact | Source |
+| --- | --- |
+| The Hub supports the OAuth device code flow: `POST https://huggingface.co/oauth/device`, then `POST https://huggingface.co/oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code` | https://huggingface.co/docs/hub/oauth (2026-10-14) |
+| A public OAuth app (no client secret) authenticates with the client id only, in device code or PKCE flows; an app must be registered in the user's settings | https://huggingface.co/docs/hub/oauth (2026-10-14) |
+| Scopes include `read-repos` (personal repos) and `gated-repos` (public gated repos the user was granted, not private repos) | https://huggingface.co/docs/hub/oauth (2026-10-14) |
+| `hf auth login` defaults to the browser device flow and stores the token under `~/.cache/huggingface/`; `--token $HF_TOKEN` is the non-interactive path | https://huggingface.co/docs/cli (2026-10-14); storage path **unverified** (from a mirror of the docs) |
+
+### 15.3 Alternatives to Hugging Face
+
+Free first.
+
+| Service | What it hosts | Programmatic access | Sign-in | Source |
+| --- | --- | --- | --- | --- |
+| ModelScope (modelscope.cn) | Git-backed model repos, strongest in the Chinese ecosystem | Python SDK `HubApi` / `snapshot_download`, CLI `modelscope download` | SDK token, `modelscope login --token` | **unverified**: https://adg.csdn.net/694cf62e5b9f5f31781aaeee.html, https://tessl.io/registry/tessl/pypi-modelscope/files/docs/hub.md (no official REST reference found) |
+| Docker Hub `ai/` namespace (Docker Model Runner) | GGUF, safetensors and DDUF packaged as OCI artifacts; works with GHCR and any OCI registry | `docker model package --gguf <file> --push <ref>`; `--push` needs a registry-qualified reference | Registry token | https://docs.docker.com/reference/cli/docker/model/package.md, https://www.docker.com/blog/publish-ai-models-on-docker-hub/ (2026-10-14) |
+| KitOps ModelKit / CNCF ModelPack | Models, datasets and code as OCI artifacts with SHA-256 digests and Cosign signing | `kit` CLI, any OCI registry | Registry token | https://www.cncf.io/blog/2025/01/31/kitops-1-0-release-proven-in-production-and-looking-to-cncf/ (2026-10-14); feature details **unverified** |
+| Ollama registry (registry.ollama.ai) | GGUF as manifest + `sha256-` blobs | Manifest, then blobs by digest | Public models need none | **unverified**: no official registry API doc; https://medium.com/@dewasheesh.rana/inside-ollamas-model-storage-understanding-blobs-and-manifests-06f1620dd0b2 |
+| Kaggle Models | TF, JAX, PyTorch and other models | `kagglehub.model_download(handle)` | Public models need none; else `KAGGLE_USERNAME` + `KAGGLE_KEY` or `~/.kaggle/kaggle.json` | https://pypi.org/project/kagglehub/0.2.5/ (2026-10-14) |
+| Civitai | Image-generation models (SD, LoRA) | `GET /api/v1/model-versions/{id}` returns `downloadUrl` | `Authorization: Bearer <key>`; a creator may require sign-in for downloads | https://developer.civitai.com/docs/api/public-rest (2026-10-14) |
+| GitHub Releases | Any file by direct URL | HTTPS | Token for private repos | Per-file limit under 2 GiB: https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github (2026-10-14); a 2 GB vs 2 GiB mismatch is reported in https://github.com/orgs/community/discussions/61733 (**unverified**) |
+| WiseModel (wisemodel.cn) | Chinese model hub | Python `wisemodel-hub` | Git token | https://pypi.org/project/wisemodel-hub/0.5.1/ (2026-10-14) |
+| Cloudflare R2 (self-hosting) | Own files over S3 API or public URL | S3 / HTTPS | Account keys | Zero egress fees: https://www.cloudflare.com/en-gb/developer-platform/products/r2/ (2026-10-14); 10 GB-month free tier **unverified** (https://flarecalc.com/calculators/r2) |
+| HF mirrors (e.g. hf-mirror.com) | Same API on another host | Endpoint switch | Same token | **unverified** |
+
+Paid or with paid tiers, all with an API.
+
+| Service | What it hosts | Programmatic access | Source |
+| --- | --- | --- | --- |
+| NVIDIA NGC | NVIDIA model catalog | `ngc registry model download-version org/[team/]model:version`, key in `NGC_API_KEY` | https://docs.nvidia.com/brev/guides/inference-deployment/ngc-developer-guide (2026-10-14) |
+| Weights & Biases Registry | Model artifacts | `wandb.Api().artifact("wandb-registry-<registry>/<collection>:<alias>").download()` | https://docs.wandb.ai/guides/registry/download_use_artifact (2026-10-14) |
+| RunPod Serverless model caching | Hugging Face models pre-placed on worker hosts under `/runpod-volume/huggingface-cache/hub/` | Endpoint setting; Hugging Face models only | https://docs.runpod.io/serverless/endpoints/model-caching (2026-10-14) |
+| Replicate, AWS SageMaker JumpStart, Azure AI Foundry, Vertex AI Model Garden, JFrog Artifactory (HF proxy) | Cloud model catalogs and enterprise proxies | Vendor APIs | **unverified**: not checked in this pass |
+
+### 15.4 Libraries
+
+| Need | Crate or tool | Source |
+| --- | --- | --- |
+| OCI registry client (Ollama, Docker `ai/`, GHCR) | `oci-client` (formerly `oci-distribution`, ORAS project): manifests, blobs, digest validation, token caching | https://docs.rs/oci-distribution/latest/oci_distribution/struct.Client.html (2026-10-14) |
+| Wasm inference interface | `wasmtime-wasi-nn`: backends `onnx`, `openvino` (64-bit), `winml` (Windows), `pytorch`, each behind a Cargo feature; the README calls the crate experimental | https://docs.wasmtime.dev/api/wasmtime_wasi_nn/backend/index.html (2026-10-14) |
+| Wasm + llama.cpp | WasmEdge `wasi_nn-ggml` plugin; LlamaEdge apps load GGUF through it | https://wasmedge.org/docs/contribute/source/plugin/wasi_nn/, https://github.com/second-state/LlamaEdge (2026-10-14) |
+| Model signatures | OpenSSF `model-signing` v1.0 (Sigstore), Python only; signs a manifest of every file in the model directory | https://blog.sigstore.dev/model-transparency-v1.0, https://pypi.org/project/model-signing/1.0.0/ (2026-10-14) |

@@ -748,3 +748,45 @@ decides (plan D12 — loud, never blocking).
 - Notes: approximate on-disk weight size, not process RSS. The serve
   dashboard (`docs/dashboard.md`) publishes this list. Empty when nothing
   is loaded.
+
+## P18.1 — model store (`runa-models`)
+
+Crate: `runa-models`. Config: `[store] dirs, cache_dir, max_bytes`
+(`docs/config.md`). No engine dependency: it hands out paths.
+
+### `StoreConfig`
+
+- Fields: `dirs: Vec<PathBuf>`, `cache_dir: Option<PathBuf>`,
+  `max_bytes: Option<NonZeroU64>`; `Default` is an empty `[store]`.
+- Deserializes the `[store]` table; unknown keys and `max_bytes = 0` are
+  errors.
+
+### `fn ModelStore::new(config: &StoreConfig) -> Result<ModelStore, ConfigError>`
+
+- Returns: the store with `~/` expanded against `home_dir()`.
+- Errors: `ConfigError::Relative` for a relative path,
+  `ConfigError::NoHome` for `~/` without `HOME`/`USERPROFILE`.
+- `ModelStore::default()` is the store with no `[store]` table.
+
+### `fn cache_dir(&self) -> &Path` / `fn dirs(&self) -> &[PathBuf]` / `fn max_bytes(&self) -> u64`
+
+- The download store, the extra folders in config order, and the fresh
+  download cap (default `DEFAULT_MAX_BYTES`, 3 GiB).
+
+### `fn find_file(&self, name: &str) -> Option<PathBuf>`
+
+- Returns: the first regular file named `name` under the download store,
+  then each folder, searched recursively.
+- Notes: symlinked directories are not entered (no link cycles);
+  unreadable or missing folders are skipped.
+
+### `fn list_files(&self, ext: &str) -> Vec<PathBuf>`
+
+- Returns: every file with extension `ext` under all roots, sorted and
+  without duplicates.
+
+### `fn home_dir() -> Option<PathBuf>` / `fn data_dir() -> PathBuf` / `fn default_cache_dir() -> PathBuf`
+
+- `$HOME` (else `$USERPROFILE`); the data root (`$XDG_DATA_HOME/runa`,
+  else `%LOCALAPPDATA%\runa` on Windows, else `~/.local/share/runa`); its
+  `models` folder. Read from the environment on every call.

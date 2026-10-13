@@ -34,6 +34,26 @@ Defaults for whichever model is being run (P8.5).
 lora = ["adapter.gguf:0.5", "other.gguf"]
 ```
 
+## `[store]`
+
+Where model files live (P18.1). A later file overrides only the keys it sets.
+Paths must be absolute or start with `~/`; a relative path or an unknown key
+stops every command at startup with exit code 2.
+
+| Key | Values | Env |
+|-----|--------|-----|
+| `dirs` | Array of extra folders searched, recursively, for a bare model file name after the download store; `runa models` lists them too | |
+| `cache_dir` | Download store used by `runa pull` (default `<data dir>/models`: `$XDG_DATA_HOME/runa/models`, else `%LOCALAPPDATA%\runa\models` on Windows, else `~/.local/share/runa/models`) | |
+| `max_bytes` | Largest fresh `runa pull` download in bytes, at least 1 (default 3 GiB) | `RUNA_MAX_MODEL_BYTES` |
+
+```toml
+[store]
+dirs = ["~/models", "/mnt/shared/gguf"]
+max_bytes = 8589934592
+```
+
+The JSON Schema of this table is `crates/runa-models/store.schema.json`.
+
 ## `[defaults]`
 
 Run-wide defaults for inference commands (P10.2).

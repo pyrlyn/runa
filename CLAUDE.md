@@ -78,6 +78,7 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling loop, mtmd, state save; vendored patches behind features (`rpc`, `hexagon`/`openvino` stubs) |
 | `crates/runa-pool` | `LocalEngine` (backend dispatch) and `ModelPool` behind serve/daemon, as a library: another program embeds local inference through it (P16.2). Placement is injected (`Placer`), so it needs no config or fit code |
 | `crates/runa-fit` | GGUF header (local file / HTTP range), hardware probe, estimator, placement planner, calibration DB. Must not depend on the engine (D5) |
+| `crates/runa-models` | Model store: `[store]` config (`dirs`, `cache_dir`, `max_bytes`), folder lookup and listing; grows into local/URL/Wasm loading (P18). No engine dependency |
 | `crates/runa-memory` | `MemoryManager` (D17) + `TaskRegistry` (D18) |
 | `crates/runa-media` | Audio/video decode, resample, frame sampling, ASR bridge (`whisper-rs`) |
 | `crates/runa-cloud` | OpenAI + Anthropic adapters, price table (`docs/prices.toml`) |

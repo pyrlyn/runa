@@ -47,8 +47,9 @@ Synthetic GGUFs: MIT, header-only, ~2KB each. Audio/video synthetic: MIT. Large 
   (`python3 scripts/check-fixture-size.py`, also enforced in CI;
   override locally with `RUNA_FIXTURE_MAX_BYTES` in bytes).
 - `runa pull` refuses fresh downloads over 3 GiB
-  (`MAX_MODEL_BYTES` in `crates/runa/src/pull.rs`; override with
-  `RUNA_MAX_MODEL_BYTES` in bytes). Already-cached files keep working.
+  (`DEFAULT_MAX_BYTES` in `crates/runa-models/src/config.rs`; override with
+  `[store] max_bytes` or `RUNA_MAX_MODEL_BYTES` in bytes). Already-cached
+  files keep working.
 - Downloaded weights (`*.gguf` except `synthetic-*.gguf`) are git-ignored
   and deleted after a full green test run: `moon run root:test-with-cleanup`
   (or `scripts/test-with-fixture-cleanup.sh`, or `python3 scripts/clean-fixtures.py`).

@@ -38,6 +38,7 @@ Project programs and direct packages from manifests.
 | base64 | local | https://crates.io/crates/base64 | Strict `data:` / `input_audio` decoding |
 | chrono | local | https://crates.io/crates/chrono | Rust dependency |
 | clap | local | https://crates.io/crates/clap | CLI |
+| config-schema | local (dev) | https://github.com/pyrlyn/crates-packages | Stale-schema check for `[store]` (`runa-models`), pinned by git rev |
 | clap_mangen | local | https://crates.io/crates/clap_mangen | Rust dependency |
 | cc | local | https://crates.io/crates/cc | P9.3: compiles the vendored ggml RPC backend behind `--features rpc`. |
 | criterion | local | https://crates.io/crates/criterion | Statistical benchmarks with HTML reports (kernels/media gates) |
@@ -63,6 +64,7 @@ Project programs and direct packages from manifests.
 | rubato | local | https://crates.io/crates/rubato | Rust dependency |
 | rmcp | local | https://crates.io/crates/rmcp | P8.3 MCP client (stdio servers) for the run/chat tool loop. |
 | rustyline | local | https://crates.io/crates/rustyline | P2.3 REPL line editing + file history. |
+| schemars | local (dev) | https://crates.io/crates/schemars | JSON Schema of `[store]` (`runa-models`) |
 | serde | local | https://crates.io/crates/serde | Serialization |
 | serde_json | local | https://crates.io/crates/serde_json | JSON |
 | sha2 | local | https://crates.io/crates/sha2 | Rust dependency |

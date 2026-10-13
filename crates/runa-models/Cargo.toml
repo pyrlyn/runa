@@ -1,0 +1,21 @@
+[package]
+name = "runa-models"
+description = "model store: local model folders, the download store and the [store] config; no engine dependency"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[dev-dependencies]
+# The schema is exported only by the drift test, so schemars stays out of the
+# library build (workspace rust.md, schemars section).
+schemars = "1.2.2"
+# Shared stale-schema check. Not on crates.io yet, so pinned by git rev like
+# aulo's speech-capture.
+config-schema = { git = "https://github.com/pyrlyn/crates-packages", rev = "38bf6ce5a7e9ff0563b5bcb870699de51bd87fb3" }
+tempfile = "3"
+toml = "=1.1.5"
