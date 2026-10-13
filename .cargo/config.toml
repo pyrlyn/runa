@@ -19,3 +19,12 @@ GGML_NATIVE = { value = "OFF", force = false }
 # repo-wide; an explicit RUST_TEST_THREADS in the environment still wins
 # (cargo prefers real env over [env]).
 RUST_TEST_THREADS = { value = "4", force = false }
+
+# Windows: rust-lld ships with rustup (lib/rustlib/<host>/bin), so no extra install. It replaces
+# link.exe; the MSVC libraries are still found through the VS environment. No rustflags here on
+# purpose: they would replace RUSTFLAGS and [build] rustflags. windows-gnu stays on mingw ld.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld"
