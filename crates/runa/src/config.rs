@@ -80,13 +80,7 @@ impl std::fmt::Display for OnUnfit {
     }
 }
 
-/// `$HOME`, or `$USERPROFILE` on Windows when `HOME` is unset.
-pub(crate) fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|s| !s.is_empty())
-        .or_else(|| std::env::var_os("USERPROFILE").filter(|s| !s.is_empty()))
-        .map(PathBuf::from)
-}
+pub(crate) use runa_models::home_dir;
 
 /// Candidate config files in increasing precedence.
 pub fn config_paths() -> Vec<PathBuf> {
@@ -129,6 +123,41 @@ pub fn load_aliases() -> Result<AliasTable, String> {
         merge_aliases_toml(&mut table, &text, &path.display().to_string())?;
     }
     Ok(table)
+}
+
+/// The model store from `[store]` (P18.1), merged across config files.
+pub fn load_store() -> Result<runa_models::ModelStore, String> {
+    let mut files = Vec::new();
+    for path in config_paths() {
+        if let Some(text) = read_config_text(&path)? {
+            files.push((path.display().to_string(), text));
+        }
+    }
+    let cfg = store_config_from_texts(&files)?;
+    runa_models::ModelStore::new(&cfg).map_err(|e| e.to_string())
+}
+
+/// Merge `[store]` tables: a later file overrides only the keys it sets.
+fn store_config_from_texts(files: &[(String, String)]) -> Result<runa_models::StoreConfig, String> {
+    let mut merged = toml::Table::new();
+    for (origin, text) in files {
+        let value: toml::Value =
+            toml::from_str(text).map_err(|e| format!("{origin}: invalid TOML: {e}"))?;
+        let Some(store) = value.get("store") else {
+            continue;
+        };
+        let Some(table) = store.as_table() else {
+            return Err(format!("{origin}: `store` must be a table"));
+        };
+        // Each file is checked alone first so an unknown key names its file.
+        toml::Value::Table(table.clone())
+            .try_into::<runa_models::StoreConfig>()
+            .map_err(|e| format!("{origin}: [store]: {e}"))?;
+        merged.extend(table.clone());
+    }
+    toml::Value::Table(merged)
+        .try_into()
+        .map_err(|e| format!("[store]: {e}"))
 }
 
 /// CLI `--threads` > `RUNA_THREADS` > `[defaults] threads` > engine
@@ -1335,6 +1364,51 @@ source = "./tiny.gguf"
             None => unsafe { std::env::remove_var("RUNA_MEMORY_IDLE_TIMEOUT_S") },
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn store_files(files: &[(&str, &str)]) -> Result<runa_models::StoreConfig, String> {
+        let owned: Vec<(String, String)> = files
+            .iter()
+            .map(|(o, t)| (o.to_string(), t.to_string()))
+            .collect();
+        super::store_config_from_texts(&owned)
+    }
+
+    #[test]
+    fn no_store_table_is_the_default() {
+        let cfg = store_files(&[("user.toml", "[models.q]\nsource = \"x.gguf\"\n")]).unwrap();
+        assert_eq!(cfg, runa_models::StoreConfig::default());
+    }
+
+    #[test]
+    fn later_store_file_overrides_only_keys_it_sets() {
+        let cfg = store_files(&[
+            (
+                "user.toml",
+                "[store]\ndirs = [\"/a\"]\ncache_dir = \"/c\"\nmax_bytes = 10\n",
+            ),
+            ("runa.toml", "[store]\ndirs = [\"/b\"]\n"),
+        ])
+        .unwrap();
+        assert_eq!(cfg.dirs, vec![PathBuf::from("/b")]);
+        assert_eq!(cfg.cache_dir, Some(PathBuf::from("/c")));
+        assert_eq!(cfg.max_bytes.map(|n| n.get()), Some(10));
+    }
+
+    #[test]
+    fn unknown_store_key_names_its_file() {
+        let err = store_files(&[
+            ("user.toml", "[store]\ndirs = []\n"),
+            ("runa.toml", "[store]\ncache = \"/c\"\n"),
+        ])
+        .unwrap_err();
+        assert!(err.starts_with("runa.toml: [store]:"), "{err}");
+    }
+
+    #[test]
+    fn store_must_be_a_table() {
+        let err = store_files(&[("runa.toml", "store = \"/c\"\n")]).unwrap_err();
+        assert!(err.contains("must be a table"), "{err}");
     }
 
     #[test]

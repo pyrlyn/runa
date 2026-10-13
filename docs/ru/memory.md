@@ -744,3 +744,45 @@ count_history_tokens(messages)` токенизирует содержимое к
 - Примечания: приблизительный размер весов на диске, не RSS процесса.
   Панель serve (`docs/dashboard.md`) публикует этот список. Пусто, когда
   ничего не загружено.
+
+## P18.1 — хранилище моделей (`runa-models`)
+
+Крейт: `runa-models`. Конфиг: `[store] dirs, cache_dir, max_bytes`
+(`docs/ru/config.md`). Не зависит от движка: отдаёт только пути.
+
+### `StoreConfig`
+
+- Поля: `dirs: Vec<PathBuf>`, `cache_dir: Option<PathBuf>`,
+  `max_bytes: Option<NonZeroU64>`; `Default` — пустая таблица `[store]`.
+- Десериализует таблицу `[store]`; неизвестные ключи и `max_bytes = 0` —
+  ошибки.
+
+### `fn ModelStore::new(config: &StoreConfig) -> Result<ModelStore, ConfigError>`
+
+- Возвращает: хранилище, где `~/` раскрыт относительно `home_dir()`.
+- Ошибки: `ConfigError::Relative` для относительного пути,
+  `ConfigError::NoHome` для `~/` без `HOME`/`USERPROFILE`.
+- `ModelStore::default()` — хранилище без таблицы `[store]`.
+
+### `fn cache_dir(&self) -> &Path` / `fn dirs(&self) -> &[PathBuf]` / `fn max_bytes(&self) -> u64`
+
+- Хранилище загрузок, дополнительные папки в порядке конфига и лимит
+  новой загрузки (по умолчанию `DEFAULT_MAX_BYTES`, 3 GiB).
+
+### `fn find_file(&self, name: &str) -> Option<PathBuf>`
+
+- Возвращает: первый обычный файл с именем `name` в хранилище загрузок,
+  затем в каждой папке, с рекурсивным поиском.
+- Примечания: в каталоги-симлинки поиск не заходит (циклов нет);
+  недоступные и отсутствующие папки пропускаются.
+
+### `fn list_files(&self, ext: &str) -> Vec<PathBuf>`
+
+- Возвращает: все файлы с расширением `ext` во всех корнях,
+  отсортированные и без повторов.
+
+### `fn home_dir() -> Option<PathBuf>` / `fn data_dir() -> PathBuf` / `fn default_cache_dir() -> PathBuf`
+
+- `$HOME` (иначе `$USERPROFILE`); корень данных (`$XDG_DATA_HOME/runa`,
+  иначе `%LOCALAPPDATA%\runa` на Windows, иначе `~/.local/share/runa`); его
+  папка `models`. Читаются из окружения при каждом вызове.

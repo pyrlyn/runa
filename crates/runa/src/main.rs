@@ -350,6 +350,13 @@ fn main() {
         eprintln!("runa: error: {e}");
         std::process::exit(2);
     }
+    match config::load_store() {
+        Ok(store) => pull::init_store(store),
+        Err(e) => {
+            eprintln!("runa: error: {e}");
+            std::process::exit(2);
+        }
+    }
     let rc = match cli.command {
         Commands::Run(args) => cmd_run(&args),
         Commands::Fit(args) => fit::cmd_fit(&args),
@@ -2892,6 +2899,9 @@ fn cmd_tasks(action: TaskAction) -> Result<(), String> {
 fn cmd_models() -> Result<(), String> {
     let aliases = config::load_aliases()?;
     println!("models in {}:", pull::models_dir().display());
+    for dir in pull::extra_dirs() {
+        println!("  and {}", dir.display());
+    }
     for p in pull::list_models() {
         let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
         println!("  {} ({size} bytes)", p.display());

@@ -744,3 +744,45 @@ count_history_tokens(messages)` токенізує вміст кожного п�
 - Примітки: приблизний розмір ваг на диску, не RSS процесу.
   Панель serve (`docs/dashboard.md`) публікує цей список. Порожньо, коли
   нічого не завантажено.
+
+## P18.1 — сховище моделей (`runa-models`)
+
+Крейт: `runa-models`. Конфіг: `[store] dirs, cache_dir, max_bytes`
+(`docs/uk/config.md`). Не залежить від рушія: повертає лише шляхи.
+
+### `StoreConfig`
+
+- Поля: `dirs: Vec<PathBuf>`, `cache_dir: Option<PathBuf>`,
+  `max_bytes: Option<NonZeroU64>`; `Default` — порожня таблиця `[store]`.
+- Десеріалізує таблицю `[store]`; невідомі ключі та `max_bytes = 0` —
+  помилки.
+
+### `fn ModelStore::new(config: &StoreConfig) -> Result<ModelStore, ConfigError>`
+
+- Повертає: сховище, де `~/` розкрито відносно `home_dir()`.
+- Помилки: `ConfigError::Relative` для відносного шляху,
+  `ConfigError::NoHome` для `~/` без `HOME`/`USERPROFILE`.
+- `ModelStore::default()` — сховище без таблиці `[store]`.
+
+### `fn cache_dir(&self) -> &Path` / `fn dirs(&self) -> &[PathBuf]` / `fn max_bytes(&self) -> u64`
+
+- Сховище завантажень, додаткові теки в порядку конфігу та ліміт нового
+  завантаження (типово `DEFAULT_MAX_BYTES`, 3 GiB).
+
+### `fn find_file(&self, name: &str) -> Option<PathBuf>`
+
+- Повертає: перший звичайний файл із назвою `name` у сховищі завантажень,
+  потім у кожній теці, з рекурсивним пошуком.
+- Примітки: у теки-симлінки пошук не заходить (циклів немає);
+  недоступні й відсутні теки пропускаються.
+
+### `fn list_files(&self, ext: &str) -> Vec<PathBuf>`
+
+- Повертає: усі файли з розширенням `ext` в усіх коренях, відсортовані
+  й без повторів.
+
+### `fn home_dir() -> Option<PathBuf>` / `fn data_dir() -> PathBuf` / `fn default_cache_dir() -> PathBuf`
+
+- `$HOME` (інакше `$USERPROFILE`); корінь даних (`$XDG_DATA_HOME/runa`,
+  інакше `%LOCALAPPDATA%\runa` на Windows, інакше `~/.local/share/runa`); його
+  тека `models`. Читаються з оточення під час кожного виклику.

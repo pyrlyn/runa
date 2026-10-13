@@ -47,6 +47,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
+| P18.1 | in progress | medium | S | ready | Anthropic / claude-opus-5-5 |
 
 ## Tasks
 
@@ -84,6 +85,38 @@ Plan:
 Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
 Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
+
+### P18.1. `runa-models` crate skeleton and `[store]` config
+
+First slice of P18 (`roadmap.md`, research in `research.md` §15): a library crate
+that will own model loading from local folders, URLs and Wasm. This slice adds the
+crate, its config type and the first behavior that uses it, so nothing in the docs
+is promised before the code has it.
+
+Plan:
+
+1. `crates/runa-models`: `Cargo.toml` (no engine dependency, like `runa-fit` under
+   D5), `config.rs` with `StoreConfig` for a new `[store]` table: `dirs` (extra
+   model folders, absolute or `~/`), `cache_dir` (download store, default
+   `<data dir>/models`), `max_bytes` (fresh-download cap, default 3 GiB).
+   Unknown keys are rejected. JSON Schema committed as
+   `crates/runa-models/store.schema.json`, kept current by a test through the
+   shared `config-schema` crate (dev-dependency, git rev, as aulo does).
+2. `store.rs`: `ModelStore` built from the config: cache dir, search dirs, size
+   cap, bare-filename lookup across the cache and the folders, model listing.
+   `paths.rs`: `home_dir` and `data_dir` move here from the CLI crate.
+3. `crates/runa`: `config.rs` merges `[store]` across config files (later file
+   wins per key) and builds the store at startup; `pull.rs` uses it for the
+   store directory, the size cap (`RUNA_MAX_MODEL_BYTES` still wins) and the
+   bare-filename lookup; `runa models` lists the folders too.
+4. Docs: `[store]` in `docs/config.md` (+ `docs/ru/`, `docs/uk/`); public
+   methods in `docs/memory.md`; crate row in `AGENTS.md` §8; `toolchain.md`.
+
+Machine check: `cargo test -p runa-models` (config parsing, unknown keys,
+relative paths refused, `~/` expansion, schema drift, lookup in a folder),
+`cargo test -p runa --bin runa store` (`[store]` merge across files) and
+`cargo test -p runa --test pull` (`runa models` lists a `[store] dirs`
+folder; a relative path exits 2) pass; `moon run root:lint-tasks` is green.
 
 ## Reference
 
