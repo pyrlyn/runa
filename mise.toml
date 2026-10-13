@@ -3,7 +3,7 @@
 # version; this file exists so `mise install` bootstraps a matching toolchain
 # for contributors who manage tools with mise. Keep the two files in sync.
 [tools]
-mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; mise [env] below turns it on where it is installed
+mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with `cargo --config .cargo/mold.toml`
 # rust-toolchain.toml stays the rustup source of truth for direct rustup runs;
 # mise only reads its components when the pin itself comes from that file, so
 # the components are mirrored here (CI runs under RUSTUP_TOOLCHAIN, which
@@ -35,11 +35,3 @@ zig = "0.16.0"
 # config in cliff.toml. Same pin style as the rest of this file (D16).
 git-cliff = "2.13.1"
 
-[env]
-# mold as the Linux linker only where mise has installed it (clang is the driver): without mold
-# the variable is empty and the default linker stays, so a Linux machine without mold or clang
-# still builds. Not in .cargo/config.toml: a missing mold there would break every Linux build.
-# Cargo takes these only when RUSTFLAGS is unset. macOS keeps Apple ld; Windows uses rust-lld
-# through .cargo/config.toml. The probe variable stops `mise which` from recursing.
-CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "{% if os() == 'linux' and get_env(name='MISE_MOLD_PROBE', default='') == '' %}{{ exec(command='MISE_MOLD_PROBE=1 \"' ~ mise_bin ~ '\" which mold >/dev/null 2>&1 && echo \"-C linker=clang -C link-arg=-fuse-ld=mold\" || true') }}{% endif %}"
-CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "{% if os() == 'linux' and get_env(name='MISE_MOLD_PROBE', default='') == '' %}{{ exec(command='MISE_MOLD_PROBE=1 \"' ~ mise_bin ~ '\" which mold >/dev/null 2>&1 && echo \"-C linker=clang -C link-arg=-fuse-ld=mold\" || true') }}{% endif %}"
