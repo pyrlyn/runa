@@ -47,6 +47,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
+| P11.10 | in progress | medium | S | ready | Anthropic / claude-opus-5-5 |
 
 ## Tasks
 
@@ -84,6 +85,18 @@ Plan:
 Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
 Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
+
+### P11.10. Keep synthetic GGUF fixtures out of Git LFS
+
+The repo-wide `*.gguf` LFS rule in `.gitattributes` also covers `tests/fixtures/synthetic-*.gguf`, but those few-hundred-byte headers are committed as plain blobs so CI reads them without LFS. The LFS clean filter turns each one into a pointer, so every fresh checkout or worktree shows all seven as modified, `git rebase` refuses to run, and `rtok worktree remove` refuses the worktree as dirty. Done means: the synthetic files are exempt from the LFS filter, stay plain blobs, and a fresh worktree is clean.
+
+Execution plan:
+
+1. `crates/runa-fit/tests/fixture_attrs.rs`: `git check-attr filter` on every `synthetic-*.gguf` must report `unset` (fails before the fix; skips without git).
+2. `.gitattributes`: a last-line override `tests/fixtures/synthetic-*.gguf -filter -diff -merge -text`.
+3. `tests/fixtures/README.md`: say they are plain blobs.
+
+Machine check: `cargo test -p runa-fit --test fixture_attrs`; `git status` in this worktree shows no fixture as modified; `moon run root:lint-tasks`.
 
 ## Reference
 
