@@ -12,7 +12,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 | --- | --- | --- | --- | --- | --- |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
 | P17.10 | medium (P2) | bug | suspected | `crates/runa/src/daemon.rs:206-212` | After `ConnectionRefused`, `remove_file` then `bind` is not atomic, so two starters can still race (the live-daemon steal itself is fixed). Take a `flock` on a lock file first. |
-| P17.11 | medium (P2) | bug | suspected | `crates/runa-engine/src/generate.rs:859-866` | `add_close_bias` casts the shared slice from `get_logits_ith` to mutable and writes through it, which is UB unless the callee guarantees exclusive access. Use a mutable logits API. |
 | P17.12 | medium (P2) | bug | confirmed | `crates/runa-media/src/video.rs:224` | `ffmpeg_sidecar::download::auto_download()` runs with no hash check. Prefer ffmpeg from `PATH`/mise; pin a hash if auto-download stays. |
 | P17.13 | medium (P2) | bug | confirmed | `crates/runa-pool/src/pool.rs:62-80`; `crates/runa-memory/src/memory.rs:187` | Library crates print to stderr, which an embedder (P16.2) cannot silence (issue #37 class). Use `tracing` or a callback. |
 | P17.16 | medium (P2) | dead code | confirmed | `crates/runa-kernels/c/{avx2,neon,scalar}.c`; `crates/runa-kernels/src/lib.rs:8` | The C kernels are "reference only" and nothing builds them; the Zig archive is what links. Move them to `docs/` or drop them. |
@@ -45,10 +44,28 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.11 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
+
+### P17.11. Close-token logit bias must not write a shared logits slice
+
+`add_close_bias` casts the `&[f32]` from `get_logits_ith` to mutable and adds
+`CLOSE_LOGIT_BIAS`. llama-cpp-2 0.1.133 exposes no mutable logits getter
+(`LlamaContext::context` is `pub(crate)`).
+
+Plan:
+1. Copy the logit row and add the bias on the copy. The context buffer stays shared.
+2. The kernel sampler reads that copy. The llama.cpp chain is applied to a
+   `LlamaTokenDataArray` built from the copy, then accepted once.
+   `LlamaSampler::sample` stays on the unbiased path (it reads the context buffer).
+3. Unit-test the copy. Do not call `LlamaBackend::init` (process-global).
+
+Decision: do not bump llama-cpp-2. The pinned crate already has `LlamaSampler::apply`.
+
+Machine check: `cargo test -p runa-engine --lib close_bias` passes.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
