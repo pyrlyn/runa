@@ -19,7 +19,10 @@ use std::time::Instant;
 
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::{AddBos, LlamaChatMessage};
+use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::token::LlamaToken;
+use llama_cpp_2::token::data::LlamaTokenData;
+use llama_cpp_2::token::data_array::LlamaTokenDataArray;
 
 use crate::load::{EngineError, LoadedModel};
 use crate::sampling::SamplingConfig;
@@ -615,21 +618,36 @@ impl Generation<'_> {
                 }
                 tok
             } else {
+                let bias_token = if kind == runa_core::ForceKind::Bias {
+                    self.close_tokens.first().copied()
+                } else {
+                    None
+                };
                 let ctx = self.loaded.context_mut();
-                if kind == runa_core::ForceKind::Bias
-                    && let Some(&t) = self.close_tokens.first()
-                {
-                    add_close_bias(ctx, self.last_idx, t);
-                }
                 if self.sampling.kernel_sampler {
-                    let logits = ctx.get_logits_ith(self.last_idx);
-                    let id = self.sampling.sample_logits(logits, &mut self.kernel_seed);
-                    llama_cpp_2::token::LlamaToken::new(id)
+                    let id = match bias_token {
+                        Some(t) => {
+                            let owned = logits_with_close_bias(
+                                ctx.get_logits_ith(self.last_idx),
+                                t.0,
+                                runa_core::CLOSE_LOGIT_BIAS,
+                            );
+                            self.sampling.sample_logits(&owned, &mut self.kernel_seed)
+                        }
+                        None => {
+                            let logits = ctx.get_logits_ith(self.last_idx);
+                            self.sampling.sample_logits(logits, &mut self.kernel_seed)
+                        }
+                    };
+                    LlamaToken::new(id)
                 } else {
                     let sampler = self.sampler.as_mut().expect("sampler alive until done");
                     // `sample` accepts the token itself; a second accept
                     // would advance grammars and penalties twice.
-                    sampler.sample(ctx, self.last_idx)
+                    match bias_token {
+                        Some(t) => sample_with_close_bias(sampler, ctx, self.last_idx, t),
+                        None => sampler.sample(ctx, self.last_idx),
+                    }
                 }
             }
         };
@@ -855,16 +873,51 @@ enum Split {
     Stop { before: String, matched: String },
 }
 
-fn add_close_bias(ctx: &llama_cpp_2::context::LlamaContext<'_>, idx: i32, token: LlamaToken) {
-    let logits = ctx.get_logits_ith(idx);
-    let i = token.0 as usize;
-    if i < logits.len() {
-        // SAFETY: llama_get_logits_ith is a mutable buffer; llama-cpp-2 only
-        // exposes `&[f32]`.
-        unsafe {
-            *logits.as_ptr().cast_mut().add(i) += runa_core::CLOSE_LOGIT_BIAS;
-        }
+/// Owned logit row with `bias` added to `token`.
+///
+/// `LlamaContext::get_logits_ith` returns `&[f32]`. Writing through that
+/// slice is aliasing UB, and llama-cpp-2 0.1.133 does not lend `&mut [f32]`.
+/// The context buffer is left unchanged.
+fn logits_with_close_bias(logits: &[f32], token: i32, bias: f32) -> Vec<f32> {
+    let mut owned = logits.to_vec();
+    if let Ok(i) = usize::try_from(token)
+        && let Some(slot) = owned.get_mut(i)
+    {
+        *slot += bias;
     }
+    owned
+}
+
+/// Sample one token from a biased copy of the logit row.
+///
+/// `LlamaSampler::sample` reads the context buffer, so the close-token bias
+/// is applied here on a `LlamaTokenDataArray` instead. `apply` does not
+/// accept; this function accepts once, matching `sample`.
+fn sample_with_close_bias(
+    sampler: &mut LlamaSampler,
+    ctx: &llama_cpp_2::context::LlamaContext<'_>,
+    idx: i32,
+    token: LlamaToken,
+) -> LlamaToken {
+    let owned = {
+        let logits = ctx.get_logits_ith(idx);
+        logits_with_close_bias(logits, token.0, runa_core::CLOSE_LOGIT_BIAS)
+    };
+    let mut data = LlamaTokenDataArray::from_iter(
+        owned.iter().enumerate().filter_map(|(i, &logit)| {
+            let id = i32::try_from(i).ok()?;
+            Some(LlamaTokenData::new(LlamaToken::new(id), logit, 0.0))
+        }),
+        false,
+    );
+    sampler.apply(&mut data);
+    if let Some(picked) = data.selected_token() {
+        sampler.accept(picked);
+        return picked;
+    }
+    // A chain that selects nothing still has to return a token. Fall back
+    // to the unbiased context row rather than accepting an invented id.
+    sampler.sample(ctx, idx)
 }
 
 fn split_emit(pending: &str, stops: &[String]) -> Split {
@@ -1002,6 +1055,18 @@ mod tests {
             }
             Split::Stop { .. } => panic!("no match expected"),
         }
+    }
+
+    #[test]
+    fn close_bias_is_added_on_a_copy() {
+        let row = [0.0_f32, 1.5, -0.25];
+        let biased = logits_with_close_bias(&row, 0, runa_core::CLOSE_LOGIT_BIAS);
+        assert_eq!(biased[0], runa_core::CLOSE_LOGIT_BIAS);
+        assert_eq!(biased[1], 1.5);
+        assert_eq!(biased[2], -0.25);
+        assert_eq!(row[0], 0.0, "the source row stays unchanged");
+        assert_eq!(logits_with_close_bias(&row, 9, 4.0), row);
+        assert_eq!(logits_with_close_bias(&row, -1, 4.0), row);
     }
 
     #[test]

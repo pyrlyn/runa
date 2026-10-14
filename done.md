@@ -1346,6 +1346,25 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.11. Close-token logit bias must not write a shared logits slice
+
+Completed 2026-10-14 (Cursor Grok 4.7).
+
+`add_close_bias` cast the `&[f32]` from `LlamaContext::get_logits_ith` to
+mutable and added `CLOSE_LOGIT_BIAS`. llama-cpp-2 0.1.133 has no mutable
+logits getter (`LlamaContext::context` is `pub(crate)`), so that write was
+aliasing UB. The bias is now added on an owned copy of the logit row. The
+kernel sampler reads the copy. The llama.cpp chain is applied to a
+`LlamaTokenDataArray` built from the copy and accepted once. The unbiased
+path still uses `LlamaSampler::sample`. `docs/thinking.md` and the Russian
+and Ukrainian translations describe the copy. The pin stays `0.1.133`.
+
+Check (evidence): `cargo test -p runa-engine --lib close_bias` —
+`close_bias_is_added_on_a_copy` passed (1 passed, 51 filtered out).
+`cargo clippy -p runa-engine --lib -- -D warnings` finished clean.
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim
+was held (K7 stale-claim warning only).
+
 ### P17.8. Refuse a non-loopback `runa serve` bind without `--api-key`
 
 Completed 2026-10-09 (Cursor Grok 4.7).
