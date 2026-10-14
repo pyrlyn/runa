@@ -47,6 +47,7 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
+| P18.2 | in progress | medium | M | ready | Anthropic / claude-opus-5-5 |
 
 ## Tasks
 
@@ -84,6 +85,19 @@ Plan:
 Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
 Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
+
+### P18.2. Local loading and format check
+
+Search the `[store] dirs`; a path must stay inside its directory after `canonicalize`. Detect the format by magic bytes: GGUF (header parsed through `runa-fit` with its caps), safetensors (length-prefixed JSON header, size-capped), Wasm (`\0asm`). Refuse pickle files (`.bin`, `.pt`, `.pth`, `.ckpt`).
+
+Execution plan:
+
+1. `crates/runa-models/src/format.rs`: `ModelFormat { Gguf, Safetensors, Wasm }`, `FormatError` and `detect(path)`. Pickle is refused by extension (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`) and by content (a zip or a pickle protocol header). GGUF goes through `runa_fit::read_local_prefix`; safetensors checks the 8-byte length, a 100 MiB header cap, a JSON object and every `data_offsets` end against the file length; Wasm checks `\0asm` plus the version word. A known extension with other content is a mismatch.
+2. `ModelStore::find_file` keeps a hit only if its canonical path stays under the canonical root, so a symlink cannot point outside the store.
+3. `crates/runa/src/pull.rs`: a local model file is checked with `detect` before it is used.
+4. Tests for each format, each refusal and the escape; `docs/memory.md` (+ ru/uk) for the new public items; `toolchain.md` rows.
+
+Machine check: `cargo test -p runa-models`, `cargo test -p runa --bin runa --test pull`, `moon run :test`, `moon run root:lint-tasks`.
 
 ## Reference
 

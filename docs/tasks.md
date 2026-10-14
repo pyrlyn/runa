@@ -9,3 +9,4 @@ Lint ignores `#` lines. An empty table is valid: there is nothing left to claim.
 | ------ | ------ | ------ | ------ |
 | P14.2 | in progress | Cursor Grok 4.7 | 2026-10-09T08:02:19Z |
 | K7 | in progress | Grok Bot | 2026-09-30T16:17:20Z |
+| P18.2 | in progress | Anthropic / claude-opus-5-5 | 2026-10-14T02:26:53Z |

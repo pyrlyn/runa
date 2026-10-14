@@ -459,7 +459,7 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
     // 1. Literal local path: a .gguf file or a mistral model directory.
     let direct = PathBuf::from(model_ref);
     if direct.is_file() {
-        return Ok(direct);
+        return checked(direct);
     }
     if direct.is_dir() {
         return Ok(direct);
@@ -520,7 +520,7 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
     }
     // 4. Bare filename anywhere in the store or the `[store] dirs`.
     if let Some(p) = store().find_file(model_ref) {
-        return Ok(p);
+        return checked(p);
     }
     if model_ref.starts_with("hf:") {
         return Err(format!(
@@ -530,6 +530,13 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
     Err(format!(
         "{model_ref}: no such model file (and no alias by that name)"
     ))
+}
+
+/// A local model file the user named or dropped into a folder: refuse pickle
+/// files and anything whose bytes are not the format it claims (P18.2).
+fn checked(path: PathBuf) -> Result<PathBuf, String> {
+    runa_models::detect(&path).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
 /// Every model file in the store and the `[store] dirs` (for `runa models`).
@@ -597,6 +604,20 @@ mod tests {
                 find_local("hf:test/local-model:tiny-Q4_0.gguf", &AliasTable::default()).unwrap();
             assert_eq!(path, dest);
         });
+    }
+
+    #[test]
+    fn find_local_refuses_pickle_and_fake_gguf() {
+        let d = tempfile::tempdir().unwrap();
+        let pt = d.path().join("w.pt");
+        let fake = d.path().join("fake.gguf");
+        std::fs::write(&pt, b"anything").unwrap();
+        std::fs::write(&fake, b"not a model").unwrap();
+        let none = AliasTable::default();
+        let err = find_local(pt.to_str().unwrap(), &none).unwrap_err();
+        assert!(err.contains("pickle"), "{err}");
+        let err = find_local(fake.to_str().unwrap(), &none).unwrap_err();
+        assert!(err.contains("corrupt GGUF"), "{err}");
     }
 
     #[test]

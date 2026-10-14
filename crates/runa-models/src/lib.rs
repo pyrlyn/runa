@@ -12,9 +12,11 @@
 //! Public-method docs: `docs/memory.md`.
 
 mod config;
+mod format;
 mod paths;
 mod store;
 
 pub use config::{ConfigError, DEFAULT_MAX_BYTES, StoreConfig};
+pub use format::{FormatError, MAX_SAFETENSORS_HEADER, ModelFormat, detect};
 pub use paths::{data_dir, default_cache_dir, home_dir};
 pub use store::ModelStore;

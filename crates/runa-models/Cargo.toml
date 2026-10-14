@@ -7,8 +7,12 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# P18.2: GGUF headers are checked by the same capped reader `runa fit` uses.
+runa-fit = { path = "../runa-fit" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
+# P18.2: safetensors headers are JSON.
+serde_json = "1.0.151"
 
 [dev-dependencies]
 # The schema is exported only by the drift test, so schemars stays out of the

@@ -778,7 +778,8 @@ Crate: `runa-models`. Config: `[store] dirs, cache_dir, max_bytes`
 - Returns: the first regular file named `name` under the download store,
   then each folder, searched recursively.
 - Notes: symlinked directories are not entered (no link cycles);
-  unreadable or missing folders are skipped.
+  unreadable or missing folders are skipped; a file whose canonical path
+  leaves its root (a symlink out of the folder) is skipped (P18.2).
 
 ### `fn list_files(&self, ext: &str) -> Vec<PathBuf>`
 
@@ -790,3 +791,24 @@ Crate: `runa-models`. Config: `[store] dirs, cache_dir, max_bytes`
 - `$HOME` (else `$USERPROFILE`); the data root (`$XDG_DATA_HOME/runa`,
   else `%LOCALAPPDATA%\runa` on Windows, else `~/.local/share/runa`); its
   `models` folder. Read from the environment on every call.
+
+## P18.2 — local model files (`runa-models`)
+
+### `enum ModelFormat { Gguf, Safetensors, Wasm }`
+
+- A model file format told apart by its leading bytes; `Display` prints
+  `GGUF`, `safetensors`, `Wasm`.
+
+### `fn detect(path: &Path) -> Result<ModelFormat, FormatError>`
+
+- Returns: the format of `path`, after its header is checked: GGUF through
+  the capped `runa-fit` reader, safetensors by its 8-byte length (at most
+  `MAX_SAFETENSORS_HEADER`, 100 MiB), JSON header and every `data_offsets`
+  pair inside the file, Wasm by `\0asm` plus a core (1) or component
+  version word.
+- Errors: `FormatError::Pickle` for `.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`,
+  `.pickle` (by name, before reading) or pickle / PyTorch zip contents;
+  `Mismatch` when `.gguf`, `.safetensors` or `.wasm` names another format;
+  `Corrupt` for a bad header; `Unknown` for anything else; `Io`.
+- Used by: `runa` on a literal local file and on a bare file name found in
+  the store (`find_local`).
