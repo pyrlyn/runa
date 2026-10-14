@@ -7,7 +7,7 @@ all four are done (see `done.md`).
 
 ## P18. Model sources and loading (`runa-models` crate)
 
-Approved by the creator. Research: `research.md` §15. P18.1 is in `plan.md`. Each
+Approved by the creator. Research: `research.md` §15. P18.1 is done (`done.md`). Each
 item stays under the 500-line task limit and ships with tests.
 
 - **P18.2. Local loading and format check.** Search the `[store] dirs`; a path must

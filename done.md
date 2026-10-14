@@ -1401,3 +1401,45 @@ pre-existing flake: `second_daemon_does_not_unlink_a_live_socket` inode
 reuse); `cargo fmt --all -- --check` clean; `cargo clippy --workspace --
 -D warnings` clean. GitHub Actions on `4d0349f` (PR #62): 24 checks
 green, including `moon pipeline (K5, D22)`.
+
+## P18. Model sources and loading
+
+### P18.1. `runa-models` crate skeleton and `[store]` config
+
+First slice of P18 (`roadmap.md`, research in `research.md` §15): a library crate
+that will own model loading from local folders, URLs and Wasm. This slice adds the
+crate, its config type and the first behavior that uses it, so nothing in the docs
+is promised before the code has it.
+
+Plan:
+
+1. `crates/runa-models`: `Cargo.toml` (no engine dependency, like `runa-fit` under
+   D5), `config.rs` with `StoreConfig` for a new `[store]` table: `dirs` (extra
+   model folders, absolute or `~/`), `cache_dir` (download store, default
+   `<data dir>/models`), `max_bytes` (fresh-download cap, default 3 GiB).
+   Unknown keys are rejected. JSON Schema committed as
+   `crates/runa-models/store.schema.json`, kept current by a test through the
+   shared `config-schema` crate (dev-dependency, git rev, as aulo does).
+2. `store.rs`: `ModelStore` built from the config: cache dir, search dirs, size
+   cap, bare-filename lookup across the cache and the folders, model listing.
+   `paths.rs`: `home_dir` and `data_dir` move here from the CLI crate.
+3. `crates/runa`: `config.rs` merges `[store]` across config files (later file
+   wins per key) and builds the store at startup; `pull.rs` uses it for the
+   store directory, the size cap (`RUNA_MAX_MODEL_BYTES` still wins) and the
+   bare-filename lookup; `runa models` lists the folders too.
+4. Docs: `[store]` in `docs/config.md` (+ `docs/ru/`, `docs/uk/`); public
+   methods in `docs/memory.md`; crate row in `AGENTS.md` §8; `toolchain.md`.
+
+Machine check: `cargo test -p runa-models` (config parsing, unknown keys,
+relative paths refused, `~/` expansion, schema drift, lookup in a folder),
+`cargo test -p runa --bin runa store` (`[store]` merge across files) and
+`cargo test -p runa --test pull` (`runa models` lists a `[store] dirs`
+folder; a relative path exits 2) pass; `moon run root:lint-tasks` is green.
+
+Check (evidence): `moon run :test` exit 0 (20 tasks, 38 test binaries, 525
+passed, 2 ignored, 0 failed); `moon run root:test-fast` exit 0;
+`cargo test -p runa-models` 15 passed; `cargo test -p runa --bin runa` 126
+passed; `cargo test -p runa --test pull` 4 passed; `cargo fmt --all --
+--check` clean; `cargo clippy -p runa-models -p runa --all-targets -- -D
+warnings` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors.
+Commits `2021278`, `02a10f3` (PR #72).
