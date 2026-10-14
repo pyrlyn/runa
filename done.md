@@ -1443,3 +1443,29 @@ passed; `cargo test -p runa --test pull` 4 passed; `cargo fmt --all --
 --check` clean; `cargo clippy -p runa-models -p runa --all-targets -- -D
 warnings` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors.
 Commits `2021278`, `02a10f3` (PR #72).
+
+### P18.2. Local loading and format check
+
+Search the `[store] dirs`; a path must stay inside its directory after `canonicalize`. Detect the format by magic bytes: GGUF (header parsed through `runa-fit` with its caps), safetensors (length-prefixed JSON header, size-capped), Wasm (`\0asm`). Refuse pickle files (`.bin`, `.pt`, `.pth`, `.ckpt`).
+
+Execution plan:
+
+1. `crates/runa-models/src/format.rs`: `ModelFormat { Gguf, Safetensors, Wasm }`, `FormatError` and `detect(path)`. Pickle is refused by extension (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`) and by content (a zip or a pickle protocol header). GGUF goes through `runa_fit::read_local_prefix`; safetensors checks the 8-byte length, a 100 MiB header cap, a JSON object and every `data_offsets` end against the file length; Wasm checks `\0asm` plus the version word. A known extension with other content is a mismatch.
+2. `ModelStore::find_file` keeps a hit only if its canonical path stays under the canonical root, so a symlink cannot point outside the store.
+3. `crates/runa/src/pull.rs`: a local model file is checked with `detect` before it is used.
+4. Tests for each format, each refusal and the escape; `docs/memory.md` (+ ru/uk) for the new public items; `toolchain.md` rows.
+
+Machine check: `cargo test -p runa-models`, `cargo test -p runa --bin runa --test pull`, `moon run :test`, `moon run root:lint-tasks`.
+
+Check (evidence): `cargo test -p runa-models` 24 passed (format: GGUF fixture,
+truncated GGUF, safetensors offsets and JSON, oversized header refused before
+reading, a 640-byte header that starts like a protocol-2 pickle, Wasm core and
+component, pickle by name and contents, extension mismatch; store: a symlink
+out of the root is skipped, one inside is kept); `cargo test -p runa --bin runa`
+127 passed (`find_local_refuses_pickle_and_fake_gguf`); `cargo test -p runa
+--test pull` 4 passed; `cargo test -p runa --test e2e` 37 passed; `cargo fmt
+--all -- --check` and `cargo clippy --workspace -- -D warnings` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors;
+`python3 scripts/check-fixture-size.py` OK. The full `moon run :test` run had 3
+serve e2e tests fail under load with the disk nearly full; all three pass
+alone and the whole e2e binary passes alone. Commit `1204662`.
