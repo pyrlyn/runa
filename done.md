@@ -1018,6 +1018,23 @@ Deliberately not done: touching `[profile.release]`, sccpdache
 for the fixture (slower than the ~7–11 s download). Decision
 recorded in `docs/perf-nightly.md`. Commits `84763a4`, `57d1058`.
 
+### P11.10. Keep synthetic GGUF fixtures out of Git LFS
+
+The repo-wide `*.gguf` LFS rule in `.gitattributes` also covers `tests/fixtures/synthetic-*.gguf`, but those few-hundred-byte headers are committed as plain blobs so CI reads them without LFS. The LFS clean filter turns each one into a pointer, so every fresh checkout or worktree shows all seven as modified, `git rebase` refuses to run, and `rtok worktree remove` refuses the worktree as dirty. Done means: the synthetic files are exempt from the LFS filter, stay plain blobs, and a fresh worktree is clean.
+
+Execution plan:
+
+1. `crates/runa-fit/tests/fixture_attrs.rs`: `git check-attr filter` on every `synthetic-*.gguf` must report `unset` (fails before the fix; skips without git).
+2. `.gitattributes`: a last-line override `tests/fixtures/synthetic-*.gguf -filter -diff -merge -text`.
+3. `tests/fixtures/README.md`: say they are plain blobs.
+
+Machine check: `cargo test -p runa-fit --test fixture_attrs`; `git status` in this worktree shows no fixture as modified; `moon run root:lint-tasks`.
+
+Check (evidence): `cargo test -p runa-fit --test fixture_attrs` failed before
+the fix (`tests/fixtures/synthetic-deepseek2.gguf: filter: lfs`) and passes
+after it; `git status --short` in a fresh worktree lists no fixture; the
+commit changes no blob under `tests/fixtures/`; `python3
+scripts/lint-tasks.py docs/tasks.md` 0 errors. Commit `852f03b`.
 
 ### P11.8. Matrix CI under 5 minutes for tests (worker-B)
 
