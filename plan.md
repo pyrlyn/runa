@@ -44,28 +44,10 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
-| P17.11 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
-
-### P17.11. Close-token logit bias must not write a shared logits slice
-
-`add_close_bias` casts the `&[f32]` from `get_logits_ith` to mutable and adds
-`CLOSE_LOGIT_BIAS`. llama-cpp-2 0.1.133 exposes no mutable logits getter
-(`LlamaContext::context` is `pub(crate)`).
-
-Plan:
-1. Copy the logit row and add the bias on the copy. The context buffer stays shared.
-2. The kernel sampler reads that copy. The llama.cpp chain is applied to a
-   `LlamaTokenDataArray` built from the copy, then accepted once.
-   `LlamaSampler::sample` stays on the unbiased path (it reads the context buffer).
-3. Unit-test the copy. Do not call `LlamaBackend::init` (process-global).
-
-Decision: do not bump llama-cpp-2. The pinned crate already has `LlamaSampler::apply`.
-
-Machine check: `cargo test -p runa-engine --lib close_bias` passes.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
