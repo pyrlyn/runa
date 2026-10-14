@@ -57,4 +57,6 @@ Synthetic GGUFs: MIT, header-only, ~2KB each. Audio/video synthetic: MIT. Large 
   set `RUNA_KEEP_FIXTURES=1` to keep them locally and skip re-downloading.
 - Hand-made fixtures are never deleted: `synthetic-*.gguf`, `audio/`,
   `video/`, `api/`, `shapes.png`, `mcp-echo.py`.
+- `synthetic-*.gguf` are plain git blobs, not Git LFS: `.gitattributes` exempts
+  them from the `*.gguf` LFS rule so CI reads them without LFS (P11.10).
 - Never commit weights: only code, scripts and docs go into git.
