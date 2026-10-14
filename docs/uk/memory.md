@@ -774,7 +774,8 @@ count_history_tokens(messages)` токенізує вміст кожного п�
 - Повертає: перший звичайний файл із назвою `name` у сховищі завантажень,
   потім у кожній теці, з рекурсивним пошуком.
 - Примітки: у теки-симлінки пошук не заходить (циклів немає);
-  недоступні й відсутні теки пропускаються.
+  недоступні й відсутні теки пропускаються; файл, чий канонічний шлях
+  виходить за корінь (симлінк назовні з теки), пропускається (P18.2).
 
 ### `fn list_files(&self, ext: &str) -> Vec<PathBuf>`
 
@@ -786,3 +787,24 @@ count_history_tokens(messages)` токенізує вміст кожного п�
 - `$HOME` (інакше `$USERPROFILE`); корінь даних (`$XDG_DATA_HOME/runa`,
   інакше `%LOCALAPPDATA%\runa` на Windows, інакше `~/.local/share/runa`); його
   тека `models`. Читаються з оточення під час кожного виклику.
+
+## P18.2 — локальні файли моделей (`runa-models`)
+
+### `enum ModelFormat { Gguf, Safetensors, Wasm }`
+
+- Формат файлу моделі, визначений за першими байтами; `Display` друкує
+  `GGUF`, `safetensors`, `Wasm`.
+
+### `fn detect(path: &Path) -> Result<ModelFormat, FormatError>`
+
+- Повертає: формат `path` після перевірки заголовка: GGUF — через
+  обмежений читач `runa-fit`, safetensors — за 8-байтовою довжиною (не
+  більше `MAX_SAFETENSORS_HEADER`, 100 MiB), JSON-заголовком і кожною парою
+  `data_offsets` усередині файлу, Wasm — за `\0asm` і словом версії core (1)
+  або component.
+- Помилки: `FormatError::Pickle` для `.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`,
+  `.pickle` (за назвою, до читання) або вмісту pickle / zip PyTorch;
+  `Mismatch`, коли `.gguf`, `.safetensors` чи `.wasm` містить інший формат;
+  `Corrupt` для пошкодженого заголовка; `Unknown` для решти; `Io`.
+- Використовується: `runa` для локального файлу, заданого шляхом, і для назви
+  файлу, знайденої у сховищі (`find_local`).

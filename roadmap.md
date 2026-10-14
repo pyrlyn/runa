@@ -10,11 +10,6 @@ all four are done (see `done.md`).
 Approved by the creator. Research: `research.md` §15. P18.1 is done (`done.md`). Each
 item stays under the 500-line task limit and ships with tests.
 
-- **P18.2. Local loading and format check.** Search the `[store] dirs`; a path must
-  stay inside its directory after `canonicalize`. Detect the format by magic bytes:
-  GGUF (header parsed through `runa-fit` with its caps), safetensors (length-prefixed
-  JSON header, size-capped), Wasm (`\0asm`). Refuse pickle files (`.bin`, `.pt`,
-  `.pth`, `.ckpt`).
 - **P18.3. Network download and cache.** HTTPS only (plain HTTP for loopback tests),
   host allowlist, `.part` file with `Range` resume, fsync and atomic rename.
   Content-addressed blobs (`sha256-<hex>`) plus a ref record (ETag, size,

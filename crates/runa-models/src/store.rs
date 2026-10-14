@@ -108,8 +108,14 @@ impl ModelStore {
 
 /// Visit regular files (and symlinks to them) under `root` until `visit`
 /// returns true. Symlinked directories are not entered, so a link cycle in a
-/// user folder cannot loop forever; unreadable directories are skipped.
+/// user folder cannot loop forever; unreadable directories are skipped. A
+/// file whose canonical path leaves the canonical root is skipped too, so a
+/// symlink in a shared folder cannot hand runa a file from elsewhere.
 fn walk(root: &Path, visit: &mut dyn FnMut(&Path) -> bool) {
+    let Ok(canon_root) = root.canonicalize() else {
+        return;
+    };
+    let inside = |p: &Path| p.canonicalize().is_ok_and(|c| c.starts_with(&canon_root));
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = fs::read_dir(&dir) else {
@@ -122,7 +128,7 @@ fn walk(root: &Path, visit: &mut dyn FnMut(&Path) -> bool) {
             let path = entry.path();
             if kind.is_dir() {
                 stack.push(path);
-            } else if path.is_file() && visit(&path) {
+            } else if path.is_file() && inside(&path) && visit(&path) {
                 return;
             }
         }
@@ -227,5 +233,35 @@ mod tests {
         touch(&cache.path().join("m.gguf"));
         let s = store(cache.path(), &[]);
         assert_eq!(s.list_files("gguf"), vec![cache.path().join("m.gguf")]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_out_of_a_folder_is_skipped() {
+        let cache = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        touch(&outside.path().join("secret.gguf"));
+        touch(&cache.path().join("own.gguf"));
+        let link = cache.path().join("secret.gguf");
+        std::os::unix::fs::symlink(outside.path().join("secret.gguf"), &link).unwrap();
+        // A link that stays inside the root is still followed.
+        std::os::unix::fs::symlink(
+            cache.path().join("own.gguf"),
+            cache.path().join("alias.gguf"),
+        )
+        .unwrap();
+        let s = store(cache.path(), &[]);
+        assert_eq!(s.find_file("secret.gguf"), None);
+        assert_eq!(
+            s.find_file("alias.gguf"),
+            Some(cache.path().join("alias.gguf"))
+        );
+        assert_eq!(
+            s.list_files("gguf"),
+            vec![
+                cache.path().join("alias.gguf"),
+                cache.path().join("own.gguf")
+            ]
+        );
     }
 }

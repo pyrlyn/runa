@@ -56,6 +56,11 @@ dirs = ["~/models", "/mnt/shared/gguf"]
 max_bytes = 8589934592
 ```
 
+Файл моделі, знайдений там або заданий шляхом, має відповідати своїм байтам
+(GGUF, safetensors або Wasm з коректним заголовком); чекпойнти pickle
+(`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`) відхиляються, а симлінк, що веде за
+межі своєї теки, ігнорується (P18.2).
+
 JSON Schema цієї таблиці — `crates/runa-models/store.schema.json`.
 
 ## `[defaults]`

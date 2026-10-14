@@ -6418,8 +6418,10 @@ name = "runa-models"
 version = "0.1.0"
 dependencies = [
  "config-schema",
+ "runa-fit",
  "schemars 1.2.2",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "toml 1.1.5+spec-1.1.0",
