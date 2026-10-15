@@ -1626,3 +1626,11 @@ out of the root is skipped, one inside is kept); `cargo test -p runa --bin runa`
 `python3 scripts/check-fixture-size.py` OK. The full `moon run :test` run had 3
 serve e2e tests fail under load with the disk nearly full; all three pass
 alone and the whole e2e binary passes alone. Commit `1204662`.
+
+### T900. Update vulnerable dependencies
+
+The creator authorized dependency updates across the audit. Update vulnerable dependencies and the resolver-required graph without weakening existing guards or advisory policy. Remove the existing unused GenEvent import in the generation regression test that blocks the strict validation gate.
+
+Execution plan: reproduce the advisory audit; apply compatible package-manager updates; review the lockfile diff; run advisory regression checks and the project test/lint/format gates; publish a PR and merge only after required checks pass. No custom dependency implementation is needed. Rollback is a revert of the dependency-update commit.
+
+Validation: isolated RustSec audit reports zero vulnerabilities with rustls 0.23.46. Full nextest passed 544 tests (2 skipped) using the existing local qwen2 fixture. `moon run :test` completed all 20 tasks; `moon run root:test-fast root:lint-tasks`, workspace clippy with warnings denied and formatting passed. The strict lint gate reproduced an unused GenEvent import in the existing generation regression test; removing only that import makes it pass without suppressions. Existing rustls and test fixtures are reused; no new implementation or dependency is introduced.
