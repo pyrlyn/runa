@@ -1346,6 +1346,20 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.17. Report a truncated GGUF tensor table as `TensorTableTruncated`
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`Reader::parse` never built `ReadError::TensorTableTruncated`. A short
+tensor-info table returned `UnexpectedEof`, the same error as a short
+metadata section. `UnexpectedEof` from the tensor-info loop is now
+`TensorTableTruncated`. Metadata still returns `UnexpectedEof`.
+`CountOverflow` is unchanged. The remote header fetch already treats both
+as "fetch more". `docs/fit.md` and the Russian and Ukrainian translations
+say which section produces which error.
+
+Check (evidence): `cargo test -p runa-fit --test gguf truncated_tensor_table` — 1 passed; `cargo test -p runa-fit --test gguf string_longer_than_buffer` — 1 passed. `cargo clippy -p runa-fit --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.12. Do not auto-download ffmpeg
 
 Completed 2026-10-15 (Cursor Grok 4.7).
