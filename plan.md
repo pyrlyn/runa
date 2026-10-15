@@ -10,7 +10,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 
 | ID | Priority | Kind | Status | Where | Fix |
 | --- | --- | --- | --- | --- | --- |
-| P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
 | P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
 
 Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
@@ -37,17 +36,10 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
-| P17.7 | in progress | high | M | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
-
-### P17.7. Library split so serve and daemon can be reused
-
-`crates/runa` is binary-only, so serve and daemon cannot be linked without the CLI. Add a library target in the same package. Layout: `src/cli/` (commands and `config.rs`), `src/serve/`, `src/daemon/` (socket daemon and its protocol), `src/session/` (chat history and the REPL). `src/main.rs` only calls `runa::run`. Public entry points: `run`, `serve::cmd_serve`, `daemon::cmd_daemon`. Fuzz bins call `runa::fuzz_hooks::run` under `--cfg fuzzing` instead of compiling `main.rs` as their crate root.
-
-Machine check: `cargo test -p runa --lib` and `cargo test -p runa --bin runa` (the binary has no unit tests; the lib holds them).
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
