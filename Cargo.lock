@@ -3724,6 +3724,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keychain-secret"
+version = "0.1.0"
+source = "git+https://github.com/pyrlyn/crates?rev=f0deed54f6f8166b31404c2129b59355c45cf044#f0deed54f6f8166b31404c2129b59355c45cf044"
+dependencies = [
+ "keyring",
+ "thiserror 2.0.21",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "keyring"
 version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6295,7 +6305,7 @@ version = "0.1.0"
 dependencies = [
  "async-openai",
  "futures",
- "keyring",
+ "keychain-secret",
  "reqwest 0.12.28",
  "runa-core",
  "serde",

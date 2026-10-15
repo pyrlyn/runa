@@ -45,7 +45,7 @@ runa-engine = { path = "../runa-engine" }
 runa-pool = { path = "../runa-pool" }
 # P18.1 model store: [store] folders, download store, size cap.
 runa-models = { path = "../runa-models" }
-# P3.8 secrets (env / keyring / reject inline keys).
+# P3.8 secrets (env / keychain / reject inline keys). P17.19 reads them through keychain-secret.
 runa-cloud = { path = "../runa-cloud" }
 runa-media = { path = "../runa-media" }
 # P2.3 REPL line editing + file history.

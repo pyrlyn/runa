@@ -3,7 +3,11 @@
 Search order (later files win): `~/.config/runa/config.toml`, then `./runa.toml`.
 Home is `$HOME`, or `$USERPROFILE` on Windows when `HOME` is unset. CLI flags
 beat `RUNA_*` env vars, which beat the files. Inline API keys in TOML are
-rejected (P3.8). Later `[memory]` files overlay only the keys they set; earlier
+rejected (P3.8). The scan and the OS keychain read (`service = runa`) go
+through the shared `keychain-secret` crate. A non-empty `RUNA_NO_KEYRING`
+skips the keychain. The scanner also rejects `password`, `refresh_token`,
+and `client_secret`, and runa still rejects `openai_key` and `anthropic_key`.
+Later `[memory]` files overlay only the keys they set; earlier
 keys stay. Cloud prices follow the same later-wins overlay:
 `docs/prices.toml` (when the process cwd is the repo), then
 `~/.config/runa/prices.toml`.

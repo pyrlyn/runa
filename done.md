@@ -1346,6 +1346,18 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.19. Consume the shared keychain crate; keep runa's cloud clients
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`keychain-secret` in `pyrlyn/crates` (rev `f0deed54f6f8166b31404c2129b59355c45cf044`) was extracted from `secrets.rs`. `runa-cloud` now calls it for the OS keychain read (`service = runa`) and the inline-secret scan. The public types and the error text stay, so `doctor` still names `OPENAI_API_KEY` when a config holds a key. A non-empty `RUNA_NO_KEYRING` still skips the keychain. `keychain_secret::keychain_enabled` treats `1` as on, and the tests set `1`.
+
+The shared scanner also rejects `password`, `refresh_token`, and `client_secret`. `openai_key` and `anthropic_key` stay rejected in this crate; the shared list dropped them.
+
+`llm-wire`, `llm-wire-openai`, `llm-wire-anthropic`, `llm-http`, and `llm-catalog` live in the same repository and are not on crates.io. They implement `llm_wire::Provider` for agent loops. cox still ships `cox-provider-openai` and `cox-provider-anthropic` and does not depend on those crates. runa's clients keep audio, images, PDF, `ThinkConfig`, and `docs/prices.toml`, so they were not replaced.
+
+Check (evidence): `cargo test -p runa-cloud --lib` — 40 passed. `cargo test -p runa --test secrets` — 2 passed. `cargo clippy -p runa-cloud --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.7. Split serve and daemon into the runa library
 
 Completed 2026-10-15 (Cursor Grok 4.7).
