@@ -39,10 +39,17 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.18 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
+
+### P17.18. Keep `report.html`
+
+`report.html` is the HTML form of the research companion. `plan.md` Reference, the documentation index, and the Russian and Ukrainian indexes already link it. It is not produced by the build or by CI. Keep the file. Do not gitignore it.
+
+Machine check: `git ls-files report.html` prints the path, and `docs/README.md` still links it.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
@@ -94,7 +101,7 @@ or through the OpenAI and Anthropic APIs, with:
 
 Rust owns orchestration; the compute core is C (ggml); own kernels in `runa-kernels` are Zig where Zig is better, otherwise C/`.S`, and only where a benchmark proves a win.
 
-Companion documents: `research.md` (analysis, analogs, formulas, fact-check ledger, in English) and `report.html`. Agent coordination lives in `AGENTS.md` with the claim registry in `docs/tasks.md`; project overview in `README.md`; memory/task public-method docs in `docs/memory.md`.
+Companion documents: `research.md` (analysis, analogs, formulas, fact-check ledger, in English) and `report.html` (the same research as a page; tracked on purpose, not a build output). Agent coordination lives in `AGENTS.md` with the claim registry in `docs/tasks.md`; project overview in `README.md`; memory/task public-method docs in `docs/memory.md`.
 
 ---
 
@@ -471,7 +478,7 @@ Findings from the 2026-09-20 documentation audit (English).
 
 - Indexed in `docs/README.md`: `getting-started.md`, `guide.md`, `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `profiles.md`, `versions.md`, `baselines.md`, `perf-nightly.md`, `kernels.md`, `release.md`, `release-1.0.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
 - GitHub Pages was removed; `docs/` is the documentation source (no `site/` tree, repo homepage unset).
-- Research companions: `research.md`, `report.html`.
+- Research companions: `research.md`, `report.html` (tracked on purpose; not a build output).
 
 #### Gaps
 
