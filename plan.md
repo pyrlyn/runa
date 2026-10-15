@@ -36,10 +36,24 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.19 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
+
+### P17.19. Consume the shared keychain crate; keep runa's cloud clients
+
+Plan: pin `keychain-secret` from `pyrlyn/crates` (the crate extracted from
+`secrets.rs`) and call it for the OS keychain read and the inline-secret
+scan. Keep this crate's public types and error text. Do not switch
+`openai.rs` / `anthropic.rs` onto `llm-wire-*`: those crates speak
+`llm_wire::Provider` for agent loops, they are not on crates.io, and cox
+still has its own `cox-provider-*` crates. A non-empty `RUNA_NO_KEYRING`
+still skips the keychain (`keychain_enabled` would treat `1` as on).
+
+Machine check: `cargo test -p runa-cloud --lib` and
+`cargo test -p runa --test secrets`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 

@@ -3,8 +3,14 @@
 // Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
 
 //! API keys: environment, OS keychain, never inline in config files (P3.8).
+//!
+//! The keychain read and the TOML scan come from `keychain-secret` (P17.19).
+//! This module keeps runa's provider names, error text, and the
+//! `RUNA_NO_KEYRING` switch.
 
 use std::fmt;
+
+use keychain_secret::SecretStore;
 
 /// Cloud provider whose API key we resolve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +75,7 @@ pub struct ResolvedKey {
 impl ResolvedKey {
     /// Last four characters for diagnostics (`sk-…abcd`). Empty → `(empty)`.
     pub fn redacted(&self) -> String {
-        redact(&self.value)
+        keychain_secret::Secret::from(self.value.as_str()).redacted()
     }
 }
 
@@ -111,7 +117,8 @@ impl std::error::Error for SecretError {}
 
 /// Resolve `provider`'s key: non-empty env var, else OS keychain.
 ///
-/// Set `RUNA_NO_KEYRING=1` to skip the keychain (tests / headless CI).
+/// Set `RUNA_NO_KEYRING` to any non-empty value to skip the keychain
+/// (tests / headless CI).
 pub fn resolve_api_key(provider: Provider) -> Result<ResolvedKey, SecretError> {
     resolve_api_key_from(provider, |k| {
         std::env::var(k).ok().filter(|s| !s.is_empty())
@@ -132,6 +139,8 @@ pub fn resolve_api_key_from(
             });
         }
     }
+    // Any non-empty value skips the keychain. `keychain_secret::keychain_enabled`
+    // treats only off/0/false/no as off, so `RUNA_NO_KEYRING=1` would leave it on.
     if getenv("RUNA_NO_KEYRING").is_some() {
         return Err(SecretError::Missing(provider));
     }
@@ -146,32 +155,36 @@ pub fn resolve_api_key_from(
 }
 
 fn keyring_get(provider: Provider) -> Result<Option<String>, SecretError> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, provider.keyring_user())
-        .map_err(|e| SecretError::Keyring(e.to_string()))?;
-    match entry.get_password() {
-        Ok(pw) => Ok(Some(pw)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.to_ascii_lowercase().contains("no entry") {
-                Ok(None)
-            } else {
-                Err(SecretError::Keyring(msg))
-            }
+    let store = keychain_secret::Keychain::new(KEYRING_SERVICE);
+    match store.get(provider.keyring_user()) {
+        Ok(Some(secret)) => Ok(Some(secret.reveal().to_string())),
+        Ok(None) => Ok(None),
+        Err(keychain_secret::Error::Keychain(message))
+            if message.to_ascii_lowercase().contains("no entry") =>
+        {
+            Ok(None)
         }
+        Err(err) => Err(store_error(err)),
     }
 }
 
 /// Walk a `runa.toml` / `config.toml` and reject inline API-key fields.
 pub fn reject_inline_secrets(text: &str, origin: &str) -> Result<(), SecretError> {
+    keychain_secret::reject_inline_secrets(text, origin).map_err(store_error)?;
+    // The shared scanner dropped these two names when it grew the suffix
+    // rule. They stay rejected here.
+    reject_runa_key_names(text, origin)
+}
+
+fn reject_runa_key_names(text: &str, origin: &str) -> Result<(), SecretError> {
     let value: toml::Value = toml::from_str(text).map_err(|e| SecretError::InvalidToml {
         origin: origin.to_string(),
         message: e.to_string(),
     })?;
-    walk_value(origin, "", &value)
+    walk_runa_keys(origin, "", &value)
 }
 
-fn walk_value(origin: &str, path: &str, value: &toml::Value) -> Result<(), SecretError> {
+fn walk_runa_keys(origin: &str, path: &str, value: &toml::Value) -> Result<(), SecretError> {
     match value {
         toml::Value::Table(table) => {
             for (k, v) in table {
@@ -180,20 +193,19 @@ fn walk_value(origin: &str, path: &str, value: &toml::Value) -> Result<(), Secre
                 } else {
                     format!("{path}.{k}")
                 };
-                if is_secret_key(k) {
+                if is_runa_key_name(k) {
                     return Err(SecretError::InlineConfig {
                         origin: origin.to_string(),
                         key: child,
                     });
                 }
-                walk_value(origin, &child, v)?;
+                walk_runa_keys(origin, &child, v)?;
             }
             Ok(())
         }
         toml::Value::Array(items) => {
             for (i, v) in items.iter().enumerate() {
-                let child = format!("{path}[{i}]");
-                walk_value(origin, &child, v)?;
+                walk_runa_keys(origin, &format!("{path}[{i}]"), v)?;
             }
             Ok(())
         }
@@ -201,32 +213,23 @@ fn walk_value(origin: &str, path: &str, value: &toml::Value) -> Result<(), Secre
     }
 }
 
-fn is_secret_key(name: &str) -> bool {
+fn is_runa_key_name(name: &str) -> bool {
     let n = name.to_ascii_lowercase().replace('-', "_");
-    matches!(
-        n.as_str(),
-        "api_key"
-            | "apikey"
-            | "openai_api_key"
-            | "anthropic_api_key"
-            | "openai_key"
-            | "anthropic_key"
-            | "secret_key"
-            | "access_token"
-    ) || n.ends_with("_api_key")
+    matches!(n.as_str(), "openai_key" | "anthropic_key")
 }
 
-fn redact(value: &str) -> String {
-    let t = value.trim();
-    if t.is_empty() {
-        return "(empty)".into();
+fn store_error(err: keychain_secret::Error) -> SecretError {
+    match err {
+        keychain_secret::Error::Inline { origin, key } => SecretError::InlineConfig { origin, key },
+        keychain_secret::Error::InvalidToml { origin, message } => {
+            SecretError::InvalidToml { origin, message }
+        }
+        keychain_secret::Error::Keychain(message) => SecretError::Keyring(message),
+        keychain_secret::Error::Disabled => {
+            SecretError::Keyring("the OS keychain is switched off".to_string())
+        }
+        other => SecretError::Keyring(other.to_string()),
     }
-    let n = t.chars().count();
-    if n <= 4 {
-        return "****".into();
-    }
-    let tail: String = t.chars().skip(n - 4).collect();
-    format!("…{tail}")
 }
 
 #[cfg(test)]
@@ -292,6 +295,7 @@ mod tests {
         assert!(msg.contains("runa.toml"));
         assert!(msg.contains("openai_api_key"));
         assert!(msg.contains("rejected"));
+        assert!(!msg.contains("sk-live"));
     }
 
     #[test]
@@ -306,6 +310,20 @@ mod tests {
     #[test]
     fn reject_hyphenated_key() {
         assert!(reject_inline_secrets("anthropic-api-key = \"x\"\n", "x").is_err());
+    }
+
+    #[test]
+    fn reject_password_and_provider_key_alias() {
+        let err = reject_inline_secrets("password = \"x\"\n", "runa.toml").unwrap_err();
+        match err {
+            SecretError::InlineConfig { key, .. } => assert_eq!(key, "password"),
+            other => panic!("{other:?}"),
+        }
+        let err = reject_inline_secrets("openai-key = \"x\"\n", "runa.toml").unwrap_err();
+        match err {
+            SecretError::InlineConfig { key, .. } => assert_eq!(key, "openai-key"),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

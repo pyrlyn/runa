@@ -27,7 +27,8 @@ tarballs (`.cargo_vcs_info.json`), upstream submodule pins and tag lists.
 | cargo-dist | `0.33.0` (`mise.toml` `aqua:axodotdev/cargo-dist`) | cargo-dist `0.33.0` | 2026-09-15 | P6.3 packaging. Prebuilt binary via aqua since 2026-09-14 (was `cargo:` backend, which compiled from source and raced rustup downloads in CI) |
 | cargo-cache | `0.8.3` (`mise.toml` `cargo:cargo-cache`) | cargo-cache `0.8.3` | 2023-09-01 | developer utility: `moon run root:cache` / `cache-dry-run` / `cache-autoclean`; not a crate dependency |
 | zig | `0.16.0` (`mise.toml`) | zig `0.16.0` | 2026-09-15 | D23 own kernels (`runa-kernels`) |
-| keyring | `4.2.0` | — | 2026-09-15 | P3.8 OS keychain (`service = runa`) |
+| keychain-secret | git `f0deed54f6f8166b31404c2129b59355c45cf044` (`pyrlyn/crates`) | — | not on crates.io | P17.19 keychain read and inline-secret scan. `keyring` stays transitive |
+| keyring | `4.2.0` | — | 2026-09-15 | P3.8 OS keychain (`service = runa`), transitive through `keychain-secret` |
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 audio decode |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 WAV read/write |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 resample to 16 kHz |

@@ -31,7 +31,8 @@ P0.1); этот файл фиксирует, **чему каждый пин со
 | cargo-dist | `0.33.0` (`mise.toml` `aqua:axodotdev/cargo-dist`) | cargo-dist `0.33.0` | 2026-09-15 | P6.3 упаковка. Готовый бинарник через aqua с 2026-09-14 (раньше был бэкенд `cargo:`, который собирал из исходников и конкурировал с загрузками rustup в CI) |
 | cargo-cache | `0.8.3` (`mise.toml` `cargo:cargo-cache`) | cargo-cache `0.8.3` | 2023-09-01 | утилита для разработчика: `moon run root:cache` / `cache-dry-run` / `cache-autoclean`; не зависимость крейтов |
 | zig | `0.16.0` (`mise.toml`) | zig `0.16.0` | 2026-09-15 | D23 собственные ядра (`runa-kernels`) |
-| keyring | `4.2.0` | — | 2026-09-15 | P3.8 связка ключей ОС (`service = runa`) |
+| keychain-secret | git `f0deed54f6f8166b31404c2129b59355c45cf044` (`pyrlyn/crates`) | — | нет на crates.io | P17.19 чтение связки ключей и проверка секретов в конфиге. `keyring` остаётся транзитивным |
+| keyring | `4.2.0` | — | 2026-09-15 | P3.8 связка ключей ОС (`service = runa`), транзитивно через `keychain-secret` |
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 декодирование аудио |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 чтение/запись WAV |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 ресемплинг до 16 kHz |

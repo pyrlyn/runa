@@ -520,7 +520,7 @@ Checked 2026-10-14. Feeds plan P18 (`runa-models` crate, `roadmap.md`). A fact b
 
 - `runa pull hf:<repo>:<file|quant>` downloads through `hf-hub` into `<data dir>/models/<owner>--<name>/`, checks size and SHA-256 against the Hub's `x-linked-size` / `x-linked-etag`, and records a `.verified` sidecar (`crates/runa/src/pull.rs`).
 - `runa-fit` parses `hf:` / `https://` / local refs and reads GGUF headers over HTTP ranges with a header cache (`crates/runa-fit/src/remote.rs`).
-- API keys come from the environment or the OS keychain and are rejected in config files (`crates/runa-cloud/src/secrets.rs`, P3.8).
+- API keys come from the environment or the OS keychain and are rejected in config files (`crates/runa-cloud/src/secrets.rs` via `keychain-secret`, P3.8, P17.19).
 
 ### 15.2 Hugging Face sign-in
 
