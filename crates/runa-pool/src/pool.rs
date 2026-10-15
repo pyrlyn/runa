@@ -10,7 +10,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use runa_core::BackendKind;
@@ -29,6 +29,25 @@ pub type Placer = Arc<dyn Fn(&Path, &LoadConfig) -> Result<Placement, String> + 
 /// host owns the memory budget when it picks this.
 pub fn fixed_placer(placement: Placement) -> Placer {
     Arc::new(move |_, _| Ok(placement.clone()))
+}
+
+/// One line from this crate (warm-up, progress, panics, LRU unload, idle).
+pub type LineLog = Arc<dyn Fn(&str) + Send + Sync>;
+
+fn logger() -> &'static Mutex<LineLog> {
+    static LOG: OnceLock<Mutex<LineLog>> = OnceLock::new();
+    LOG.get_or_init(|| Mutex::new(Arc::new(|line: &str| eprintln!("{line}"))))
+}
+
+/// Replace this crate's stderr lines. The default prints each line with
+/// `eprintln`. The CLI leaves that default; an embedder passes its own sink.
+pub fn set_log(log: impl Fn(&str) + Send + Sync + 'static) {
+    *lock(logger()) = Arc::new(log);
+}
+
+fn emit(line: &str) {
+    let log = lock(logger()).clone();
+    log(line);
 }
 
 /// Startup load of the default model, read by `/health` (P8.8) and by the
@@ -59,12 +78,12 @@ pub fn warm_up(pool: &Mutex<ModelPool>, warm: &Warmup, tag: &str) {
     let t = Instant::now();
     let r = catch_job(|| ensure_engine(pool, &warm.model).map(drop));
     match &r {
-        Ok(()) => eprintln!(
+        Ok(()) => emit(&format!(
             "{tag}: {} ready in {:.1}s",
             warm.model,
             t.elapsed().as_secs_f64()
-        ),
-        Err(e) => eprintln!("{tag}: loading {} failed: {e}", warm.model),
+        )),
+        Err(e) => emit(&format!("{tag}: loading {} failed: {e}", warm.model)),
     }
     *lock(&warm.state) = Some(r);
 }
@@ -77,7 +96,7 @@ pub async fn report_progress(warm: Arc<Warmup>, tag: &'static str) {
         let step = warm.progress.load(Ordering::Relaxed) / 100;
         if step > shown && step < 10 {
             shown = step;
-            eprintln!("{tag}: loading {} {}%", warm.model, step * 10);
+            emit(&format!("{tag}: loading {} {}%", warm.model, step * 10));
         }
     }
 }
@@ -98,7 +117,7 @@ pub fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 /// Run one engine/pool step; a panic becomes an error, not a dead thread.
 pub fn catch_job<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
-        eprintln!("engine panic: {}", panic_text(&*p));
+        emit(&format!("engine panic: {}", panic_text(&*p)));
         Err("internal error".into())
     })
 }
@@ -324,7 +343,7 @@ impl ModelPool {
             self.last_used.remove(&id);
             if let Some(tx) = self.engines.remove(&id) {
                 drop(tx);
-                eprintln!("serve: unloaded model {id} (LRU)");
+                emit(&format!("serve: unloaded model {id} (LRU)"));
             }
         }
     }
@@ -493,7 +512,7 @@ pub fn ensure_engine(
         spawn_engine(start.path, start.kind, start.placement, start.config)
     }))
     .unwrap_or_else(|p| {
-        eprintln!("engine panic: {}", panic_text(&*p));
+        emit(&format!("engine panic: {}", panic_text(&*p)));
         Err("internal error".into())
     });
     lock(pool).complete_load(&start.id, outcome)
@@ -633,7 +652,9 @@ pub async fn idle_tick(
         .await
         .unwrap_or_default();
     for id in swept {
-        eprintln!("{tag}: idle {id}: prompt cache released (model kept)");
+        emit(&format!(
+            "{tag}: idle {id}: prompt cache released (model kept)"
+        ));
     }
 }
 
@@ -770,6 +791,43 @@ mod tests {
         assert_eq!(resolve_or_insert(&pool, Some("m")).unwrap(), "m");
         assert!(resolve_or_insert(&pool, Some("nope")).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_log_captures_a_warm_up_failure() {
+        struct Restore;
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                set_log(|line| eprintln!("{line}"));
+            }
+        }
+        let _restore = Restore;
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&lines);
+        set_log(move |line| {
+            sink.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(line.to_owned());
+        });
+        let pool = Mutex::new(
+            ModelPool::new(
+                vec![],
+                BackendKind::Gguf,
+                LoadConfig::default(),
+                1,
+                fixed_placer(Placement::cpu()),
+            )
+            .unwrap(),
+        );
+        let warm = Warmup::new("missing".into(), Arc::new(AtomicU32::new(0)));
+        warm_up(&pool, &warm, "serve");
+        let got = lines.lock().unwrap();
+        assert!(
+            got.iter()
+                .any(|line| line.contains("serve: loading missing failed")),
+            "{got:?}"
+        );
+        assert!(warm.done().unwrap().is_err());
     }
 
     #[test]

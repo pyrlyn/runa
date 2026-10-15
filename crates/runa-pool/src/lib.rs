@@ -18,8 +18,8 @@ pub mod engine;
 pub mod pool;
 
 pub use pool::{
-    EngineJob, ModelPool, Placer, Streamed, Warmup, fixed_placer, generate, generate_on,
-    generate_stream, generate_stream_on,
+    EngineJob, LineLog, ModelPool, Placer, Streamed, Warmup, fixed_placer, generate, generate_on,
+    generate_stream, generate_stream_on, set_log,
 };
 pub use runa_core::BackendKind;
 pub use runa_engine::{ChatMessage, GenEvent, GenerateRequest, LoadConfig, Placement, StopReason};

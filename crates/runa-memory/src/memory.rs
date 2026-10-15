@@ -4,7 +4,7 @@
 
 //! Adaptive memory manager (plan D17, P7.1).
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 /// Idle / normal / heavy load state (plan §5).
@@ -151,6 +151,9 @@ impl MemoryBackend for SysinfoBackend {
     }
 }
 
+/// Sink for one transition line (`memory: …`).
+type TransitionLog = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Adaptive process memory (plan D17, docs/memory.md).
 pub struct MemoryManager {
     policy: MemoryPolicy,
@@ -159,6 +162,7 @@ pub struct MemoryManager {
     state: Mutex<LoadState>,
     granted_growth_mib: Mutex<u64>,
     last_activity: Mutex<Instant>,
+    log: Mutex<TransitionLog>,
 }
 
 impl MemoryManager {
@@ -175,7 +179,19 @@ impl MemoryManager {
             state: Mutex::new(LoadState::Normal),
             granted_growth_mib: Mutex::new(0),
             last_activity: Mutex::new(Instant::now()),
+            log: Mutex::new(Arc::new(stderr_line)),
         }
+    }
+
+    /// Replace the transition sink. The default writes each line with
+    /// `eprintln`. The CLI leaves that default; an embedder passes its own.
+    pub fn set_log(&self, log: impl Fn(&str) + Send + Sync + 'static) {
+        *lock(&self.log) = Arc::new(log);
+    }
+
+    fn emit(&self, line: &str) {
+        let log = lock(&self.log).clone();
+        log(line);
     }
 
     fn ceiling_mib(&self, current_rss: u64) -> u64 {
@@ -184,7 +200,7 @@ impl MemoryManager {
     }
 
     fn log_transition(&self, action: &str, before: u64, after: u64) {
-        eprintln!("memory: {action}: rss {before} -> {after} MiB");
+        self.emit(&format!("memory: {action}: rss {before} -> {after} MiB"));
     }
 
     pub fn current_usage(&self) -> Usage {
@@ -259,6 +275,10 @@ impl MemoryManager {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn stderr_line(line: &str) {
+    eprintln!("{line}");
 }
 
 fn over_ceiling_suggestion() -> String {
@@ -369,6 +389,23 @@ mod tests {
         assert_eq!(mm.current_usage().state, LoadState::Idle);
         assert_eq!(mm.current_usage().rss_mib, 512);
         assert!(mm.current_usage().rss_mib <= 512 + 512 / 10);
+    }
+
+    #[test]
+    fn set_log_receives_the_transition_line() {
+        let mm = mgr(600, 4096);
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&lines);
+        mm.set_log(move |line| {
+            sink.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(line.to_owned());
+        });
+        mm.grow_for(512).unwrap();
+        assert_eq!(
+            lines.lock().unwrap().as_slice(),
+            ["memory: grow_for: rss 600 -> 1112 MiB"]
+        );
     }
 
     #[test]

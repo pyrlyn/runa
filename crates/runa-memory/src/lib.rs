@@ -29,6 +29,7 @@ mod docs_lint {
         "on_heavy",
         "shrink_to_floor",
         "grow_for",
+        "set_log",
         "list_free",
         "status",
         "claim",

@@ -79,6 +79,15 @@ model. Every transition logs before/after RSS.
 - Check: heavy-ctx test passes without mid-run OOM; over-ceiling test
   asserts the `Err` carries a suggestion.
 
+### `fn set_log(&self, log: impl Fn(&str) + Send + Sync + 'static)`
+
+- Effect: replace the sink for transition lines (`memory: {action}: rss {before} -> {after} MiB`).
+- Default: each line is printed with `eprintln`. The CLI does not call
+  this, so serve, daemon, and `run` keep that stderr.
+- Call when: an embedder wants those lines in its own log, or wants
+  silence (`set_log(|_| {})`).
+- Check: `set_log_receives_the_transition_line`.
+
 ---
 
 ## `TaskRegistry`
@@ -554,6 +563,15 @@ per-engine activity and both long-lived processes sweep it.
   but RSS-negligible next to the resident model (772.9 MiB before
   and after on qwen2-0.5B) — the gate stays infeasible without model
   unload, which D17 forbids.
+
+### `fn set_log(log: impl Fn(&str) + Send + Sync + 'static)` (`runa-pool`)
+
+- Effect: replace every library line from `runa-pool` (warm-up ready or
+  failed, load progress, engine panic, LRU unload, idle sweep). The
+  text of each line is unchanged.
+- Default: `eprintln`. The CLI does not call this. An embedder passes
+  its own sink, or `set_log(|_| {})` for silence.
+- Check: `set_log_captures_a_warm_up_failure`.
 
 ## P10.6 — Anthropic SSE streaming tool support
 
