@@ -40,10 +40,23 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.13 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
+
+### P17.13. Library logs go through a callback
+
+`runa-memory` and `runa-pool` print with `eprintln`, so an embedder cannot silence them. Do not add the `tracing` crate. Keep the same lines on stderr by default, and add `set_log` so a host can replace the sink.
+
+Plan:
+1. `MemoryManager::set_log` stores the callback; `log_transition` calls it.
+2. `runa_pool::set_log` replaces every library `eprintln` in `pool.rs` (warm-up, progress, panics, LRU unload, idle sweep).
+3. Document both in `docs/memory.md` and the Russian and Ukrainian translations.
+4. Tests: a capturing callback sees the `grow_for` line and the warm-up failure line. The CLI does not call `set_log`, so serve/daemon stderr stays the same.
+
+Machine check: `cargo test -p runa-memory -p runa-pool --lib` passes.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
