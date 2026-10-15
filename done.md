@@ -1346,6 +1346,19 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.12. Do not auto-download ffmpeg
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`ffmpeg_bin` called `ffmpeg_sidecar::download::auto_download()` with no hash
+when ffmpeg was missing. That download is gone, and so is the
+`ffmpeg-sidecar` crate. Video sampling uses `FFMPEG_PATH` when it names a
+file, otherwise `ffmpeg` on `PATH` (the mise pin is ffmpeg `9.0.1`). A set
+but missing `FFMPEG_PATH` is an error. `docs/media.md`, `docs/versions.md`,
+`toolchain.md`, and the Russian and Ukrainian copies say so.
+
+Check (evidence): `cargo test -p runa-media --lib ffmpeg_path_must_be_a_file` — 1 passed. `cargo clippy -p runa-media --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.10. Daemon starters flock a lock file before replacing a stale socket
 
 Completed 2026-10-14 (Cursor Grok 4.7).

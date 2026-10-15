@@ -21,7 +21,7 @@ tarballs (`.cargo_vcs_info.json`), upstream submodule pins and tag lists.
 | serde_json | `=1.0.151` (no-derive `Value` walk) | — | 2026-09-08 | P1.2 Hub API sibling listing |
 | rustyline | `=18.0.1` | — | 2026-09-08 | P2.3 chat REPL (line editing + file history) |
 | assert_cmd | `=2.2.2` | — | 2026-09-08 | P2.3 CLI e2e tests |
-| ffmpeg | `9.0.1` (`mise.toml`) | ffmpeg `9.0.1` | 2026-09-15 | P4.5 video via ffmpeg-sidecar (binary, not linked) |
+| ffmpeg | `9.0.1` (`mise.toml`) | ffmpeg `9.0.1` | 2026-09-15 | P4.5 video via the ffmpeg binary on PATH or `FFMPEG_PATH` (not linked, not downloaded) |
 | python | `3.13.15` (`mise.toml`) | CPython `3.13.15` (newest 3.13.x) | 2026-09-15 | P0.7 fixtures, P3.9/P6.2 SDK smoke tests (stdlib only; 3.11.9 lacked attestations) |
 | node | `24.21.0` (`mise.toml`) | Node `24.21.0` LTS | 2026-09-15 | P3.9/P6.2 SDK smoke tests (20.x EOL 2026-04) |
 | cargo-dist | `0.33.0` (`mise.toml` `aqua:axodotdev/cargo-dist`) | cargo-dist `0.33.0` | 2026-09-15 | P6.3 packaging. Prebuilt binary via aqua since 2026-09-14 (was `cargo:` backend, which compiled from source and raced rustup downloads in CI) |
@@ -232,7 +232,6 @@ adapter is our own `reqwest` + SSE client (D9) — no SDK pin involved.
 | Crate | Plan task |
 |-------|-----------|
 | `sherpa-onnx` (Parakeet; official Rust binding — **not** `sherpa-rs`, archived 2026-06). Empty `parakeet` cargo feature removed; `transcribe_parakeet` returns "not available yet" until a later task wires the crate. | P4.2 |
-| `ffmpeg-sidecar` | P4.5 |
 | `hf-hub` | P2.4 |
 | `axum` | P3.9 |
 | `figment`, `clap` | P0.1/P2.3 |

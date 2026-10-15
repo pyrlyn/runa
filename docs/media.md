@@ -36,8 +36,8 @@ local VL model, or the P4.7 adapters from `serve`).
 
 ## Video sampling
 
-Uniform + scene-change (histogram L1), cap 32, resize. ffmpeg on PATH or
-`ffmpeg-sidecar`. See P4.5.
+Uniform + scene-change (histogram L1), cap 32, resize. ffmpeg comes from
+`FFMPEG_PATH` or `PATH` (the `mise.toml` pin). runa does not download it.
 
 ## Fit
 

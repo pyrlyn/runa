@@ -43,7 +43,7 @@ Project programs and direct packages from manifests.
 | cc | local | https://crates.io/crates/cc | P9.3: compiles the vendored ggml RPC backend behind `--features rpc`. |
 | criterion | local | https://crates.io/crates/criterion | Statistical benchmarks with HTML reports (kernels/media gates) |
 | encoding_rs | local | https://crates.io/crates/encoding_rs | Rust dependency |
-| ffmpeg-sidecar | local | https://crates.io/crates/ffmpeg-sidecar | P4.5: system ffmpeg or auto-download. |
+| ffmpeg | mise | https://ffmpeg.org/ | P4.5: binary on PATH or `FFMPEG_PATH`. runa does not download it. |
 | futures | local | https://crates.io/crates/futures | Rust dependency |
 | heed | local | https://crates.io/crates/heed | P2.8 prompt cache: LMDB via heed (mmap KV, fastest local store). |
 | hf-hub | local | https://crates.io/crates/hf-hub | P2.4 HF downloads (blocking API: sync CLI, runtime on bg thread). |

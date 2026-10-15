@@ -13,7 +13,7 @@ rust = { version = "1.98", components = "rustfmt,clippy" }
 # versionConstraint ↔ `docs/versions.md`. Installed via the aqua backend
 # (no core mise plugin for moon as of 2026-09-08).
 "aqua:moonrepo/moon" = "2.5.4"
-# video pipeline (P4.5) — ffmpeg-sidecar binary, not linked
+# video pipeline (P4.5) — ffmpeg binary on PATH, not linked and not downloaded
 ffmpeg = "9.0.1"
 # fixtures & SDK smoke tests (P0.7, P3.9, P6.2)
 # 3.11.9 lacks GitHub artifact attestations (fatal on mise >= 2026.9.6,
