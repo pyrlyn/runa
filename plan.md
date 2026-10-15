@@ -11,7 +11,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 | ID | Priority | Kind | Status | Where | Fix |
 | --- | --- | --- | --- | --- | --- |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
-| P17.10 | medium (P2) | bug | suspected | `crates/runa/src/daemon.rs:206-212` | After `ConnectionRefused`, `remove_file` then `bind` is not atomic, so two starters can still race (the live-daemon steal itself is fixed). Take a `flock` on a lock file first. |
 | P17.12 | medium (P2) | bug | confirmed | `crates/runa-media/src/video.rs:224` | `ffmpeg_sidecar::download::auto_download()` runs with no hash check. Prefer ffmpeg from `PATH`/mise; pin a hash if auto-download stays. |
 | P17.13 | medium (P2) | bug | confirmed | `crates/runa-pool/src/pool.rs:62-80`; `crates/runa-memory/src/memory.rs:187` | Library crates print to stderr, which an embedder (P16.2) cannot silence (issue #37 class). Use `tracing` or a callback. |
 | P17.16 | medium (P2) | dead code | confirmed | `crates/runa-kernels/c/{avx2,neon,scalar}.c`; `crates/runa-kernels/src/lib.rs:8` | The C kernels are "reference only" and nothing builds them; the Zig archive is what links. Move them to `docs/` or drop them. |

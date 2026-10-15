@@ -191,9 +191,46 @@ fn socket_id(path: &Path) -> Option<(u64, u64)> {
     Some((meta.dev(), meta.ino()))
 }
 
+/// `<socket-filename>.lock` beside the socket. The file stays; the lock is
+/// the open fd (`flock`), released when that fd closes.
+#[cfg(unix)]
+fn socket_lock_path(socket: &Path) -> PathBuf {
+    let mut name = socket
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| std::ffi::OsString::from("runa.sock"));
+    name.push(".lock");
+    socket.with_file_name(name)
+}
+
 /// Bind `socket`, replacing it only when nothing is accepting connections.
+///
+/// The connect / unlink / bind sequence is one critical section. Two
+/// starters that both see `ConnectionRefused` used to `remove_file` then
+/// `bind` without a lock, so one could unlink the socket the other had
+/// just bound. An exclusive [`std::fs::File::lock`] on
+/// [`socket_lock_path`] closes that window. The lock is held only for
+/// this function.
 #[cfg(unix)]
 fn bind_daemon_socket(socket: &Path) -> Result<(UnixListener, (u64, u64)), String> {
+    let lock_path = socket_lock_path(socket);
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| format!("lock {}: {e}", lock_path.display()))?;
+    lock.lock()
+        .map_err(|e| format!("lock {}: {e}", lock_path.display()))?;
+    let bound = bind_daemon_socket_locked(socket);
+    // Closing the fd releases the flock even if unlock fails.
+    let _ = lock.unlock();
+    bound
+}
+
+#[cfg(unix)]
+fn bind_daemon_socket_locked(socket: &Path) -> Result<(UnixListener, (u64, u64)), String> {
     if socket.exists() {
         match std::os::unix::net::UnixStream::connect(socket) {
             Ok(_) => {
@@ -658,6 +695,117 @@ mod tests {
             assert!(!path.exists());
             drop(listener);
         });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bind_blocks_while_socket_lock_is_held() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-lock-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("d.sock");
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(socket_lock_path(&path))
+            .unwrap();
+        lock.lock().unwrap();
+        let path2 = path.clone();
+        let started = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let started2 = std::sync::Arc::clone(&started);
+        let handle = std::thread::spawn(move || {
+            started2.wait();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async {
+                let (listener, _) = bind_daemon_socket(&path2)?;
+                drop(listener);
+                Ok::<(), String>(())
+            })
+        });
+        started.wait();
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        assert!(
+            !handle.is_finished(),
+            "bind must wait while the socket lock is held"
+        );
+        lock.unlock().unwrap();
+        drop(lock);
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn two_starters_one_bind_on_a_stale_socket() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-race-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..8 {
+            let path = dir.join(format!("d{i}.sock"));
+            {
+                let _stale = std::os::unix::net::UnixListener::bind(&path).unwrap();
+            }
+            let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let release = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let mut handles = Vec::new();
+            for _ in 0..2 {
+                let path = path.clone();
+                let start = std::sync::Arc::clone(&start);
+                let release = std::sync::Arc::clone(&release);
+                handles.push(std::thread::spawn(move || {
+                    start.wait();
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    // Hold a successful listener until the other starter has
+                    // also returned, or dropping it looks like a stale socket.
+                    let outcome = rt.block_on(async { bind_daemon_socket(&path) });
+                    release.wait();
+                    match outcome {
+                        Ok((listener, _)) => {
+                            drop(listener);
+                            Ok(())
+                        }
+                        Err(e) => Err(e),
+                    }
+                }));
+            }
+            let mut bound = 0;
+            let mut errors = Vec::new();
+            for handle in handles {
+                match handle.join().unwrap() {
+                    Ok(()) => bound += 1,
+                    Err(e) => errors.push(e),
+                }
+            }
+            assert_eq!(bound, 1, "iteration {i}: {errors:?}");
+            assert_eq!(errors.len(), 1, "iteration {i}");
+            assert!(
+                errors[0].contains("already running"),
+                "iteration {i}: {}",
+                errors[0]
+            );
+            assert!(path.exists(), "iteration {i}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

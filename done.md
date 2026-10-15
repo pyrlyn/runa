@@ -1346,6 +1346,19 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.10. Daemon starters flock a lock file before replacing a stale socket
+
+Completed 2026-10-14 (Cursor Grok 4.7).
+
+After `ConnectionRefused`, `remove_file` then `bind` was not atomic, so two
+starters could unlink a socket the other had just bound. `bind_daemon_socket`
+now takes an exclusive `std::fs::File::lock` on `<socket-filename>.lock`
+around connect, unlink, and bind. The lock file stays; the lock is the open
+fd and drops when that fd closes. `docs/memory.md` and the Russian and
+Ukrainian translations describe it.
+
+Check (evidence): `cargo test -p runa --bin runa -- bind_blocks_while_socket_lock_is_held two_starters_one_bind_on_a_stale_socket` — 2 passed. `cargo clippy -p runa --bin runa -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only). `second_daemon_does_not_unlink_a_live_socket` still fails on this overlayfs checkout because the rebound socket reuses the inode; that assertion is unchanged and is the known overlayfs flake.
+
 ### P17.11. Close-token logit bias must not write a shared logits slice
 
 Completed 2026-10-14 (Cursor Grok 4.7).

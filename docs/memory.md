@@ -322,6 +322,10 @@ JSON text, mirroring how the ggml backend surfaces unrequested tool markup.
 The daemon keeps models warm between CLI calls, owns one
 `MemoryManager` over a real RSS backend, and serves `run` / `chat` over a
 Unix socket (`~/.cache/runa/runa.sock`, `RUNA_DAEMON_SOCK` overrides).
+Two starters take an exclusive lock on `<socket-filename>.lock` before
+connect, unlink, and bind, so one cannot remove a socket the other just
+bound. The lock file stays; the lock is the open file and drops when
+that file closes.
 Wire: one NDJSON [`DaemonRequest`] line per request, a stream of
 [`DaemonEvent`] lines ending in `done` / `error` per reply
 (`crates/runa/src/daemon_proto.rs`). `run` / `chat` dial first and fall
