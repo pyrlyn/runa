@@ -1346,6 +1346,20 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.13. Library logs go through a callback
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`runa-memory` and `runa-pool` printed with `eprintln`, so an embedder could
+not silence warm-up, progress, panic, LRU, idle, or memory-transition
+lines. Both crates still print those same lines on stderr by default.
+`MemoryManager::set_log` and `runa_pool::set_log` replace the sink. No
+`tracing` dependency was added. `docs/memory.md` and the Russian and
+Ukrainian translations describe both functions. The CLI does not call
+them, so serve and daemon stderr is unchanged.
+
+Check (evidence): `cargo test -p runa-memory --lib` — 19 passed. `cargo test -p runa-pool --lib` — 7 passed. `cargo clippy -p runa-memory -p runa-pool --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.16. Drop the unlinked C kernels
 
 Completed 2026-10-15 (Cursor Grok 4.7).
