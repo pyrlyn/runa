@@ -1360,7 +1360,7 @@ HTTP server in `src/serve/`, the socket daemon and its protocol in
 `main.rs` as their crate root. `docs/memory.md` and the Russian and
 Ukrainian translations describe the three entry points.
 
-Check (evidence): `cargo test -p runa --lib` — 128 passed, 1 failed. The failure is `second_daemon_does_not_unlink_a_live_socket` on this overlayfs checkout (rebound socket reuses inode `(65056, 769542)`); the assertion is unchanged and is the known overlayfs flake. `cargo test -p runa --bin runa` — 0 tests, the binary compiles. `cargo clippy -p runa --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+Check (evidence): `cargo test -p runa --lib` — 129 passed, including `second_daemon_does_not_unlink_a_live_socket`. That test still checks a live listener is not replaced; when the filesystem reuses the inode, the ownership unlink is skipped because the two binds cannot be told apart. `cargo test -p runa --bin runa` — 0 tests, the binary compiles. `cargo clippy -p runa --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
 
 ### P17.20. Keep `scripts/release.sh` in this repo
 

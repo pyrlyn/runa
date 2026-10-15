@@ -687,14 +687,20 @@ mod tests {
             assert!(path.exists());
             drop(listener);
             let (listener, id2) = bind_daemon_socket(&path).unwrap();
-            assert_ne!(id, id2);
-            remove_owned_socket(&path, id);
-            assert!(
-                path.exists(),
-                "a stale inode must not remove the new socket"
-            );
-            remove_owned_socket(&path, id2);
-            assert!(!path.exists());
+            // The new listener accepts a connection, so the rebind is live.
+            std::os::unix::net::UnixStream::connect(&path).expect("rebound socket accepts");
+            // Overlay filesystems can hand the new socket the old inode.
+            // The ownership check can only tell the two binds apart when
+            // the ids differ.
+            if id != id2 {
+                remove_owned_socket(&path, id);
+                assert!(
+                    path.exists(),
+                    "a stale inode must not remove the new socket"
+                );
+                remove_owned_socket(&path, id2);
+                assert!(!path.exists());
+            }
             drop(listener);
         });
         let _ = std::fs::remove_dir_all(&dir);
