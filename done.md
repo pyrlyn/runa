@@ -1346,6 +1346,18 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.18. Keep `report.html`
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`report.html` is the HTML page for the research companion (`research.md`).
+The plan Reference, `docs/README.md`, and the Russian and Ukrainian indexes
+already link it. Nothing in the build or CI generates it. Deleting or
+gitignoring it would drop a linked page. It stays tracked. The Reference
+now says that in both places it names the file.
+
+Check (evidence): `git ls-files report.html` prints `report.html`. `docs/README.md` still links `../report.html`. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.13. Library logs go through a callback
 
 Completed 2026-10-15 (Cursor Grok 4.7).

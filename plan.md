@@ -11,7 +11,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 | ID | Priority | Kind | Status | Where | Fix |
 | --- | --- | --- | --- | --- | --- |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
-| P17.18 | medium (P2) | dead code | confirmed | `report.html` (tracked, not ignored, not used by build or CI) | The reviewer suggests deleting or ignoring it; the Reference above lists it as a companion document, so decide whether to keep it. |
 | P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
 | P17.20 | medium (P2) | move | confirmed | `scripts/release.sh:1-40` → `pyrlyn/ci` | The script already dispatches `pyrlyn/ci` `bump.yml`. Keep a thin wrapper here or fold the rest into `pyrlyn/ci`. |
 
@@ -39,17 +38,10 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
-| P17.18 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
-
-### P17.18. Keep `report.html`
-
-`report.html` is the HTML form of the research companion. `plan.md` Reference, the documentation index, and the Russian and Ukrainian indexes already link it. It is not produced by the build or by CI. Keep the file. Do not gitignore it.
-
-Machine check: `git ls-files report.html` prints the path, and `docs/README.md` still links it.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
