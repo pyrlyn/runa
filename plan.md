@@ -38,10 +38,17 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.20 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
+
+### P17.20. Keep `scripts/release.sh` in this repo
+
+The no-flag path already starts pyrlyn/ci `bump.yml`. `--local` and `--dry-run` edit this tree, and bump.yml runs `--local`. Do not move the body into `pyrlyn/ci` (that is another repository). Say so in the script header.
+
+Machine check: `bash -n scripts/release.sh` and `bash scripts/release.sh patch --dry-run` still print a version.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
