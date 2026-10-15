@@ -115,7 +115,7 @@ P0.1); цей файл фіксує, **чому відповідає кожен 
 | Локальна розробка (macOS arm64) | `cargo build -p runa-engine --features metal` | Metal типово ввімкнено на Apple Silicon через `llama-cpp-sys-2` |
 | Локальна розробка (Linux CUDA) | `--features cuda` для `runa-engine` / робочого простору | Задача CI на ubuntu лише для CPU; CUDA деінде лише збирається |
 | Портабельний реліз | без `-march=native`; диспетчеризація ggml під час виконання (D13) | `native` у `llama-cpp-2` з'являється після pin 0.1.133 — перш ніж вмикати, перейдіть на новіший pin |
-| `runa-kernels` (P5.2+) | для нових ядер перевага Zig (C ABI) (D23); C/`.S` лише там, де Zig гірший | SIMD через Zig `@Vector` або диспетчеризацію C під час виконання |
+| `runa-kernels` (P5.2+) | для нових ядер перевага Zig (C ABI) (D23); C/`.S` лише там, де Zig гірший | SIMD через Zig `@Vector`. Крейт лінкує архів Zig |
 
 Релізні бінарники мають працювати на хостах **без** AVX-512; не постачайте `-C target-cpu=native` у релізних профілях (`[profile.release]` у `Cargo.toml` не має `target-cpu`).
 

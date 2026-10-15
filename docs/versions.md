@@ -112,7 +112,7 @@ stay on CPU — plan D12).
 | Local dev (macOS arm64) | `cargo build -p runa-engine --features metal` | Metal enabled by default on Apple Silicon via `llama-cpp-sys-2` |
 | Local dev (Linux CUDA) | `--features cuda` on `runa-engine` / workspace | CI ubuntu job is CPU-only; CUDA is build-only elsewhere |
 | Portable release | no `-march=native`; ggml runtime dispatch (D13) | `native` on `llama-cpp-2` arrives after the 0.1.133 pin — use a newer pin before enabling |
-| `runa-kernels` (P5.2+) | Zig (C ABI) preferred for new kernels (D23); C/`.S` only where Zig is worse | SIMD via Zig `@Vector` or C runtime dispatch |
+| `runa-kernels` (P5.2+) | Zig (C ABI) preferred for new kernels (D23); C/`.S` only where Zig is worse | SIMD via Zig `@Vector`. This crate links the Zig archive |
 
 Release binaries must run on hosts **without** AVX-512; do not ship `-C target-cpu=native` in release profiles (`Cargo.toml` `[profile.release]` has no `target-cpu`).
 

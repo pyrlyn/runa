@@ -41,10 +41,23 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
+| P17.16 | in progress | medium | S | ready | Cursor Grok 4.7 |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
 
 ## Tasks
+
+### P17.16. Drop the unlinked C kernels
+
+`crates/runa-kernels/c/` is not compiled. `build.rs` links the Zig archive, which already exports the same C ABI symbols. Drop the C sources. Do not move them into `docs/` (that directory is prose, and ADR D23 already records that the kernels started as C). Correct `docs/kernels.md` and the Russian and Ukrainian translations so they no longer say scalar C is always linked. Leave ADR D23 unchanged. Point the SonarCloud follow-up away from the deleted directory.
+
+Plan:
+1. Delete `c/avx2.c`, `c/neon.c`, `c/scalar.c`, and `c/scalar.h`.
+2. Describe the crate as linking the Zig archive only.
+3. Update `docs/kernels.md`, `docs/ru/kernels.md`, `docs/uk/kernels.md`, the `runa-kernels` row in `docs/versions.md` (and translations), and the SonarCloud follow-up.
+4. `cargo test -p runa-kernels` with Zig 0.16.0 on `PATH`.
+
+Machine check: `cargo test -p runa-kernels` passes and the tree has no `crates/runa-kernels/c`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
