@@ -12,7 +12,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 | --- | --- | --- | --- | --- | --- |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
 | P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
-| P17.20 | medium (P2) | move | confirmed | `scripts/release.sh:1-40` → `pyrlyn/ci` | The script already dispatches `pyrlyn/ci` `bump.yml`. Keep a thin wrapper here or fold the rest into `pyrlyn/ci`. |
 
 Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
 

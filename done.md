@@ -1346,6 +1346,19 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.20. Keep `scripts/release.sh` in this repo
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+With no flag, `scripts/release.sh` only starts pyrlyn/ci `bump.yml`.
+`--dry-run` and `--local` choose the version and, for `--local`, edit
+`Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md` in this tree. `bump.yml`
+runs `--local`. Moving that body into `pyrlyn/ci` would be a change to
+another repository, and the workflow would still need this repo's layout.
+The script stays. Its header says so.
+
+Check (evidence): `bash -n scripts/release.sh` exited 0. `bash scripts/release.sh patch --dry-run` printed `current 0.1.0 -> release v0.1.0` and `dry run: nothing written` (no local `v0.1.0` tag, so the script keeps 0.1.0, which is the documented first-release rule). `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.18. Keep `report.html`
 
 Completed 2026-10-15 (Cursor Grok 4.7).
