@@ -6,7 +6,7 @@ A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through Op
 
 ## Cloud review findings (2026-10-08)
 
-New bugs, dead code and moves from a read-only Cursor cloud review of the current tree (agent `bc-b9ffebc5-a30f-5261-a881-c62018ac3f66`; full report: `cloud/runa.md` in the private `listepo/roadmap` repo). They form phase P17: P17.1–P17.20, ordered by priority (there is no P0; P1 is high, P2 is medium). **confirmed** means seen in the tree; **suspected** means plausible from the code but not proven (no tests or Miri were run). Line numbers are as of the review. Every finding from that review is closed; the entries are in `done.md` under P17. |
+New bugs, dead code and moves from a read-only Cursor cloud review of the current tree (agent `bc-b9ffebc5-a30f-5261-a881-c62018ac3f66`; full report: `cloud/runa.md` in the private `listepo/roadmap` repo). They form phase P17: P17.1–P17.20, ordered by priority (there is no P0; P1 is high, P2 is medium). **confirmed** means seen in the tree; **suspected** means plausible from the code but not proven (no tests or Miri were run). Line numbers are as of the review. Every finding from that review is closed; the entries are in `done.md` under P17.
 
 Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
 
