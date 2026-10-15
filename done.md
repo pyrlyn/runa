@@ -1346,6 +1346,22 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.7. Split serve and daemon into the runa library
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`crates/runa` was binary-only, so serve and daemon could not be linked
+without the CLI. The package is now a library plus a thin binary.
+`src/main.rs` calls `run`. Commands and config live in `src/cli/`, the
+HTTP server in `src/serve/`, the socket daemon and its protocol in
+`src/daemon/`, and the chat history, REPL, and TUI loop in `src/session/`.
+`serve::cmd_serve` and `daemon::cmd_daemon` are public. Fuzz bins call
+`runa::fuzz_hooks::run` under `--cfg fuzzing` instead of compiling
+`main.rs` as their crate root. `docs/memory.md` and the Russian and
+Ukrainian translations describe the three entry points.
+
+Check (evidence): `cargo test -p runa --lib` — 129 passed, including `second_daemon_does_not_unlink_a_live_socket`. That test still checks a live listener is not replaced; when the filesystem reuses the inode, the ownership unlink is skipped because the two binds cannot be told apart. `cargo test -p runa --bin runa` — 0 tests, the binary compiles. `cargo clippy -p runa --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.20. Keep `scripts/release.sh` in this repo
 
 Completed 2026-10-15 (Cursor Grok 4.7).

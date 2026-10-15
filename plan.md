@@ -10,7 +10,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 
 | ID | Priority | Kind | Status | Where | Fix |
 | --- | --- | --- | --- | --- | --- |
-| P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
 | P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
 
 Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
@@ -58,7 +57,7 @@ Ivan, 2026-09-30: the same fuzz setup as ketch and rtok (ketch plan R4, rtok pla
 
 Plan:
 1. `fuzz/`: a standalone cargo-fuzz workspace, not a member of the root workspace (`cargo-fuzz = true`, `libfuzzer-sys` 0.4, `arbitrary`), so `moon`, `cargo test --workspace` and CI never compile it. Targets that only need `runa-core`, `runa-fit` and `runa-cloud` depend on those crates directly. The targets that need the `runa` binary crate (argv, config, server body, daemon protocol) or `runa-engine` (tool-call parsing) pull in llama.cpp, so put them behind a fuzz-crate feature and the fast targets build without a C++ toolchain. An alternative is to move the pure tool-call parser out of `runa-engine` into a crate that does not link llama.cpp.
-2. Entry points: the `runa` crate is binary-only (`crates/runa/src/main.rs`, no `lib.rs`), so its surfaces get a `#[cfg(fuzzing)]` module (`fuzz_hooks.rs`) with in-process, side-effect-free functions: no model load, network, process spawn or file writes. Crate-private parsers in library crates (for example `runa-engine`'s `structured.rs` tool-call parser) get the same `#[cfg(fuzzing)]` pub shims.
+2. Entry points: the `runa` package is a library plus a thin binary (P17.7). Fuzz surfaces live in `fuzz_hooks` (`#[cfg(fuzzing)]`) and the fuzz bins call `runa::fuzz_hooks::run`. In-process and side-effect-free: no model load, network, process spawn or file writes. Crate-private parsers in library crates (for example `runa-engine`'s `structured.rs` tool-call parser) get the same `#[cfg(fuzzing)]` pub shims.
 3. Targets:
    - `cli-argv`: `Cli::try_parse_from` over arbitrary argv, plus the help/error rendering.
    - `cli-config`: `runa.toml` / `config.toml` text through the `*_from_toml` readers in `crates/runa/src/config.rs` (threads, max load, `on_unfit`, think, memory, audio route, LoRA lists) and the alias table.

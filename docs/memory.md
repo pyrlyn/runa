@@ -11,6 +11,33 @@ synchronous and thread-safe (`Send + Sync`).
 
 ---
 
+## Library entry points
+
+The `runa` package is a library and a binary. `src/main.rs` calls `run`.
+Another program links the library and calls serve or the daemon itself.
+
+### `fn run()`
+
+- Effect: parse argv and run one subcommand. Usage errors exit the process.
+- Call when: you are the `runa` binary.
+
+### `fn serve::cmd_serve(opts: ServeOpts) -> Result<(), String>`
+
+- Effect: bind the OpenAI-compatible HTTP server and block until it stops.
+- `ServeOpts` carries the models, host, port, API key, mode, context,
+  parallelism, LoRA adapters, and [`placer::PlacementOverrides`].
+- The CLI fills `ServeOpts` from flags and calls this. `/health` stays open;
+  a non-loopback host still requires an API key.
+
+### `fn daemon::cmd_daemon(opts: DaemonOpts) -> Result<(), String>`
+
+- Effect: install, uninstall, or run the background daemon (Unix socket).
+- `DaemonOpts` carries the models, mode, context, socket path, and whether
+  this invocation installs or removes the unit.
+- The CLI fills `DaemonOpts` from flags and calls this.
+
+---
+
 ## `MemoryManager`
 
 Adaptive process memory. Idle (no request/job for `idle_timeout_s`) →
