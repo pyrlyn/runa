@@ -12,7 +12,6 @@ New bugs, dead code and moves from a read-only Cursor cloud review of the curren
 | --- | --- | --- | --- | --- | --- |
 | P17.7 | high (P1) | move | confirmed | `crates/runa/src/main.rs` (3,299 lines), `config.rs` (1,371) → `crates/runa/src/{cli,serve,daemon,session}/` | Split the binary so serve/daemon can be reused without it (GitHub #30/#34). |
 | P17.13 | medium (P2) | bug | confirmed | `crates/runa-pool/src/pool.rs:62-80`; `crates/runa-memory/src/memory.rs:187` | Library crates print to stderr, which an embedder (P16.2) cannot silence (issue #37 class). Use `tracing` or a callback. |
-| P17.16 | medium (P2) | dead code | confirmed | `crates/runa-kernels/c/{avx2,neon,scalar}.c`; `crates/runa-kernels/src/lib.rs:8` | The C kernels are "reference only" and nothing builds them; the Zig archive is what links. Move them to `docs/` or drop them. |
 | P17.18 | medium (P2) | dead code | confirmed | `report.html` (tracked, not ignored, not used by build or CI) | The reviewer suggests deleting or ignoring it; the Reference above lists it as a companion document, so decide whether to keep it. |
 | P17.19 | medium (P2) | move | not verified against cox | `crates/runa-cloud/src/{openai,anthropic,secrets}.rs` → shared `llm-*` / `secret-store` crates | Duplicated clients and keyring code. Consume the shared crates only after they exist. |
 | P17.20 | medium (P2) | move | confirmed | `scripts/release.sh:1-40` → `pyrlyn/ci` | The script already dispatches `pyrlyn/ci` `bump.yml`. Keep a thin wrapper here or fold the rest into `pyrlyn/ci`. |

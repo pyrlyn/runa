@@ -1346,6 +1346,20 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.16. Drop the unlinked C kernels
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`crates/runa-kernels/c/{avx2,neon,scalar}.c` and `scalar.h` were not compiled.
+`build.rs` links the Zig archive, which already exports the same C ABI
+symbols. The C sources are deleted. They were not moved into `docs/`: that
+tree is prose, and ADR D23 already records that the kernels started as C.
+`docs/kernels.md` and the Russian and Ukrainian translations no longer say
+scalar C is always linked. The SonarCloud follow-up no longer points at
+`crates/runa-kernels/c/`. ADR D23 is unchanged.
+
+Check (evidence): `cargo test -p runa-kernels` — 9 passed. `cargo clippy -p runa-kernels --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
 ### P17.17. Report a truncated GGUF tensor table as `TensorTableTruncated`
 
 Completed 2026-10-15 (Cursor Grok 4.7).
