@@ -10,6 +10,8 @@
 //! launchd/systemd — see `--install` / `--uninstall`.
 
 use std::path::{Path, PathBuf};
+
+pub(crate) mod proto;
 #[cfg(unix)]
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
@@ -45,7 +47,7 @@ const REQUEST_DEMAND_MIB: u64 = 0;
 pub(crate) const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
 
 /// CLI bundle for `runa daemon`.
-pub(crate) struct DaemonOpts {
+pub struct DaemonOpts {
     pub models: Vec<(String, PathBuf)>,
     pub mode: String,
     pub ctx: u32,
@@ -62,7 +64,7 @@ pub(crate) struct DaemonOpts {
     pub argv: Vec<String>,
 }
 
-pub(crate) fn cmd_daemon(opts: DaemonOpts) -> Result<(), String> {
+pub fn cmd_daemon(opts: DaemonOpts) -> Result<(), String> {
     let home = home_dir()?;
     if opts.install {
         if opts.models.is_empty() {
