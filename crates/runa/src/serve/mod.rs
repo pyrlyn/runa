@@ -706,7 +706,7 @@ async fn embeddings(
             "index": index
         }));
     }
-    flight.add_tokens(total_tokens, 0, 0, 0.0);
+    flight.add_tokens(total_tokens, 0, 0, 0.0, 0.0);
     Ok(Json(json!({
         "object": "list",
         "data": data,
@@ -831,6 +831,7 @@ fn note_events(flight: &mut crate::dashboard::Flight, events: &[GenEvent]) {
                 u.generated_tokens,
                 u.reasoning_tokens,
                 u.tg_toks_per_s,
+                u.pp_toks_per_s,
             );
         }
     }

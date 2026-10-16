@@ -74,6 +74,8 @@ Full walkthrough with copy-paste examples:
 | `runa doctor` | Compiled-in backends and native-build flags |
 | `runa media probe\|video\|transcribe` | Inspect / sample / ASR via whisper.cpp |
 | `runa tasks list\|claim\|release` | Claim registry in `docs/tasks.md` (contributors) |
+| `runa stats` | Token totals from the local journal (`--since`, `--json`) |
+| `runa web` | Live usage page on loopback (`127.0.0.1:3939`) |
 
 Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 (`man ./docs/runa.1`). Every flag and `runa.toml` key:
@@ -89,6 +91,7 @@ Man pages: [`docs/runa.1`](docs/runa.1), [`docs/runa-run.1`](docs/runa-run.1)
 | **MCP / tools** | `--mcp` stdio servers; tool loop in `run` / `chat`; serve tool calling | [`docs/structured.md`](docs/structured.md) |
 | **Media** | native / asr / auto audio routes; `--image` / `--video`; whisper ASR | [`docs/media.md`](docs/media.md) |
 | **Memory** | Idle shrink, heavy grow; `MemoryManager` / `TaskRegistry` API | [`docs/memory.md`](docs/memory.md) |
+| **Stats** | Journal of `run` / `chat` / `serve`; `runa stats` and live `runa web` | [`docs/stats.md`](docs/stats.md) |
 
 ## Docs
 
@@ -96,8 +99,9 @@ Start at [`docs/README.md`](docs/README.md), the documentation index. Most used:
 [`getting-started.md`](docs/getting-started.md), [`guide.md`](docs/guide.md),
 [`config.md`](docs/config.md), [`fit.md`](docs/fit.md), [`thinking.md`](docs/thinking.md),
 [`media.md`](docs/media.md), [`structured.md`](docs/structured.md),
-[`dashboard.md`](docs/dashboard.md). Contributors: [`docs/development.md`](docs/development.md),
-[`CONTRIBUTING.md`](CONTRIBUTING.md), [`AGENTS.md`](AGENTS.md).
+[`dashboard.md`](docs/dashboard.md), [`stats.md`](docs/stats.md). Contributors:
+[`docs/development.md`](docs/development.md), [`CONTRIBUTING.md`](CONTRIBUTING.md),
+[`AGENTS.md`](AGENTS.md).
 
 ## Status
 

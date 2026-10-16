@@ -50,6 +50,8 @@ CUDA — додаткові артефакти. Без телеметрії.
   демона для швидких `run` / `chat`; режими обчислень `cpu` / `gpu` / `hybrid` плюс розміщення `auto`.
 - **Адаптивна пам'ять.** У простої пам'ять стискається до нижньої межі, а для важкої задачі заздалегідь
   зростає в обмежених межах.
+- **Статистика наживо.** `runa stats` друкує локальний журнал; `runa web` стежить за новими
+  генераціями на loopback.
 
 ## Встановлення
 
@@ -87,6 +89,8 @@ runa fit --recommend --offline --top 5
 runa run qwen "explain KV-cache quantization in one paragraph"
 runa chat qwen --tui
 runa serve --port 8080
+runa stats
+runa web
 ```
 
 Відкалібруйте прогнози швидкості виміряним запуском:

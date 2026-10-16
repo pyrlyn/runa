@@ -78,6 +78,14 @@ runa run qwen3 "What is the weather in Paris?" --mcp 'python3 weather_server.py'
 runa chat qwen3 --mcp 'npx -y @modelcontextprotocol/server-filesystem .'
 ```
 
+**See what you spent** — `run` / `chat` / `serve` append to a local journal.
+`runa stats` prints it; `runa web` follows it live on `127.0.0.1:3939`:
+
+```sh
+runa stats --since 7d
+runa web
+```
+
 **Transcribe audio** — whisper.cpp ASR (`--lang auto` detects then decodes):
 
 ```sh

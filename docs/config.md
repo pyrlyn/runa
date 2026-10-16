@@ -155,6 +155,17 @@ key, every `/v1` route requires `Authorization: Bearer <key>`; `/health`
 stays open. There is no `runa.toml` key for this token (inline API keys
 in TOML are rejected).
 
+## Usage journal
+
+`run`, `chat`, and `serve` append one JSON line per finished generation.
+`runa stats` and `runa web` read it. There is no `runa.toml` key.
+
+| Env | Use |
+|-----|-----|
+| `RUNA_USAGE_LOG` | Journal path. Default: `$XDG_CACHE_HOME/runa/usage.jsonl` or `~/.cache/runa/usage.jsonl` |
+
+See [`stats.md`](stats.md).
+
 ## Cloud env (not TOML)
 
 | Env | Use |

@@ -1634,3 +1634,28 @@ The creator authorized dependency updates across the audit. Update vulnerable de
 Execution plan: reproduce the advisory audit; apply compatible package-manager updates; review the lockfile diff; run advisory regression checks and the project test/lint/format gates; publish a PR and merge only after required checks pass. No custom dependency implementation is needed. Rollback is a revert of the dependency-update commit.
 
 Validation: isolated RustSec audit reports zero vulnerabilities with rustls 0.23.46. Full nextest passed 544 tests (2 skipped) using the existing local qwen2 fixture. `moon run :test` completed all 20 tasks; `moon run root:test-fast root:lint-tasks`, workspace clippy with warnings denied and formatting passed. The strict lint gate reproduced an unused GenEvent import in the existing generation regression test; removing only that import makes it pass without suppressions. Existing rustls and test fixtures are reused; no new implementation or dependency is introduced.
+
+## P19. Usage stats
+
+### P19.1. Usage stats command and live web page
+
+Completed 2026-10-10.
+
+`runa stats` prints the local usage journal (requests, prompt / generated /
+reasoning tokens, decode tok/s, by model, by day, recent rows; `--json`,
+`--since 24h|7d`). `runa web` serves that same snapshot on loopback and
+pushes a new one over `/ws` when the journal grows. `run`, `chat`, and
+`serve` append one JSON line per finished generation
+(`$XDG_CACHE_HOME/runa/usage.jsonl`, `RUNA_USAGE_LOG` overrides).
+
+The shape follows rtok (`stats` + `web`, Vite + React + TanStack Query,
+dist embedded in the binary). The page uses the runa brand (warm ash,
+charcoal, ember).
+
+Check (evidence): `cargo test -p runa --bin runa` 129 passed;
+`cargo test -p runa --bin runa -- usage_log:: stats_web:: dashboard::` 17 passed;
+`cargo clippy -p runa --bin runa -- -D warnings` clean;
+`cargo fmt -p runa -- --check` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors (K7 stale-claim warning);
+`runa stats` and `runa web --port 0` served `/health`, `/api/snapshot`, `/`, `/stats.js`, `/stats.css` on loopback.
+`runa web --host 1.2.3.4` refused.

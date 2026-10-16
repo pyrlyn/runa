@@ -32,6 +32,8 @@ use crate::mcp;
 use crate::placer;
 use crate::pull;
 use crate::serve;
+use crate::stats_web;
+use crate::usage_log;
 use runa_pool::engine;
 
 /// Run AI models locally or through the OpenAI and Anthropic APIs.
@@ -266,6 +268,24 @@ pub(crate) enum Commands {
     Tasks {
         #[command(subcommand)]
         action: TaskAction,
+    },
+    /// Usage totals from the local journal (`run`, `chat`, `serve`).
+    Stats {
+        /// How far back to read (`24h`, `7d`, `60d`).
+        #[arg(long, value_name = "SPAN")]
+        since: Option<String>,
+        /// JSON instead of the table.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Live usage page on this machine (websocket, loopback only).
+    Web {
+        /// Bind address. Must be a loopback address.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Bind port. `0` picks an ephemeral port.
+        #[arg(long, default_value_t = 3939)]
+        port: u16,
     },
 }
 
@@ -572,6 +592,8 @@ pub fn run() {
             Ok(())
         }
         Commands::Tasks { action } => cmd_tasks(action),
+        Commands::Stats { since, json } => cmd_stats(since.as_deref(), json),
+        Commands::Web { host, port } => stats_web::cmd_web(&host, port),
     };
     if let Err(e) = rc {
         let (code, msg) = if let Some(msg) = e.strip_prefix("unfit: ") {
@@ -1490,7 +1512,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), String> {
         },
     )?;
     let turn = last.expect("tool_loop runs at least one round");
-    finish_run(&turn, args.json);
+    finish_run(&turn, args.json, &args.model);
     Ok(())
 }
 
@@ -1579,7 +1601,7 @@ fn cmd_run_mistral(
     };
     let stream = engine.generate(req)?;
     let turn = crate::session::drain_local(stream, !args.json)?;
-    finish_run(&turn, args.json);
+    finish_run(&turn, args.json, &args.model);
     Ok(())
 }
 
@@ -1636,7 +1658,7 @@ fn try_daemon_run(
         Ok(events) => events,
         Err(_) => return None,
     };
-    Some(drain_daemon(&events, !args.json).map(|turn| finish_run(&turn, args.json)))
+    Some(drain_daemon(&events, !args.json).map(|turn| finish_run(&turn, args.json, &args.model)))
 }
 
 /// Send one request to the daemon; transport errors mean "no daemon".
@@ -1705,7 +1727,7 @@ pub(crate) fn drain_daemon(
 
 /// Shared `run` epilogue (local and daemon paths): `--json` object or a
 /// trailing newline plus the usage line on stderr.
-fn finish_run(turn: &crate::session::LocalTurn, json: bool) {
+fn finish_run(turn: &crate::session::LocalTurn, json: bool, model: &str) {
     let usage = turn.usage.clone().unwrap_or(Usage {
         prompt_tokens: 0,
         generated_tokens: 0,
@@ -1713,6 +1735,9 @@ fn finish_run(turn: &crate::session::LocalTurn, json: bool) {
         pp_toks_per_s: 0.0,
         tg_toks_per_s: 0.0,
     });
+    if let Some(u) = &turn.usage {
+        usage_log::record_usage("run", model, u);
+    }
     if json {
         println!(
             "{}",
@@ -1775,6 +1800,20 @@ fn task_registry_path() -> PathBuf {
     std::env::var("RUNA_TASK_REGISTRY")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("docs/tasks.md"))
+}
+
+fn cmd_stats(since: Option<&str>, json: bool) -> Result<(), String> {
+    let window = match since {
+        Some(s) => Some(usage_log::parse_since(s)?),
+        None => None,
+    };
+    let report = usage_log::load_default(window)?;
+    if json {
+        println!("{}", report.to_json()?);
+    } else {
+        print!("{}", report.to_table());
+    }
+    Ok(())
 }
 
 fn cmd_tasks(action: TaskAction) -> Result<(), String> {

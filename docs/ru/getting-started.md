@@ -84,6 +84,14 @@ runa run qwen3 "What is the weather in Paris?" --mcp 'python3 weather_server.py'
 runa chat qwen3 --mcp 'npx -y @modelcontextprotocol/server-filesystem .'
 ```
 
+**Сколько ушло** — `run` / `chat` / `serve` дописывают локальный журнал.
+`runa stats` печатает его; `runa web` следит за ним вживую на `127.0.0.1:3939`:
+
+```sh
+runa stats --since 7d
+runa web
+```
+
 **Транскрибация аудио** — ASR на whisper.cpp (`--lang auto` сначала определяет язык, затем декодирует):
 
 ```sh

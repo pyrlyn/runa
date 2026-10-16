@@ -161,6 +161,7 @@ pub(crate) struct Flight {
     generated: u64,
     reasoning: u64,
     decode_tps: f64,
+    prefill_tps: f64,
     error: Option<(String, String)>,
 }
 
@@ -182,6 +183,7 @@ struct Finished {
     generated: u64,
     reasoning: u64,
     decode_tps: f64,
+    prefill_tps: f64,
     error: Option<(String, String)>,
 }
 
@@ -199,6 +201,7 @@ impl Drop for Flight {
             generated: self.generated,
             reasoning: self.reasoning,
             decode_tps: self.decode_tps,
+            prefill_tps: self.prefill_tps,
             error: err,
         });
     }
@@ -219,12 +222,16 @@ impl Flight {
         generated: u32,
         reasoning: u32,
         decode_tps: f64,
+        prefill_tps: f64,
     ) {
         self.prompt = self.prompt.saturating_add(u64::from(prompt));
         self.generated = self.generated.saturating_add(u64::from(generated));
         self.reasoning = self.reasoning.saturating_add(u64::from(reasoning));
         if decode_tps.is_finite() && decode_tps > 0.0 {
             self.decode_tps = decode_tps;
+        }
+        if prefill_tps.is_finite() && prefill_tps > 0.0 {
+            self.prefill_tps = prefill_tps;
         }
     }
 
@@ -410,6 +417,7 @@ impl DashboardMetrics {
             generated: 0,
             reasoning: 0,
             decode_tps: 0.0,
+            prefill_tps: 0.0,
             error: None,
         }
     }
@@ -461,6 +469,14 @@ impl DashboardMetrics {
 
     fn complete(&self, done: Finished) {
         let now = Instant::now();
+        let model = {
+            let g = self.lock();
+            g.in_flight
+                .iter()
+                .find(|r| r.id == done.id)
+                .map(|r| r.model.clone())
+                .unwrap_or_default()
+        };
         {
             let mut g = self.lock();
             g.in_flight.retain(|r| r.id != done.id);
@@ -483,6 +499,17 @@ impl DashboardMetrics {
             if let Some((message, traceback)) = done.error {
                 push_error(&mut g, message, traceback);
             }
+        }
+        if done.prompt > 0 || done.generated > 0 {
+            crate::usage_log::record(&crate::usage_log::UsageRecord::from_counts(
+                "serve",
+                &model,
+                done.prompt,
+                done.generated,
+                done.reasoning,
+                done.prefill_tps,
+                done.decode_tps,
+            ));
         }
         self.notify.notify_one();
     }
@@ -742,7 +769,7 @@ mod tests {
     fn ceiling_when_token_window_exceeds_default() {
         let m = metrics(4);
         let mut flight = m.start("/v1/chat/completions");
-        flight.add_tokens(DEFAULT_TOKENS_PER_MINUTE as u32, 0, 0, 0.0);
+        flight.add_tokens(DEFAULT_TOKENS_PER_MINUTE as u32, 0, 0, 0.0, 0.0);
         drop(flight);
         let v = m.to_json(&[], 0);
         assert_eq!(v["quotas"]["tokens_per_minute"], DEFAULT_TOKENS_PER_MINUTE);
@@ -806,7 +833,7 @@ mod tests {
         let mut flight = m.start("/v1/chat/completions");
         flight.set_model("qwen");
         flight.note_budget(256);
-        flight.add_tokens(3, 5, 2, 12.5);
+        flight.add_tokens(3, 5, 2, 12.5, 0.0);
         let live = m.to_json(&[("qwen".into(), 4096)], 2);
         assert_eq!(live["in_flight"][0]["model"], "qwen");
         assert_eq!(live["in_flight"][0]["route"], "/v1/chat/completions");

@@ -27,7 +27,9 @@ pub mod placer;
 mod pull;
 pub mod serve;
 mod session;
+mod stats_web;
 mod tui;
+mod usage_log;
 
 pub(crate) use cli::config;
 pub use cli::run;

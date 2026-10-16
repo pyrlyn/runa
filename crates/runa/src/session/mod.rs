@@ -21,6 +21,7 @@ use crate::config;
 use crate::daemon_proto;
 use crate::mcp;
 use crate::tui;
+use crate::usage_log;
 use runa_pool::engine;
 
 pub(crate) struct LocalTurn {
@@ -579,6 +580,21 @@ fn reload_local(
     Ok(())
 }
 
+fn model_label(path: &Path) -> String {
+    path.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+fn store_chat_usage(session: &mut Session, usage: Option<Usage>) -> Option<Usage> {
+    if let Some(u) = &usage {
+        usage_log::record_usage("chat", &model_label(&session.path), u);
+        session.last_usage = Some(u.clone());
+    }
+    usage
+}
+
 fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
     let (messages, trimmed) = turn_messages(session, input, engine);
     if trimmed {
@@ -610,9 +626,7 @@ fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
                     Ok(push_tool_calls(&mut req.messages, &turn, true))
                 },
             );
-            if usage.is_some() {
-                session.last_usage = usage;
-            }
+            store_chat_usage(session, usage);
             match done {
                 Ok(()) => {
                     commit_history(session, &req.messages, &answer);
@@ -636,7 +650,7 @@ fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
                     Ok(turn) => {
                         commit_history(session, &req.messages, &turn.text);
                         println!();
-                        session.last_usage = turn.usage;
+                        store_chat_usage(session, turn.usage);
                     }
                     Err(e) => eprintln!("\ngenerate: {e}"),
                 }
@@ -659,9 +673,7 @@ fn chat_turn(engine: &mut ChatEngine, input: &str, session: &mut Session) {
                     Ok(push_tool_calls(&mut req.messages, &turn, true))
                 },
             );
-            if usage.is_some() {
-                session.last_usage = usage;
-            }
+            store_chat_usage(session, usage);
             match done {
                 Ok(()) => {
                     commit_history(session, &req.messages, &answer);
@@ -959,9 +971,7 @@ fn tui_turn(
                 },
             );
             tui.set_busy(false);
-            if usage.is_some() {
-                session.last_usage = usage.clone();
-            }
+            let usage = store_chat_usage(session, usage);
             if done.is_ok() {
                 commit_history(session, &req.messages, &answer);
             }
@@ -1023,9 +1033,7 @@ fn tui_turn(
                                 break;
                             }
                         }
-                        if usage.is_some() {
-                            session.last_usage = usage;
-                        }
+                        store_chat_usage(session, usage);
                         commit_history(session, &req.messages, &answer);
                     }
                     Err(e) => tui.push(tui::Message::notice(&format!("generate: daemon: {e}"))),
@@ -1076,9 +1084,7 @@ fn tui_turn(
                 },
             );
             tui.set_busy(false);
-            if usage.is_some() {
-                session.last_usage = usage.clone();
-            }
+            let usage = store_chat_usage(session, usage);
             if done.is_ok() {
                 commit_history(session, &req.messages, &answer);
             }
