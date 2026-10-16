@@ -3,7 +3,7 @@
 # version; this file exists so `mise install` bootstraps a matching toolchain
 # for contributors who manage tools with mise. Keep the two files in sync.
 [tools]
-"cargo:https://github.com/pyrlyn/tools" = "rev:b6c641d25b09506572f6a6b4ff7d38c9019ddf35" # `mise run sweep`, `just cache`, `just swarfr` (ptools)
+"cargo:https://github.com/pyrlyn/tools" = "rev:90448075a5ff0f2fe3ae69579ed333b18dcfcd51" # `mise run sweep`, `just cache`, `just swarfr` (ptools)
 "cargo:cargo-sweep" = "0.8.0" # `mise run sweep`: drops build artifacts unused for 1 day (ptools sweep)
 mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with `cargo --config .cargo/mold.toml`
 # rust-toolchain.toml stays the rustup source of truth for direct rustup runs;
