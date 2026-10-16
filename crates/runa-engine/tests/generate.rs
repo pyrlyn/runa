@@ -16,8 +16,8 @@
 use std::path::PathBuf;
 
 use runa_engine::{
-    ChatMessage, GenEvent, GenerateRequest, LoadConfig, Placement, PromptCache, SamplingConfig,
-    StopReason, load,
+    ChatMessage, GenerateRequest, LoadConfig, Placement, PromptCache, SamplingConfig, StopReason,
+    load,
 };
 
 fn fixture(name: &str) -> PathBuf {

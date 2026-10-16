@@ -4,8 +4,8 @@
 
 //! runa-kernels — own kernels behind the benchmark gate (plan D1, D14, D23).
 //!
-//! P5.3 sampling + softmax: Zig `@Vector` (C ABI). C/`.S` only where Zig is
-//! worse (not linked here; see `c/` for reference only).
+//! P5.3 sampling + softmax: Zig `@Vector` (C ABI). This crate links that
+//! Zig archive. C/`.S` stays a policy for a measured win; there is no C here.
 
 mod dispatch;
 mod reference;

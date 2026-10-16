@@ -21,13 +21,14 @@ tarballs (`.cargo_vcs_info.json`), upstream submodule pins and tag lists.
 | serde_json | `=1.0.151` (no-derive `Value` walk) | — | 2026-09-08 | P1.2 Hub API sibling listing |
 | rustyline | `=18.0.1` | — | 2026-09-08 | P2.3 chat REPL (line editing + file history) |
 | assert_cmd | `=2.2.2` | — | 2026-09-08 | P2.3 CLI e2e tests |
-| ffmpeg | `9.0.1` (`mise.toml`) | ffmpeg `9.0.1` | 2026-09-15 | P4.5 video via ffmpeg-sidecar (binary, not linked) |
+| ffmpeg | `9.0.1` (`mise.toml`) | ffmpeg `9.0.1` | 2026-09-15 | P4.5 video via the ffmpeg binary on PATH or `FFMPEG_PATH` (not linked, not downloaded) |
 | python | `3.13.15` (`mise.toml`) | CPython `3.13.15` (newest 3.13.x) | 2026-09-15 | P0.7 fixtures, P3.9/P6.2 SDK smoke tests (stdlib only; 3.11.9 lacked attestations) |
 | node | `24.21.0` (`mise.toml`) | Node `24.21.0` LTS | 2026-09-15 | P3.9/P6.2 SDK smoke tests (20.x EOL 2026-04) |
 | cargo-dist | `0.33.0` (`mise.toml` `aqua:axodotdev/cargo-dist`) | cargo-dist `0.33.0` | 2026-09-15 | P6.3 packaging. Prebuilt binary via aqua since 2026-09-14 (was `cargo:` backend, which compiled from source and raced rustup downloads in CI) |
 | cargo-cache | `0.8.3` (`mise.toml` `cargo:cargo-cache`) | cargo-cache `0.8.3` | 2023-09-01 | developer utility: `moon run root:cache` / `cache-dry-run` / `cache-autoclean`; not a crate dependency |
 | zig | `0.16.0` (`mise.toml`) | zig `0.16.0` | 2026-09-15 | D23 own kernels (`runa-kernels`) |
-| keyring | `4.2.0` | — | 2026-09-15 | P3.8 OS keychain (`service = runa`) |
+| keychain-secret | git `f0deed54f6f8166b31404c2129b59355c45cf044` (`pyrlyn/crates`) | — | not on crates.io | P17.19 keychain read and inline-secret scan. `keyring` stays transitive |
+| keyring | `4.2.0` | — | 2026-09-15 | P3.8 OS keychain (`service = runa`), transitive through `keychain-secret` |
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 audio decode |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 WAV read/write |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 resample to 16 kHz |
@@ -112,7 +113,7 @@ stay on CPU — plan D12).
 | Local dev (macOS arm64) | `cargo build -p runa-engine --features metal` | Metal enabled by default on Apple Silicon via `llama-cpp-sys-2` |
 | Local dev (Linux CUDA) | `--features cuda` on `runa-engine` / workspace | CI ubuntu job is CPU-only; CUDA is build-only elsewhere |
 | Portable release | no `-march=native`; ggml runtime dispatch (D13) | `native` on `llama-cpp-2` arrives after the 0.1.133 pin — use a newer pin before enabling |
-| `runa-kernels` (P5.2+) | Zig (C ABI) preferred for new kernels (D23); C/`.S` only where Zig is worse | SIMD via Zig `@Vector` or C runtime dispatch |
+| `runa-kernels` (P5.2+) | Zig (C ABI) preferred for new kernels (D23); C/`.S` only where Zig is worse | SIMD via Zig `@Vector`. This crate links the Zig archive |
 
 Release binaries must run on hosts **without** AVX-512; do not ship `-C target-cpu=native` in release profiles (`Cargo.toml` `[profile.release]` has no `target-cpu`).
 
@@ -232,7 +233,6 @@ adapter is our own `reqwest` + SSE client (D9) — no SDK pin involved.
 | Crate | Plan task |
 |-------|-----------|
 | `sherpa-onnx` (Parakeet; official Rust binding — **not** `sherpa-rs`, archived 2026-06). Empty `parakeet` cargo feature removed; `transcribe_parakeet` returns "not available yet" until a later task wires the crate. | P4.2 |
-| `ffmpeg-sidecar` | P4.5 |
 | `hf-hub` | P2.4 |
 | `axum` | P3.9 |
 | `figment`, `clap` | P0.1/P2.3 |

@@ -4,9 +4,9 @@
 
 //! Sample video frames (P4.5): uniform + scene-change, cap `max_frames`.
 //!
-//! Frame extraction uses `ffmpeg-sidecar` when ffmpeg is on PATH (or
-//! auto-downloaded). Selection/resize are pure Rust so tests do not need
-//! ffmpeg.
+//! Frame extraction runs the ffmpeg binary from `FFMPEG_PATH` or `PATH`
+//! (the mise pin). runa does not download ffmpeg. Selection/resize are
+//! pure Rust so tests do not need ffmpeg.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -213,20 +213,20 @@ pub fn sample_video(path: &Path, opts: &VideoOpts) -> Result<SampledVideo, Video
 }
 
 fn ffmpeg_bin() -> Result<String, VideoError> {
-    if let Ok(p) = std::env::var("FFMPEG_PATH")
-        && Path::new(&p).is_file()
-    {
-        return Ok(p);
+    if let Ok(p) = std::env::var("FFMPEG_PATH") {
+        if Path::new(&p).is_file() {
+            return Ok(p);
+        }
+        return Err(VideoError::Ffmpeg(format!(
+            "FFMPEG_PATH is not a file: {p}"
+        )));
     }
     if ffmpeg_on_path() {
         return Ok("ffmpeg".into());
     }
-    ffmpeg_sidecar::download::auto_download().map_err(|e| VideoError::Ffmpeg(e.to_string()))?;
-    if ffmpeg_on_path() {
-        Ok("ffmpeg".into())
-    } else {
-        Err(VideoError::Ffmpeg("ffmpeg not installed".into()))
-    }
+    Err(VideoError::Ffmpeg(
+        "ffmpeg not found on PATH; install the mise pin or set FFMPEG_PATH (runa does not download ffmpeg)".into(),
+    ))
 }
 
 fn ffmpeg_on_path() -> bool {
@@ -393,6 +393,24 @@ mod tests {
         assert_eq!(out[0].width, 8);
         assert_eq!(out[0].height, 8);
         assert_eq!(out[0].rgb.len(), 8 * 8 * 3);
+    }
+
+    #[test]
+    fn ffmpeg_path_must_be_a_file_and_is_not_downloaded() {
+        let prev = std::env::var("FFMPEG_PATH").ok();
+        unsafe { std::env::set_var("FFMPEG_PATH", "/no/such/runa-ffmpeg") };
+        let err = ffmpeg_bin().unwrap_err().to_string();
+        assert!(err.contains("not a file"), "{err}");
+        assert!(!err.to_lowercase().contains("download"), "{err}");
+        let file = std::env::temp_dir().join(format!("runa-ffmpeg-{}", std::process::id()));
+        std::fs::write(&file, b"").unwrap();
+        unsafe { std::env::set_var("FFMPEG_PATH", &file) };
+        assert_eq!(ffmpeg_bin().unwrap(), file.display().to_string());
+        let _ = std::fs::remove_file(&file);
+        match prev {
+            Some(v) => unsafe { std::env::set_var("FFMPEG_PATH", v) },
+            None => unsafe { std::env::remove_var("FFMPEG_PATH") },
+        }
     }
 
     #[test]

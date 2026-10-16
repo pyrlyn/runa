@@ -1,14 +1,13 @@
 # runa-kernels: benchmarks and adoption gates
 
-Per-kernel benchmark results and adoption gates (plan D14, D23). P5.2 ships
-the crate skeleton (C). New kernels prefer Zig (C ABI, `@Vector`) over new C;
-keep C/`.S` only where Zig is worse (ggml FFI, SME2/AMX).
+Per-kernel benchmark results and adoption gates (plan D14, D23). Softmax and
+sampling that this crate links are Zig (C ABI, `@Vector`). C/`.S` stays a
+policy for a measured win (ggml FFI, SME2/AMX). This crate has no C sources.
 
 ## P5.2 bootstrap — softmax (scalar)
 
 | Implementation | Status | Notes |
 |----------------|--------|-------|
-| C scalar (`c/scalar.c`) | shipped | always linked |
 | Rust reference | shipped | `softmax_f32_reference`, unit tests |
 
 ## P5.3 — sampling + SIMD softmax (Zig)
@@ -18,8 +17,10 @@ keep C/`.S` only where Zig is worse (ggml FFI, SME2/AMX).
 | Zig softmax (`@Vector`) | shipped | `runa_softmax_f32_scalar` (C ABI); LLVM emits host SIMD |
 | Zig top-k / top-p / min-p | shipped | `runa_top_k_f32` / `runa_top_p_f32` / `runa_min_p_f32`; `page_allocator` scratch |
 | Zig `sample_token` | shipped | temperature + filters + xorshift |
-| C NEON/AVX2 softmax | not linked | `c/` kept for reference; duplicate C ABI symbols if linked with Zig |
 | Engine plug-in | shipped | `SamplingConfig::kernel_sampler` / `RUNA_KERNEL_SAMPLER=1` |
+
+The per-ISA C files are not in the tree. The Zig archive already exports
+`runa_softmax_f32_scalar` and the sampling symbols.
 
 Measured on this machine (`cargo bench -p runa-kernels --bench softmax`, 151936-wide softmax, Apple Silicon aarch64):
 

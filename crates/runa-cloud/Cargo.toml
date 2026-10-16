@@ -9,8 +9,9 @@ rust-version.workspace = true
 [dependencies]
 async-openai = { version = "=0.42.0", default-features = false, features = ["chat-completion", "responses", "rustls"] }
 futures = "0.3.34"
-# P3.8 OS keychain. Env vars still win.
-keyring = "4"
+# P17.19: OS keychain read and the inline-secret scan. Not on crates.io;
+# the same git pin style as `config-schema` in `runa-models`.
+keychain-secret = { git = "https://github.com/pyrlyn/crates", rev = "f0deed54f6f8166b31404c2129b59355c45cf044" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 runa-core = { version = "0.1.0", path = "../runa-core" }
 serde = { version = "1.0.229", features = ["derive"] }

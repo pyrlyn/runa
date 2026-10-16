@@ -14,7 +14,7 @@
 //!
 //! The state, key handling and rendering are pure over `ChatTui` (no I/O),
 //! so the snapshot tests drive the same `view` the live loop draws. The
-//! event loop and generation live in `main.rs`, which owns `Session` and
+//! event loop and generation live in `session`, which owns `Session` and
 //! `LoadedModel`.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

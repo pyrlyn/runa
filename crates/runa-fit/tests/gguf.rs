@@ -231,6 +231,17 @@ fn unknown_value_type_is_clean_error() {
 }
 
 #[test]
+fn truncated_tensor_table_is_its_own_error() {
+    let mut b = Vec::new();
+    b.extend_from_slice(&GGUF_MAGIC);
+    b.extend_from_slice(&3u32.to_le_bytes());
+    b.extend_from_slice(&1u64.to_le_bytes()); // one tensor
+    b.extend_from_slice(&0u64.to_le_bytes()); // no metadata
+    b.extend_from_slice(&4u64.to_le_bytes()); // name length, no bytes follow
+    assert_eq!(Reader::parse(&b), Err(ReadError::TensorTableTruncated));
+}
+
+#[test]
 fn string_longer_than_buffer_is_clean_error() {
     let mut b = Vec::new();
     b.extend_from_slice(&GGUF_MAGIC);

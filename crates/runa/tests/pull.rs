@@ -68,3 +68,57 @@ fn models_lists_seeded_store() {
     );
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// A project folder whose `runa.toml` sets `[store]`; HOME points inside
+/// the temp root so the user's own config cannot leak in.
+fn project_with_store(root: &std::path::Path, store_toml: &str) -> PathBuf {
+    let cwd = root.join("project");
+    std::fs::create_dir_all(&cwd).unwrap();
+    std::fs::write(cwd.join("runa.toml"), format!("[store]\n{store_toml}")).unwrap();
+    cwd
+}
+
+#[test]
+fn models_lists_a_store_dirs_folder() {
+    let root = isolated_data_home();
+    let folder = root.join("my-models");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("tiny.gguf"), b"GGUF").unwrap();
+    // Debug quoting escapes backslashes the way a TOML basic string needs.
+    let cwd = project_with_store(&root, &format!("dirs = [{:?}]\n", folder.to_str().unwrap()));
+
+    let out = runa()
+        .current_dir(&cwd)
+        .env("HOME", &root)
+        .env("XDG_DATA_HOME", root.join("data"))
+        .args(["models"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8(out.stdout).expect("utf8 stdout");
+    assert!(
+        stdout.contains(&format!("and {}", folder.display())),
+        "{stdout:?}"
+    );
+    assert!(stdout.contains("tiny.gguf"), "{stdout:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn relative_store_path_fails_at_startup() {
+    let root = isolated_data_home();
+    let cwd = project_with_store(&root, "cache_dir = \"models\"\n");
+
+    let out = runa()
+        .current_dir(&cwd)
+        .env("HOME", &root)
+        .args(["models"])
+        .assert()
+        .code(2)
+        .get_output()
+        .clone();
+    let stderr = String::from_utf8(out.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("must be absolute"), "{stderr:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
