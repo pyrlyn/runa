@@ -1,0 +1,37 @@
+amends "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Config.pkl"
+
+// jactionlint (https://github.com/jdx/jactionlint) on workflows, composite actions and
+// dependabot.yml. `.github/jactionlint.yaml` picks the profile and applies the baseline;
+// baselined findings stay out of the SARIF log hk reads. Refresh the baseline with
+// `mise x -- jactionlint --baseline-write`, not through hk.
+local jactionlint = new Step {
+  glob = List(
+    ".github/workflows/*.yml", ".github/workflows/*.yaml",
+    "**/action.yml", "**/action.yaml",
+    ".github/dependabot.yml", ".github/dependabot.yaml"
+  )
+  batch = true
+  diagnostic_format = "sarif"
+  check = "jactionlint --sarif-hide-baselined --format sarif {{files}}"
+  check_diff = "hk util sarif-diff -- jactionlint --sarif-hide-baselined --format sarif {{files}}"
+  fix = "jactionlint --fix {{files}}"
+}
+
+hooks {
+  ["pre-push"] {
+    steps {
+      ["jactionlint"] = jactionlint
+    }
+  }
+  ["check"] {
+    steps {
+      ["jactionlint"] = jactionlint
+    }
+  }
+  ["fix"] {
+    fix = true
+    steps {
+      ["jactionlint"] = jactionlint
+    }
+  }
+}

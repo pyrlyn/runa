@@ -19,6 +19,9 @@ Project programs and direct packages from manifests.
 | cargo-dist | mise | Release artifacts | https://github.com/axodotdev/cargo-dist |
 | cargo-cache | mise | Clean cargo home | https://github.com/matthiaskrgr/cargo-cache |
 | zig | mise | Custom kernels / native | https://github.com/ziglang/zig |
+| jactionlint | mise (`mise.toml` pins `github:jdx/jactionlint` 2.0.2) | Lint the workflows (the pre-push hook and `mise x -- jactionlint`; CI lints through pyrlyn/ci) | https://github.com/jdx/jactionlint |
+| hk | mise (`mise.toml` pins 2.5.0) | Runs jactionlint as a pre-push hook (`hk.pkl`) | https://github.com/jdx/hk |
+| shellcheck | mise (`mise.toml` pins 0.11.0) | Checks `run:` scripts inside jactionlint | https://github.com/koalaman/shellcheck |
 
 ## ketch
 

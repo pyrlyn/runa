@@ -110,6 +110,8 @@ Run these before requesting a merge or closing a task. They mirror
 | Perf gate self-test | `python3 scripts/perf-regress.py --self-test` |
 | Feature builds | `cargo check -p runa-engine --features hexagon,openvino` and `cargo test -p runa-engine -p runa --features runa/rpc --lib --test rpc --test doctor --test trycmd` |
 | Full pass + cleanup | `moon run root:test-with-cleanup` (drops downloaded weights, compacts `target/` with swarfr) |
+| Workflow lint | `mise x -- jactionlint` (`.github/jactionlint.yaml`, baseline `.github/jactionlint-baseline.json`; refresh it with `mise x -- jactionlint --baseline-write` after fixing findings) |
+| Pre-push hook | `mise x -- hk install --mise` once per clone: `hk.pkl` runs jactionlint before every push |
 
 Job time budgets stay under 5 minutes (P11.8/P11.9); when a step grows, report
 it instead of loosening the gate.
