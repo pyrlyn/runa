@@ -68,7 +68,7 @@ cc = "1"
 # (`hw.perflevel0.logicalcpu`) on macOS only; other targets use
 # `available_parallelism` and need no FFI.
 [target.'cfg(target_os = "macos")'.dependencies]
-libc = "=0.2.189"
+libc = "=0.2.190"
 
 [dev-dependencies]
 # P2.1 memory check: engine tensor bytes vs P1 descriptor estimate.
