@@ -7,7 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-async-openai = { version = "=0.42.0", default-features = false, features = ["chat-completion", "responses", "rustls"] }
+async-openai = { version = "=0.42.2", default-features = false, features = ["chat-completion", "responses", "rustls"] }
 futures = "0.3.34"
 # P17.19: OS keychain read and the inline-secret scan. Not on crates.io;
 # the same git pin style as `config-schema` in `runa-models`.
