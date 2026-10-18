@@ -280,6 +280,8 @@ impl ProtoGenerateRequest {
             grammar: self.grammar,
             tools: self.tools,
             tool_choice: self.tool_choice,
+            // The daemon serves `run` / `chat` only; infill goes through `serve`.
+            infill: None,
         })
     }
 }

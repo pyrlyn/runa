@@ -1659,3 +1659,36 @@ Check (evidence): `cargo test -p runa --bin runa` 129 passed;
 `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors (K7 stale-claim warning);
 `runa stats` and `runa web --port 0` served `/health`, `/api/snapshot`, `/`, `/stats.js`, `/stats.css` on loopback.
 `runa web --host 1.2.3.4` refused.
+
+## P20. Requests from Kerf
+
+### P20.1. Fill-in-the-middle completion endpoint for Kerf
+
+Completed 2026-10-19.
+
+Requested by Kerf (pyrlyn/kerf task T14, local code completion): the editor sends the text before and after the cursor and gets back the middle. Chat and agents stay on `/v1/chat/completions` and `cox acp`; this is the inline-completion path only.
+
+`POST /v1/infill` with llama-server's `/infill` field names (`input_prefix`, `input_suffix`, `n_predict`, `temperature`, `stop`, `model`; reply `content`, `stop_type`, `tokens_evaluated`, `tokens_predicted`), so a client written for llama-server needs only the path. Under `/v1/`, so `--api-key` protects it like every other generation route.
+
+Plan:
+1. `runa-engine`: `GenerateRequest.infill` (prefix, suffix). The prompt is the model's own FIM tokens in PSM order (`<pre> prefix <suf> suffix <mid>`, BOS when the GGUF asks for it). llama-cpp-2 0.1.133 exposes neither `llama_vocab_fim_*` nor tokenization without special-token parsing, so FIM ids come from the GGUF `tokenizer.ggml.fim_{pre,suf,mid}_token_id` keys, else from the spellings llama.cpp's vocab loader recognises, each checked to be one special token. A model without them is refused (`infill_unsupported`, 400), never prompted through a chat template.
+2. Editor text is untrusted: control tokens that special-token parsing finds in it are re-tokenized as plain text, so a file containing `<|fim_middle|>` or `<|endoftext|>` cannot reshape the prompt. The prefix keeps its tail and the suffix its head to fit `n_ctx - n_predict`.
+3. The mistral backend refuses `infill`; the daemon protocol does not carry it.
+4. `runa serve`: the handler in `serve/infill.rs`, body checks (one of prefix or suffix non-empty, `n_predict` 1..=4096, default 128).
+5. Tests: weight-free prompt-layout, trimming and re-tokenization tests on a scripted tokenizer; handler tests on a fake engine thread; a Qwen3-0.6B engine test that soft-skips without the fixture. Docs: a `docs/guide.md` section and a `docs/memory.md` entry, each with its `docs/ru/` and `docs/uk/` translation.
+
+Machine check: `cargo test -p runa-engine --lib infill`, `cargo test -p runa --lib serve::infill`, `cargo test -p runa-engine --test infill_qwen3` (with the fixture), `cargo clippy --workspace -- -D warnings`, `python3 scripts/lint-tasks.py docs/tasks.md`.
+
+Check (evidence): `cargo test -p runa-engine --lib infill` 7 passed;
+`cargo test -p runa --lib serve::infill` 5 passed;
+`cargo test -p runa-engine --test infill_qwen3` 2 passed with both fixtures
+(Qwen3-0.6B middle `"\n\n</think>\n\n```python\ndef add(a, b):\n    return a + b…"`,
+`Eos` after 27 tokens; a chat model, so the path is checked, not the quality);
+`cargo clippy --workspace --all-targets -- -D warnings` clean;
+`cargo fmt --all -- --check` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors (P14.2 and K7 stale-claim warnings).
+`cargo test --workspace --no-fail-fast`: everything else green; the two failures
+(`runa-models` `format::tests::gguf_fixture_is_gguf`, `runa` e2e
+`auto_npu_verdict_mentioned_only_when_requested`) read `synthetic-*.gguf`, which
+`origin/main` stores as Git LFS pointers ("wrong magic bytes"), and fail the same
+way without this change.

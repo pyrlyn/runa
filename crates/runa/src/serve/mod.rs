@@ -5,7 +5,8 @@
 //! OpenAI-compatible HTTP server (plan P3.9 / P6.1 / D11).
 //!
 //! Multi-model LRU pool, `--parallel` in-flight cap, `/v1/embeddings`,
-//! `/v1/audio/transcriptions`, and multimodal chat `content` parts.
+//! `/v1/audio/transcriptions`, `/v1/infill` (P20.1) and multimodal chat
+//! `content` parts.
 //! The default model loads at startup (P8.8): `/health` answers 503
 //! `loading` until it is ready, and a panic answers 500 instead of dropping
 //! the connection. `GET /dashboard` is the live local dashboard (P14.4).
@@ -40,6 +41,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 use runa_memory::MemoryManager;
 use runa_pool::pool::{lock, panic_text};
 use runa_pool::{EngineJob, ModelPool, Placer, Streamed, Warmup};
+
+mod infill;
 
 /// CLI bundle for `runa serve` (P6.1).
 pub struct ServeOpts {
@@ -271,6 +274,7 @@ async fn listen(
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/messages", post(anthropic_messages))
         .route("/v1/embeddings", post(embeddings))
+        .route(infill::ROUTE, post(infill::infill))
         .route("/v1/audio/transcriptions", post(audio_transcriptions))
         .route("/dashboard", get(dashboard_index))
         .route("/dashboard/", get(dashboard_index))
@@ -838,7 +842,7 @@ fn note_events(flight: &mut crate::dashboard::Flight, events: &[GenEvent]) {
 }
 
 fn engine_status(err: String) -> (StatusCode, String) {
-    if err.contains("context_length_exceeded") {
+    if err.contains("context_length_exceeded") || err.starts_with("infill_unsupported") {
         (StatusCode::BAD_REQUEST, err)
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, err)

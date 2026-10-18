@@ -82,6 +82,9 @@ pub struct GenerateRequest {
     pub tools: Option<String>,
     /// `auto` (default) / `required` / `none` (P8.2).
     pub tool_choice: Option<String>,
+    /// Fill-in-the-middle instead of chat (P20.1): `messages` stay empty and
+    /// the prompt is the model's FIM markers around this text.
+    pub infill: Option<crate::infill::Infill>,
 }
 
 impl Default for GenerateRequest {
@@ -100,6 +103,7 @@ impl Default for GenerateRequest {
             grammar: None,
             tools: None,
             tool_choice: None,
+            infill: None,
         }
     }
 }
@@ -151,6 +155,9 @@ pub enum GenEvent {
 
 impl LoadedModel {
     pub fn generate(&mut self, mut req: GenerateRequest) -> Result<Generation<'_>, EngineError> {
+        if let Some(infill) = req.infill.take() {
+            return self.generate_infill(&infill, req);
+        }
         let json_schema = req.json_schema.take();
         let grammar = req.grammar.take();
         let tools = req.tools.take();
@@ -292,7 +299,7 @@ impl LoadedModel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn start_generation(
+    pub(crate) fn start_generation(
         &mut self,
         prompt_tokens: Vec<LlamaToken>,
         max_tokens: u32,
@@ -377,6 +384,7 @@ impl LoadedModel {
             terminal: Vec::new(),
             cache_hit,
             ignore_eos,
+            stop_on_eog: false,
             store_cache: use_cache && prefilled.is_none(),
             reason: runa_core::ReasoningParser::new(family),
             show_reasoning: think.show,
@@ -471,6 +479,10 @@ pub struct Generation<'m> {
     cache_hit: bool,
     /// llama-bench-style: keep decoding past EOS until `max_tokens`.
     ignore_eos: bool,
+    /// End on any end-of-generation token, not only EOS (P20.1): FIM models
+    /// close a middle with `<|endoftext|>` or `<|fim_pad|>`, which chat
+    /// models' EOS (`<|im_end|>`) is not.
+    stop_on_eog: bool,
     /// Write the prompt KV into the LMDB cache when prefill finishes.
     store_cache: bool,
     reason: runa_core::ReasoningParser,
@@ -501,6 +513,17 @@ impl Generation<'_> {
     /// the same number at the end.
     pub fn prompt_len(&self) -> u32 {
         u32::try_from(self.prompt_tokens.len()).unwrap_or(u32::MAX)
+    }
+
+    /// End on every end-of-generation token the vocabulary lists (P20.1).
+    pub(crate) fn stop_on_any_eog(&mut self) {
+        self.stop_on_eog = true;
+    }
+
+    fn ends(&self, tok: LlamaToken) -> bool {
+        let model = self.loaded.model();
+        !self.ignore_eos
+            && (tok == model.token_eos() || (self.stop_on_eog && model.is_eog_token(tok)))
     }
 
     /// Convenience: run to completion, concatenating text.
@@ -651,7 +674,7 @@ impl Generation<'_> {
                 }
             }
         };
-        if tok == self.loaded.model().token_eos() && !self.ignore_eos {
+        if self.ends(tok) {
             self.queue_terminal(StopReason::Eos);
             return Ok(None);
         }
@@ -707,7 +730,7 @@ impl Generation<'_> {
             .unwrap_or(0.0);
 
         for &t in &seq[..accepted] {
-            if t == self.loaded.model().token_eos() && !self.ignore_eos {
+            if self.ends(t) {
                 self.queue_terminal(StopReason::Eos);
                 return Ok(None);
             }

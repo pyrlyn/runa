@@ -296,6 +296,11 @@ fn request_builder(req: &GenerateRequest) -> Result<RequestBuilder, EngineError>
 }
 
 fn reject_unsupported(req: &GenerateRequest) -> Result<(), EngineError> {
+    if req.infill.is_some() {
+        return Err(EngineError::InfillUnsupported(
+            "fill-in-the-middle needs the gguf backend".into(),
+        ));
+    }
     if req.tools.is_some() {
         return Err(EngineError::Mistral(
             "--mcp tools need the gguf backend; the mistral backend does not take tool specs yet"

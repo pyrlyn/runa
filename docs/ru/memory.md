@@ -856,3 +856,17 @@ count_history_tokens(messages)` токенизирует содержимое к
   формат; `Corrupt` для битого заголовка; `Unknown` для всего остального; `Io`.
 - Используется: `runa` для локального файла, указанного путём, и для имени
   файла, найденного в хранилище (`find_local`).
+
+## P20.1 — дополнение в середину (`runa-engine`, `runa serve`)
+
+### `struct Infill { prefix: String, suffix: String }`
+
+- Текст до и после курсора. Задаётся в `GenerateRequest.infill` (по
+  умолчанию `None`); тогда `LoadedModel::generate` строит FIM-промпт модели
+  вместо рендера `messages`, которые должны быть пустыми, как и медиа,
+  инструменты и грамматики.
+- Ошибки: `EngineError::InfillUnsupported` (`infill_unsupported: …`), если у
+  модели нет FIM-токенов, запрос смешан с полями чата или бэкенд — mistral;
+  `ContextExceeded`, если в `n_ctx` не остаётся места после `max_tokens`.
+- Используется: `POST /v1/infill` (`serve/infill.rs`), который отвечает на
+  обе ошибки HTTP 400.
