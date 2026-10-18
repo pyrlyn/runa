@@ -288,3 +288,43 @@ runa serve model.gguf --port 8080
 runa serve model.gguf --host 0.0.0.0 --api-key "$SERVE_KEY"
 curl -H "Authorization: Bearer $SERVE_KEY" http://127.0.0.1:8080/v1/models
 ```
+
+## Fill-in-the-middle completion (`/v1/infill`)
+
+**What.** `POST /v1/infill` completes code at a cursor: it takes the text
+before and after it and returns the middle. It is meant for editors (Kerf's
+inline completion); chat and agents keep using `/v1/chat/completions`.
+The request and reply use llama-server's `/infill` field names, so a client
+written for llama-server needs only the path.
+
+| Request field | Meaning |
+| --- | --- |
+| `input_prefix`, `input_suffix` | Text before and after the cursor; at least one is non-empty |
+| `n_predict` | Tokens to generate, 1–4096, default 128 |
+| `temperature` | 0–2, default 0 (greedy, so the same context gives the same middle) |
+| `stop` | Up to 16 stop strings |
+| `model` | Model id; the default model when absent |
+
+The reply has `content`, `model`, `stop_type` (`eos`, `limit` or `word`),
+`stopping_word`, `tokens_evaluated` and `tokens_predicted`. Other
+llama-server fields such as `input_extra` are ignored.
+
+**Why.** Inline completion needs the model's own fill-in-the-middle tokens.
+Sending code through a chat template only imitates infill, so a model
+without FIM tokens gets HTTP 400 `infill_unsupported` instead.
+
+**How.** The prompt is `<pre> prefix <suf> suffix <mid>` with the model's
+markers, taken from the GGUF `tokenizer.ggml.fim_*_token_id` keys or from
+the spellings llama.cpp recognises (`<|fim_prefix|>`, `<fim_prefix>`,
+`<｜fim▁begin｜>`, `<PRE>`, …). Marker text inside the editor's file stays
+plain text. A long prefix keeps the lines nearest the cursor, and the
+suffix keeps at least a quarter of the room left after `n_predict`.
+Generation ends on any end-of-generation token. Use a model trained for
+FIM (a coder model); a chat model has the tokens but answers poorly.
+`--api-key` protects the route like the rest of `/v1`; the mistral backend
+refuses it.
+
+```sh
+curl http://127.0.0.1:8080/v1/infill \
+  -d '{"input_prefix":"def add(a, b):\n    return ","input_suffix":"\n","n_predict":32}'
+```

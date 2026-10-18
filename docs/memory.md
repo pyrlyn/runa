@@ -861,3 +861,18 @@ Crate: `runa-models`. Config: `[store] dirs, cache_dir, max_bytes`
   `Corrupt` for a bad header; `Unknown` for anything else; `Io`.
 - Used by: `runa` on a literal local file and on a bare file name found in
   the store (`find_local`).
+
+## P20.1 — fill-in-the-middle (`runa-engine`, `runa serve`)
+
+### `struct Infill { prefix: String, suffix: String }`
+
+- Text before and after the cursor. Set as `GenerateRequest.infill` (default
+  `None`); `LoadedModel::generate` then builds the model's FIM prompt instead
+  of rendering `messages`, which must stay empty, as must media, tools and
+  grammars.
+- Errors: `EngineError::InfillUnsupported` (`infill_unsupported: …`) when the
+  model has no FIM tokens, the request mixes in chat-only inputs, or the
+  backend is mistral; `ContextExceeded` when `n_ctx` has no room after
+  `max_tokens`.
+- Used by: `POST /v1/infill` (`serve/infill.rs`), which answers both errors
+  with HTTP 400.
