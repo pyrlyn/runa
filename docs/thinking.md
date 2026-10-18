@@ -15,6 +15,12 @@ backends share `runa_core::ThinkConfig`.
 `--think-budget` and `--effort` override `--think on`. They cannot be combined
 with each other or with `--think off`.
 
+## Local budget close
+
+Near the end of a local reasoning budget the engine adds `CLOSE_LOGIT_BIAS`
+(`10`) to the think-close token on a copy of that step's logit row, then
+samples from the copy. The context buffer is not written.
+
 ## Show vs hide
 
 `ThinkConfig.show` (CLI `--show-reasoning`, config `[think] show`, env

@@ -49,6 +49,28 @@ runa chat qwen                    # REPL; додайте --tui для повно
 
 ## Корисні наступні кроки
 
+**Перевірка перед завантаженням** — `fit` читає заголовок моделі віддалено (без ваг) і друкує вердикт. Для `hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf` за `--ctx 16384 --kv q8_0` на Mac з Apple silicon і 64 ГіБ пам'яті вивід був таким:
+
+```sh
+runa fit hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf --ctx 16384 --kv q8_0
+```
+
+```text
+Verdict: FITS GPU
+Exit code: 0
+
+Memory:
+  GPU weights:  1854.1 MiB
+  Compute buf:  582.7 MiB
+  KV cache:     408.0 MiB
+  GPU total:    2844.8 MiB
+
+GPU decode:  224.8 tok/s  |  prefill: 224.8 tok/s  |  TTFT: 4.55s
+CPU decode:  11.7 tok/s  |  prefill: 11.7 tok/s  |  TTFT: 87.45s
+```
+
+(Рядки з нулем пропущено; швидкості — оцінки, доки `runa bench` їх не відкалібрує.)
+
 **Калібрування прогнозів швидкості** — кожен запуск `runa bench` дописує дані до бази
 калібрування; подальші `fit` / `--recommend` масштабують прогноз за виміряною історією:
 
@@ -82,6 +104,14 @@ runa run qwen "Capital of France and its population?" \
 ```sh
 runa run qwen3 "What is the weather in Paris?" --mcp 'python3 weather_server.py'
 runa chat qwen3 --mcp 'npx -y @modelcontextprotocol/server-filesystem .'
+```
+
+**Скільки пішло** — `run` / `chat` / `serve` дописують локальний журнал.
+`runa stats` друкує його; `runa web` стежить за ним наживо на `127.0.0.1:3939`:
+
+```sh
+runa stats --since 7d
+runa web
 ```
 
 **Транскрибування аудіо** — ASR на whisper.cpp (`--lang auto` спершу визначає мову, потім декодує):

@@ -31,8 +31,8 @@ Default build (pure Rust, no llama.cpp; first build ~1 min):
   `parse_cloud_ref`, `BackendKind` / `NpuKind` / `Effort` / `--think` /
   budget parsers and `ThinkConfig::apply`.
 
-With `--features cli` (compiles the real `runa` binary crate,
-`crates/runa/src/main.rs`, with `--cfg fuzzing`; that pulls llama.cpp and
+With `--features cli` (links the `runa` library; cargo-fuzz passes
+`--cfg fuzzing`, which compiles `fuzz_hooks`. That pulls llama.cpp and
 whisper.cpp, first build ~3 min):
 
 - `cli-argv` — NUL-separated argv as raw bytes (non-UTF-8 included) through
@@ -41,7 +41,7 @@ whisper.cpp, first build ~3 min):
   `--backend`, `--kv*`, `--device`, `--tensor-split`, `--rpc`, `--lora`,
   `--on-unfit`, `--think`, `--effort`, `--audio-route`, `--mcp` quoting,
   model and cloud refs.
-- `cli-config` — `runa.toml` text through every reader in `config.rs`
+- `cli-config` — `runa.toml` text through every reader in `cli/config.rs`
   (`[defaults]`, `[system]`, `on_unfit`, `[think]`, `[memory]`, `[audio]`,
   `[mcp.servers]`, `[models]`, `lora`), inline-secret rejection, REPL / TUI
   `/slash` commands and `--mcp` word splitting.
@@ -53,8 +53,7 @@ whisper.cpp, first build ~3 min):
   decode → `into_generate` → re-encode, `parse_stop`.
 
 The `cli` targets pick their surface by binary name in
-`crates/runa/src/fuzz_hooks.rs`; the only other tree changes are
-`#[cfg(fuzzing)]` helpers in `config.rs` and `serve.rs`. Nothing loads a
+`crates/runa/src/fuzz_hooks.rs`. Nothing loads a
 model, opens a socket, spawns a process or writes files (`serve-body` skips
 bodies with `image_url` / `input_audio` parts: those write temp files).
 

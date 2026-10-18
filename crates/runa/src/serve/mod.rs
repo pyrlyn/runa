@@ -42,7 +42,7 @@ use runa_pool::pool::{lock, panic_text};
 use runa_pool::{EngineJob, ModelPool, Placer, Streamed, Warmup};
 
 /// CLI bundle for `runa serve` (P6.1).
-pub(crate) struct ServeOpts {
+pub struct ServeOpts {
     pub models: Vec<(String, PathBuf)>,
     /// Requested `--backend` (possibly `Auto`; resolved per model path).
     pub backend: BackendKind,
@@ -65,7 +65,7 @@ pub(crate) struct ServeOpts {
     pub max_load_percent: Option<u8>,
 }
 
-pub(crate) fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
+pub fn cmd_serve(opts: ServeOpts) -> Result<(), String> {
     let api_key = require_bind_auth(&opts.host, opts.api_key.as_deref())?;
     crate::config::warn_if_over_system_limit(None, opts.threads, opts.max_load_percent)?;
     if opts.models.is_empty() {
@@ -706,7 +706,7 @@ async fn embeddings(
             "index": index
         }));
     }
-    flight.add_tokens(total_tokens, 0, 0, 0.0);
+    flight.add_tokens(total_tokens, 0, 0, 0.0, 0.0);
     Ok(Json(json!({
         "object": "list",
         "data": data,
@@ -831,6 +831,7 @@ fn note_events(flight: &mut crate::dashboard::Flight, events: &[GenEvent]) {
                 u.generated_tokens,
                 u.reasoning_tokens,
                 u.tg_toks_per_s,
+                u.pp_toks_per_s,
             );
         }
     }

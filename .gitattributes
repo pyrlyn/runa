@@ -4,3 +4,6 @@ tests/fixtures/**/*.gguf filter=lfs diff=lfs merge=lfs -text
 tests/fixtures/*.bin filter=lfs diff=lfs merge=lfs -text
 tests/fixtures/*.safetensors filter=lfs diff=lfs merge=lfs -text
 tests/fixtures/mmproj-*.gguf filter=lfs diff=lfs merge=lfs -text
+# Synthetic headers are a few hundred bytes, kept as plain blobs so CI reads
+# them without LFS; this must stay after the *.gguf rules above (P11.10).
+tests/fixtures/synthetic-*.gguf -filter -diff -merge -text

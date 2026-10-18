@@ -3,6 +3,10 @@
 # version; this file exists so `mise install` bootstraps a matching toolchain
 # for contributors who manage tools with mise. Keep the two files in sync.
 [tools]
+uv = "0.12.23" # installs the pipx: ptools tool
+"pipx:git+https://github.com/pyrlyn/tools.git" = "d6eb6452cbb7ec4b350de87194548915c2648c27" # `mise run sweep`, `just cache`, `just swarfr` (ptools, Python; pyrlyn/tools#8, repin to a tag once merged)
+"cargo:cargo-sweep" = "0.8.0" # `mise run sweep`: drops build artifacts unused for 1 day (ptools sweep)
+mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with `cargo --config .cargo/mold.toml`
 # rust-toolchain.toml stays the rustup source of truth for direct rustup runs;
 # mise only reads its components when the pin itself comes from that file, so
 # the components are mirrored here (CI runs under RUSTUP_TOOLCHAIN, which
@@ -12,7 +16,7 @@ rust = { version = "1.98", components = "rustfmt,clippy" }
 # versionConstraint ↔ `docs/versions.md`. Installed via the aqua backend
 # (no core mise plugin for moon as of 2026-09-08).
 "aqua:moonrepo/moon" = "2.5.4"
-# video pipeline (P4.5) — ffmpeg-sidecar binary, not linked
+# video pipeline (P4.5) — ffmpeg binary on PATH, not linked and not downloaded
 ffmpeg = "9.0.1"
 # fixtures & SDK smoke tests (P0.7, P3.9, P6.2)
 # 3.11.9 lacks GitHub artifact attestations (fatal on mise >= 2026.9.6,
@@ -37,3 +41,12 @@ git-cliff = "2.13.1"
 "github:jdx/jactionlint" = "2.0.2" # the pre-push hook and local `mise x -- jactionlint`
 hk = "2.5.0" # runs jactionlint as a pre-push hook (hk.pkl); `mise x -- hk install --mise`
 shellcheck = "0.11.0" # used by jactionlint for run: scripts; CI uses the runner image's copy
+
+
+[tasks.sweep]
+description = "Remove cargo build artifacts unused for 1 day (cargo-sweep, via ptools)"
+run = "ptools sweep --days 1"
+
+[tasks.sweep-dry]
+description = "Preview what sweep would remove; deletes nothing"
+run = "ptools sweep --days 1 --dry-run"

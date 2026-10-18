@@ -33,7 +33,7 @@ All synthetic files are generated, not derived from upstream weights.
 `audio/clip-01-220hz.wav` … `audio/clip-10-490hz.wav` — synthetic, MIT. Decodable via `symphonia`/`hound`, resampled via `rubato`.
 
 ## Video clips (3, 5 sec placeholder MP4)
-`video/clip-01-5s.mp4` … `video/clip-03-5s.mp4` — placeholder ftyp headers (real decode tested via `ffmpeg-sidecar` when ffmpeg is present; add ffmpeg pin to `mise.toml` per K2).
+`video/clip-01-5s.mp4` … `video/clip-03-5s.mp4` — placeholder ftyp headers (real decode is tested when ffmpeg is on PATH; the pin is in `mise.toml`).
 
 ## Recorded API responses
 `api/openai-chat-completion.json`, `api/openai-chat-completion-stream.sse`, `api/anthropic-message.json`, `api/anthropic-message-stream.sse` — minimal fixtures for `wiremock` tests (P3.5/P3.6), live smoke behind `RUNA_LIVE=1`.
@@ -47,8 +47,9 @@ Synthetic GGUFs: MIT, header-only, ~2KB each. Audio/video synthetic: MIT. Large 
   (`python3 scripts/check-fixture-size.py`, also enforced in CI;
   override locally with `RUNA_FIXTURE_MAX_BYTES` in bytes).
 - `runa pull` refuses fresh downloads over 3 GiB
-  (`MAX_MODEL_BYTES` in `crates/runa/src/pull.rs`; override with
-  `RUNA_MAX_MODEL_BYTES` in bytes). Already-cached files keep working.
+  (`DEFAULT_MAX_BYTES` in `crates/runa-models/src/config.rs`; override with
+  `[store] max_bytes` or `RUNA_MAX_MODEL_BYTES` in bytes). Already-cached
+  files keep working.
 - Downloaded weights (`*.gguf` except `synthetic-*.gguf`) are git-ignored
   and deleted after a full green test run: `moon run root:test-with-cleanup`
   (or `scripts/test-with-fixture-cleanup.sh`, or `python3 scripts/clean-fixtures.py`).
@@ -56,4 +57,6 @@ Synthetic GGUFs: MIT, header-only, ~2KB each. Audio/video synthetic: MIT. Large 
   set `RUNA_KEEP_FIXTURES=1` to keep them locally and skip re-downloading.
 - Hand-made fixtures are never deleted: `synthetic-*.gguf`, `audio/`,
   `video/`, `api/`, `shapes.png`, `mcp-echo.py`.
+- `synthetic-*.gguf` are plain git blobs, not Git LFS: `.gitattributes` exempts
+  them from the `*.gguf` LFS rule so CI reads them without LFS (P11.10).
 - Never commit weights: only code, scripts and docs go into git.

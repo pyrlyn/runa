@@ -104,6 +104,25 @@ the same split on non-streaming chat completions:
 Chat `/usage` appends `(reasoning N)` when N > 0. Mistral/cloud
 backends report 0 (no reasoning split there).
 
+## Usage journal (`runa stats`, `runa web`)
+
+**What.** Each finished `run`, `chat`, and `serve` generation appends
+one line to `~/.cache/runa/usage.jsonl` (`RUNA_USAGE_LOG` overrides).
+`runa stats` prints totals, models, and the newest rows. `runa web`
+serves the same snapshot on `127.0.0.1:3939` and pushes updates over
+a websocket.
+
+```sh
+runa stats --since 7d
+runa stats --json
+runa web
+```
+
+**Why / limits.** The serve `/dashboard` is the current process only.
+The journal is what is left after the process exits. Daemon turns
+record tokens with a decode rate of 0, so they do not move the
+average. See [`stats.md`](stats.md).
+
 ## Idle shrink in `serve` / `daemon` (M11)
 
 **What.** After `idle_timeout_s` (default 300, `[memory]`,
@@ -144,13 +163,16 @@ with no network — now counting KV cache (linear in `--ctx`,
 compute buffer (linear in ubatch), not just weights:
 
 ```sh
-runa fit --recommend --offline --top 5
+RUNA_FAKE_VRAM=12288 runa fit --recommend --offline --top 5
 # runa fit --recommend · VRAM 12 GiB (RUNA_FAKE_VRAM) · RAM 16 GiB · ctx 8192 · kv f16 · offline: sizes only
 #  1. gpt-oss 20B                tier 4    ~11 tok/s  FITS CPU
 #     runa pull hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf
 #  2. Qwen2.5 VL 7B Instruct     tier 3    ~98 tok/s  FITS GPU
 #     ...
 ```
+
+`RUNA_FAKE_VRAM` is a test hook that takes MiB: the sample pretends to have a 12 GiB GPU. Without it runa
+reads your machine, so your numbers will differ.
 
 A long context on a big model no longer "fits" offline while
 failing online. `~` marks size-based estimates.

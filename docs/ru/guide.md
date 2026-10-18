@@ -108,6 +108,23 @@ runa run qwen3-8b.gguf "What is 2+2?" --think-budget 32 --max-tokens 48 --json
 Команда чата `/usage` добавляет `(reasoning N)`, когда N > 0. Бэкенды Mistral и облачные
 сообщают 0 (там нет разбивки на рассуждение).
 
+## Журнал использования (`runa stats`, `runa web`)
+
+**Что.** Каждая завершённая генерация `run`, `chat` и `serve` дописывает
+строку в `~/.cache/runa/usage.jsonl` (переопределяется через `RUNA_USAGE_LOG`).
+`runa stats` печатает итоги, модели и последние строки. `runa web` отдаёт
+тот же снимок на `127.0.0.1:3939` и шлёт обновления по websocket.
+
+```sh
+runa stats --since 7d
+runa stats --json
+runa web
+```
+
+**Зачем / пределы.** `/dashboard` у serve — только текущий процесс.
+Журнал остаётся после выхода процесса. Ходы через демон записывают токены
+со скоростью декодирования 0, поэтому среднее они не сдвигают. См. [`stats.md`](stats.md).
+
 ## Сжатие в простое в `serve` / `daemon` (M11)
 
 **Что.** После `idle_timeout_s` (по умолчанию 300, `[memory]`,
@@ -148,13 +165,16 @@ serve: idle qwen2-0_5b-instruct-q4_0: prompt cache released (model kept)
 вычислительного буфера (линейно по ubatch), а не только весов:
 
 ```sh
-runa fit --recommend --offline --top 5
+RUNA_FAKE_VRAM=12288 runa fit --recommend --offline --top 5
 # runa fit --recommend · VRAM 12 GiB (RUNA_FAKE_VRAM) · RAM 16 GiB · ctx 8192 · kv f16 · offline: sizes only
 #  1. gpt-oss 20B                tier 4    ~11 tok/s  FITS CPU
 #     runa pull hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf
 #  2. Qwen2.5 VL 7B Instruct     tier 3    ~98 tok/s  FITS GPU
 #     ...
 ```
+
+`RUNA_FAKE_VRAM` — тестовый хук, значение в МиБ: пример притворяется, что у машины GPU на 12 ГиБ. Без него
+runa читает вашу машину, и числа будут другими.
 
 Длинный контекст на большой модели больше не «помещается» офлайн, при этом
 не помещаясь онлайн. `~` обозначает оценки по размеру.

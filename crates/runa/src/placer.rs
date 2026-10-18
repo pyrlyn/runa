@@ -5,7 +5,7 @@
 //! The placement policy `serve` and `daemon` give their model pool (P16.2):
 //! fit check, then `--mode` placement with the CLI overrides applied. It
 //! lives here, not in `runa-pool`, because it needs the config, memory
-//! policy and fit machinery that only the binary carries.
+//! policy and fit machinery that the `runa` library carries.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use runa_pool::Placer;
 /// Parsed `--device/--tensor-split/--main-gpu/--rpc` overrides for
 /// `serve` (and the daemon later): empty = no overrides.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct PlacementOverrides {
+pub struct PlacementOverrides {
     pub devices: Vec<String>,
     pub tensor_split: Vec<f32>,
     pub main_gpu: Option<i32>,

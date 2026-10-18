@@ -25,13 +25,14 @@ P0.1); этот файл фиксирует, **чему каждый пин со
 | serde_json | `=1.0.151` (обход `Value` без derive) | — | 2026-09-08 | P1.2 список соседних файлов через Hub API |
 | rustyline | `=18.0.1` | — | 2026-09-08 | P2.3 REPL чата (редактирование строки + история в файле) |
 | assert_cmd | `=2.2.2` | — | 2026-09-08 | P2.3 e2e-тесты CLI |
-| ffmpeg | `9.0.1` (`mise.toml`) | ffmpeg `9.0.1` | 2026-09-15 | P4.5 видео через ffmpeg-sidecar (бинарник, не линкуется) |
+| ffmpeg | `9.0.1` (`mise.toml`) | ffmpeg `9.0.1` | 2026-09-15 | P4.5 видео через бинарник ffmpeg в PATH или `FFMPEG_PATH` (не линкуется, не скачивается) |
 | python | `3.13.15` (`mise.toml`) | CPython `3.13.15` (новейший 3.13.x) | 2026-09-15 | P0.7 фикстуры, P3.9/P6.2 смоук-тесты SDK (только stdlib; у 3.11.9 не было аттестаций) |
 | node | `24.21.0` (`mise.toml`) | Node `24.21.0` LTS | 2026-09-15 | P3.9/P6.2 смоук-тесты SDK (у 20.x EOL 2026-04) |
 | cargo-dist | `0.33.0` (`mise.toml` `aqua:axodotdev/cargo-dist`) | cargo-dist `0.33.0` | 2026-09-15 | P6.3 упаковка. Готовый бинарник через aqua с 2026-09-14 (раньше был бэкенд `cargo:`, который собирал из исходников и конкурировал с загрузками rustup в CI) |
 | cargo-cache | `0.8.3` (`mise.toml` `cargo:cargo-cache`) | cargo-cache `0.8.3` | 2023-09-01 | утилита для разработчика: `moon run root:cache` / `cache-dry-run` / `cache-autoclean`; не зависимость крейтов |
 | zig | `0.16.0` (`mise.toml`) | zig `0.16.0` | 2026-09-15 | D23 собственные ядра (`runa-kernels`) |
-| keyring | `4.2.0` | — | 2026-09-15 | P3.8 связка ключей ОС (`service = runa`) |
+| keychain-secret | git `f0deed54f6f8166b31404c2129b59355c45cf044` (`pyrlyn/crates`) | — | нет на crates.io | P17.19 чтение связки ключей и проверка секретов в конфиге. `keyring` остаётся транзитивным |
+| keyring | `4.2.0` | — | 2026-09-15 | P3.8 связка ключей ОС (`service = runa`), транзитивно через `keychain-secret` |
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 декодирование аудио |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 чтение/запись WAV |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 ресемплинг до 16 kHz |
@@ -116,7 +117,7 @@ P0.1); этот файл фиксирует, **чему каждый пин со
 | Локальная разработка (macOS arm64) | `cargo build -p runa-engine --features metal` | На Apple Silicon Metal включён по умолчанию через `llama-cpp-sys-2` |
 | Локальная разработка (Linux CUDA) | `--features cuda` для `runa-engine` / воркспейса | Задача CI на ubuntu — только CPU; CUDA в остальных местах только собирается |
 | Переносимый релиз | без `-march=native`; диспетчеризация ggml во время выполнения (D13) | `native` в `llama-cpp-2` появляется после пина 0.1.133 — перед включением перейдите на более новый пин |
-| `runa-kernels` (P5.2+) | для новых ядер предпочтителен Zig (C ABI) (D23); C/`.S` только там, где Zig хуже | SIMD через Zig `@Vector` или диспетчеризацию на C во время выполнения |
+| `runa-kernels` (P5.2+) | для новых ядер предпочтителен Zig (C ABI) (D23); C/`.S` только там, где Zig хуже | SIMD через Zig `@Vector`. Крейт линкует архив Zig |
 
 Релизные бинарники должны работать на хостах **без** AVX-512; не поставляйте `-C target-cpu=native` в релизных профилях (в `[profile.release]` файла `Cargo.toml` нет `target-cpu`).
 
@@ -236,7 +237,6 @@ Upstream whisper.cpp ушёл вперёд (v1.8.4 … v1.8.7, затем v1.9.x
 | Крейт | Задача плана |
 |-------|-----------|
 | `sherpa-onnx` (Parakeet; официальный Rust-биндинг — **не** `sherpa-rs`, архивирован 2026-06). Пустая cargo-фича `parakeet` удалена; `transcribe_parakeet` возвращает «not available yet», пока отдельная задача не подключит крейт. | P4.2 |
-| `ffmpeg-sidecar` | P4.5 |
 | `hf-hub` | P2.4 |
 | `axum` | P3.9 |
 | `figment`, `clap` | P0.1/P2.3 |

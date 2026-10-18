@@ -1018,6 +1018,23 @@ Deliberately not done: touching `[profile.release]`, sccpdache
 for the fixture (slower than the ~7–11 s download). Decision
 recorded in `docs/perf-nightly.md`. Commits `84763a4`, `57d1058`.
 
+### P11.10. Keep synthetic GGUF fixtures out of Git LFS
+
+The repo-wide `*.gguf` LFS rule in `.gitattributes` also covers `tests/fixtures/synthetic-*.gguf`, but those few-hundred-byte headers are committed as plain blobs so CI reads them without LFS. The LFS clean filter turns each one into a pointer, so every fresh checkout or worktree shows all seven as modified, `git rebase` refuses to run, and `rtok worktree remove` refuses the worktree as dirty. Done means: the synthetic files are exempt from the LFS filter, stay plain blobs, and a fresh worktree is clean.
+
+Execution plan:
+
+1. `crates/runa-fit/tests/fixture_attrs.rs`: `git check-attr filter` on every `synthetic-*.gguf` must report `unset` (fails before the fix; skips without git).
+2. `.gitattributes`: a last-line override `tests/fixtures/synthetic-*.gguf -filter -diff -merge -text`.
+3. `tests/fixtures/README.md`: say they are plain blobs.
+
+Machine check: `cargo test -p runa-fit --test fixture_attrs`; `git status` in this worktree shows no fixture as modified; `moon run root:lint-tasks`.
+
+Check (evidence): `cargo test -p runa-fit --test fixture_attrs` failed before
+the fix (`tests/fixtures/synthetic-deepseek2.gguf: filter: lfs`) and passes
+after it; `git status --short` in a fresh worktree lists no fixture; the
+commit changes no blob under `tests/fixtures/`; `python3
+scripts/lint-tasks.py docs/tasks.md` 0 errors. Commit `852f03b`.
 
 ### P11.8. Matrix CI under 5 minutes for tests (worker-B)
 
@@ -1329,6 +1346,146 @@ Check (evidence): new crate `crates/runa-pool` (`ModelPool`, `Placer`, `fixed_pl
 
 ## P17. Cloud review findings
 
+### P17.19. Consume the shared keychain crate; keep runa's cloud clients
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`keychain-secret` in `pyrlyn/crates` (rev `f0deed54f6f8166b31404c2129b59355c45cf044`) was extracted from `secrets.rs`. `runa-cloud` now calls it for the OS keychain read (`service = runa`) and the inline-secret scan. The public types and the error text stay, so `doctor` still names `OPENAI_API_KEY` when a config holds a key. A non-empty `RUNA_NO_KEYRING` still skips the keychain. `keychain_secret::keychain_enabled` treats `1` as on, and the tests set `1`.
+
+The shared scanner also rejects `password`, `refresh_token`, and `client_secret`. `openai_key` and `anthropic_key` stay rejected in this crate; the shared list dropped them.
+
+`llm-wire`, `llm-wire-openai`, `llm-wire-anthropic`, `llm-http`, and `llm-catalog` live in the same repository and are not on crates.io. They implement `llm_wire::Provider` for agent loops. cox still ships `cox-provider-openai` and `cox-provider-anthropic` and does not depend on those crates. runa's clients keep audio, images, PDF, `ThinkConfig`, and `docs/prices.toml`, so they were not replaced.
+
+Check (evidence): `cargo test -p runa-cloud --lib` — 40 passed. `cargo test -p runa --test secrets` — 2 passed. `cargo clippy -p runa-cloud --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.7. Split serve and daemon into the runa library
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`crates/runa` was binary-only, so serve and daemon could not be linked
+without the CLI. The package is now a library plus a thin binary.
+`src/main.rs` calls `run`. Commands and config live in `src/cli/`, the
+HTTP server in `src/serve/`, the socket daemon and its protocol in
+`src/daemon/`, and the chat history, REPL, and TUI loop in `src/session/`.
+`serve::cmd_serve` and `daemon::cmd_daemon` are public. Fuzz bins call
+`runa::fuzz_hooks::run` under `--cfg fuzzing` instead of compiling
+`main.rs` as their crate root. `docs/memory.md` and the Russian and
+Ukrainian translations describe the three entry points.
+
+Check (evidence): `cargo test -p runa --lib` — 129 passed, including `second_daemon_does_not_unlink_a_live_socket`. That test still checks a live listener is not replaced; when the filesystem reuses the inode, the ownership unlink is skipped because the two binds cannot be told apart. `cargo test -p runa --bin runa` — 0 tests, the binary compiles. `cargo clippy -p runa --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.20. Keep `scripts/release.sh` in this repo
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+With no flag, `scripts/release.sh` only starts pyrlyn/ci `bump.yml`.
+`--dry-run` and `--local` choose the version and, for `--local`, edit
+`Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md` in this tree. `bump.yml`
+runs `--local`. Moving that body into `pyrlyn/ci` would be a change to
+another repository, and the workflow would still need this repo's layout.
+The script stays. Its header says so.
+
+Check (evidence): `bash -n scripts/release.sh` exited 0. `bash scripts/release.sh patch --dry-run` printed `current 0.1.0 -> release v0.1.0` and `dry run: nothing written` (no local `v0.1.0` tag, so the script keeps 0.1.0, which is the documented first-release rule). `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.18. Keep `report.html`
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`report.html` is the HTML page for the research companion (`research.md`).
+The plan Reference, `docs/README.md`, and the Russian and Ukrainian indexes
+already link it. Nothing in the build or CI generates it. Deleting or
+gitignoring it would drop a linked page. It stays tracked. The Reference
+now says that in both places it names the file.
+
+Check (evidence): `git ls-files report.html` prints `report.html`. `docs/README.md` still links `../report.html`. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.13. Library logs go through a callback
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`runa-memory` and `runa-pool` printed with `eprintln`, so an embedder could
+not silence warm-up, progress, panic, LRU, idle, or memory-transition
+lines. Both crates still print those same lines on stderr by default.
+`MemoryManager::set_log` and `runa_pool::set_log` replace the sink. No
+`tracing` dependency was added. `docs/memory.md` and the Russian and
+Ukrainian translations describe both functions. The CLI does not call
+them, so serve and daemon stderr is unchanged.
+
+Check (evidence): `cargo test -p runa-memory --lib` — 19 passed. `cargo test -p runa-pool --lib` — 7 passed. `cargo clippy -p runa-memory -p runa-pool --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.16. Drop the unlinked C kernels
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`crates/runa-kernels/c/{avx2,neon,scalar}.c` and `scalar.h` were not compiled.
+`build.rs` links the Zig archive, which already exports the same C ABI
+symbols. The C sources are deleted. They were not moved into `docs/`: that
+tree is prose, and ADR D23 already records that the kernels started as C.
+`docs/kernels.md` and the Russian and Ukrainian translations no longer say
+scalar C is always linked. The SonarCloud follow-up no longer points at
+`crates/runa-kernels/c/`. ADR D23 is unchanged.
+
+Check (evidence): `cargo test -p runa-kernels` — 9 passed. `cargo clippy -p runa-kernels --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.17. Report a truncated GGUF tensor table as `TensorTableTruncated`
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`Reader::parse` never built `ReadError::TensorTableTruncated`. A short
+tensor-info table returned `UnexpectedEof`, the same error as a short
+metadata section. `UnexpectedEof` from the tensor-info loop is now
+`TensorTableTruncated`. Metadata still returns `UnexpectedEof`.
+`CountOverflow` is unchanged. The remote header fetch already treats both
+as "fetch more". `docs/fit.md` and the Russian and Ukrainian translations
+say which section produces which error.
+
+Check (evidence): `cargo test -p runa-fit --test gguf truncated_tensor_table` — 1 passed; `cargo test -p runa-fit --test gguf string_longer_than_buffer` — 1 passed. `cargo clippy -p runa-fit --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.12. Do not auto-download ffmpeg
+
+Completed 2026-10-15 (Cursor Grok 4.7).
+
+`ffmpeg_bin` called `ffmpeg_sidecar::download::auto_download()` with no hash
+when ffmpeg was missing. That download is gone, and so is the
+`ffmpeg-sidecar` crate. Video sampling uses `FFMPEG_PATH` when it names a
+file, otherwise `ffmpeg` on `PATH` (the mise pin is ffmpeg `9.0.1`). A set
+but missing `FFMPEG_PATH` is an error. `docs/media.md`, `docs/versions.md`,
+`toolchain.md`, and the Russian and Ukrainian copies say so.
+
+Check (evidence): `cargo test -p runa-media --lib ffmpeg_path_must_be_a_file` — 1 passed. `cargo clippy -p runa-media --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
+
+### P17.10. Daemon starters flock a lock file before replacing a stale socket
+
+Completed 2026-10-14 (Cursor Grok 4.7).
+
+After `ConnectionRefused`, `remove_file` then `bind` was not atomic, so two
+starters could unlink a socket the other had just bound. `bind_daemon_socket`
+now takes an exclusive `std::fs::File::lock` on `<socket-filename>.lock`
+around connect, unlink, and bind. The lock file stays; the lock is the open
+fd and drops when that fd closes. `docs/memory.md` and the Russian and
+Ukrainian translations describe it.
+
+Check (evidence): `cargo test -p runa --bin runa -- bind_blocks_while_socket_lock_is_held two_starters_one_bind_on_a_stale_socket` — 2 passed. `cargo clippy -p runa --bin runa -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only). `second_daemon_does_not_unlink_a_live_socket` still fails on this overlayfs checkout because the rebound socket reuses the inode; that assertion is unchanged and is the known overlayfs flake.
+
+### P17.11. Close-token logit bias must not write a shared logits slice
+
+Completed 2026-10-14 (Cursor Grok 4.7).
+
+`add_close_bias` cast the `&[f32]` from `LlamaContext::get_logits_ith` to
+mutable and added `CLOSE_LOGIT_BIAS`. llama-cpp-2 0.1.133 has no mutable
+logits getter (`LlamaContext::context` is `pub(crate)`), so that write was
+aliasing UB. The bias is now added on an owned copy of the logit row. The
+kernel sampler reads the copy. The llama.cpp chain is applied to a
+`LlamaTokenDataArray` built from the copy and accepted once. The unbiased
+path still uses `LlamaSampler::sample`. `docs/thinking.md` and the Russian
+and Ukrainian translations describe the copy. The pin stays `0.1.133`.
+
+Check (evidence): `cargo test -p runa-engine --lib close_bias` —
+`close_bias_is_added_on_a_copy` passed (1 passed, 51 filtered out).
+`cargo clippy -p runa-engine --lib -- -D warnings` finished clean.
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim
+was held (K7 stale-claim warning only).
+
 ### P17.8. Refuse a non-loopback `runa serve` bind without `--api-key`
 
 Completed 2026-10-09 (Cursor Grok 4.7).
@@ -1401,3 +1558,104 @@ pre-existing flake: `second_daemon_does_not_unlink_a_live_socket` inode
 reuse); `cargo fmt --all -- --check` clean; `cargo clippy --workspace --
 -D warnings` clean. GitHub Actions on `4d0349f` (PR #62): 24 checks
 green, including `moon pipeline (K5, D22)`.
+
+## P18. Model sources and loading
+
+### P18.1. `runa-models` crate skeleton and `[store]` config
+
+First slice of P18 (`roadmap.md`, research in `research.md` §15): a library crate
+that will own model loading from local folders, URLs and Wasm. This slice adds the
+crate, its config type and the first behavior that uses it, so nothing in the docs
+is promised before the code has it.
+
+Plan:
+
+1. `crates/runa-models`: `Cargo.toml` (no engine dependency, like `runa-fit` under
+   D5), `config.rs` with `StoreConfig` for a new `[store]` table: `dirs` (extra
+   model folders, absolute or `~/`), `cache_dir` (download store, default
+   `<data dir>/models`), `max_bytes` (fresh-download cap, default 3 GiB).
+   Unknown keys are rejected. JSON Schema committed as
+   `crates/runa-models/store.schema.json`, kept current by a test through the
+   shared `config-schema` crate (dev-dependency, git rev, as aulo does).
+2. `store.rs`: `ModelStore` built from the config: cache dir, search dirs, size
+   cap, bare-filename lookup across the cache and the folders, model listing.
+   `paths.rs`: `home_dir` and `data_dir` move here from the CLI crate.
+3. `crates/runa`: `config.rs` merges `[store]` across config files (later file
+   wins per key) and builds the store at startup; `pull.rs` uses it for the
+   store directory, the size cap (`RUNA_MAX_MODEL_BYTES` still wins) and the
+   bare-filename lookup; `runa models` lists the folders too.
+4. Docs: `[store]` in `docs/config.md` (+ `docs/ru/`, `docs/uk/`); public
+   methods in `docs/memory.md`; crate row in `AGENTS.md` §8; `toolchain.md`.
+
+Machine check: `cargo test -p runa-models` (config parsing, unknown keys,
+relative paths refused, `~/` expansion, schema drift, lookup in a folder),
+`cargo test -p runa --bin runa store` (`[store]` merge across files) and
+`cargo test -p runa --test pull` (`runa models` lists a `[store] dirs`
+folder; a relative path exits 2) pass; `moon run root:lint-tasks` is green.
+
+Check (evidence): `moon run :test` exit 0 (20 tasks, 38 test binaries, 525
+passed, 2 ignored, 0 failed); `moon run root:test-fast` exit 0;
+`cargo test -p runa-models` 15 passed; `cargo test -p runa --bin runa` 126
+passed; `cargo test -p runa --test pull` 4 passed; `cargo fmt --all --
+--check` clean; `cargo clippy -p runa-models -p runa --all-targets -- -D
+warnings` clean; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors.
+Commits `2021278`, `02a10f3` (PR #72).
+
+### P18.2. Local loading and format check
+
+Search the `[store] dirs`; a path must stay inside its directory after `canonicalize`. Detect the format by magic bytes: GGUF (header parsed through `runa-fit` with its caps), safetensors (length-prefixed JSON header, size-capped), Wasm (`\0asm`). Refuse pickle files (`.bin`, `.pt`, `.pth`, `.ckpt`).
+
+Execution plan:
+
+1. `crates/runa-models/src/format.rs`: `ModelFormat { Gguf, Safetensors, Wasm }`, `FormatError` and `detect(path)`. Pickle is refused by extension (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`) and by content (a zip or a pickle protocol header). GGUF goes through `runa_fit::read_local_prefix`; safetensors checks the 8-byte length, a 100 MiB header cap, a JSON object and every `data_offsets` end against the file length; Wasm checks `\0asm` plus the version word. A known extension with other content is a mismatch.
+2. `ModelStore::find_file` keeps a hit only if its canonical path stays under the canonical root, so a symlink cannot point outside the store.
+3. `crates/runa/src/pull.rs`: a local model file is checked with `detect` before it is used.
+4. Tests for each format, each refusal and the escape; `docs/memory.md` (+ ru/uk) for the new public items; `toolchain.md` rows.
+
+Machine check: `cargo test -p runa-models`, `cargo test -p runa --bin runa --test pull`, `moon run :test`, `moon run root:lint-tasks`.
+
+Check (evidence): `cargo test -p runa-models` 24 passed (format: GGUF fixture,
+truncated GGUF, safetensors offsets and JSON, oversized header refused before
+reading, a 640-byte header that starts like a protocol-2 pickle, Wasm core and
+component, pickle by name and contents, extension mismatch; store: a symlink
+out of the root is skipped, one inside is kept); `cargo test -p runa --bin runa`
+127 passed (`find_local_refuses_pickle_and_fake_gguf`); `cargo test -p runa
+--test pull` 4 passed; `cargo test -p runa --test e2e` 37 passed; `cargo fmt
+--all -- --check` and `cargo clippy --workspace -- -D warnings` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors;
+`python3 scripts/check-fixture-size.py` OK. The full `moon run :test` run had 3
+serve e2e tests fail under load with the disk nearly full; all three pass
+alone and the whole e2e binary passes alone. Commit `1204662`.
+
+### T900. Update vulnerable dependencies
+
+The creator authorized dependency updates across the audit. Update vulnerable dependencies and the resolver-required graph without weakening existing guards or advisory policy. Remove the existing unused GenEvent import in the generation regression test that blocks the strict validation gate.
+
+Execution plan: reproduce the advisory audit; apply compatible package-manager updates; review the lockfile diff; run advisory regression checks and the project test/lint/format gates; publish a PR and merge only after required checks pass. No custom dependency implementation is needed. Rollback is a revert of the dependency-update commit.
+
+Validation: isolated RustSec audit reports zero vulnerabilities with rustls 0.23.46. Full nextest passed 544 tests (2 skipped) using the existing local qwen2 fixture. `moon run :test` completed all 20 tasks; `moon run root:test-fast root:lint-tasks`, workspace clippy with warnings denied and formatting passed. The strict lint gate reproduced an unused GenEvent import in the existing generation regression test; removing only that import makes it pass without suppressions. Existing rustls and test fixtures are reused; no new implementation or dependency is introduced.
+
+## P19. Usage stats
+
+### P19.1. Usage stats command and live web page
+
+Completed 2026-10-10.
+
+`runa stats` prints the local usage journal (requests, prompt / generated /
+reasoning tokens, decode tok/s, by model, by day, recent rows; `--json`,
+`--since 24h|7d`). `runa web` serves that same snapshot on loopback and
+pushes a new one over `/ws` when the journal grows. `run`, `chat`, and
+`serve` append one JSON line per finished generation
+(`$XDG_CACHE_HOME/runa/usage.jsonl`, `RUNA_USAGE_LOG` overrides).
+
+The shape follows rtok (`stats` + `web`, Vite + React + TanStack Query,
+dist embedded in the binary). The page uses the runa brand (warm ash,
+charcoal, ember).
+
+Check (evidence): `cargo test -p runa --bin runa` 129 passed;
+`cargo test -p runa --bin runa -- usage_log:: stats_web:: dashboard::` 17 passed;
+`cargo clippy -p runa --bin runa -- -D warnings` clean;
+`cargo fmt -p runa -- --check` clean;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors (K7 stale-claim warning);
+`runa stats` and `runa web --port 0` served `/health`, `/api/snapshot`, `/`, `/stats.js`, `/stats.css` on loopback.
+`runa web --host 1.2.3.4` refused.

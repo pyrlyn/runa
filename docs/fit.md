@@ -69,7 +69,9 @@ name, then lexicographic. Deterministic; unit-tested.
 Fetch loop: ask `bytes=have..want-1` starting at 8 MiB, doubling to a
 256 MiB cap. Truncation-shaped parse errors (`Truncated`,
 `UnexpectedEof`, `TensorTableTruncated`, `StringTooLong`) mean "fetch
-more"; any other parse error means the remote file is corrupt. Servers
+more"; any other parse error means the remote file is corrupt. A buffer
+that ends inside the tensor-info table is `TensorTableTruncated`.
+Running out of bytes in the metadata section stays `UnexpectedEof`. Servers
 that ignore ranges (200 instead of 206) are accepted only when the whole
 body fits the header budget. Auth: `HF_TOKEN` bearer (redirects to
 signed S3 URLs need none — reqwest strips auth cross-domain).

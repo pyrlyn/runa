@@ -41,17 +41,19 @@ Project programs and direct packages from manifests.
 | base64 | local | https://crates.io/crates/base64 | Strict `data:` / `input_audio` decoding |
 | chrono | local | https://crates.io/crates/chrono | Rust dependency |
 | clap | local | https://crates.io/crates/clap | CLI |
+| config-schema | local (dev) | https://github.com/pyrlyn/crates-packages | Stale-schema check for `[store]` (`runa-models`), pinned by git rev |
 | clap_mangen | local | https://crates.io/crates/clap_mangen | Rust dependency |
 | cc | local | https://crates.io/crates/cc | P9.3: compiles the vendored ggml RPC backend behind `--features rpc`. |
 | criterion | local | https://crates.io/crates/criterion | Statistical benchmarks with HTML reports (kernels/media gates) |
 | encoding_rs | local | https://crates.io/crates/encoding_rs | Rust dependency |
-| ffmpeg-sidecar | local | https://crates.io/crates/ffmpeg-sidecar | P4.5: system ffmpeg or auto-download. |
+| ffmpeg | mise | https://ffmpeg.org/ | P4.5: binary on PATH or `FFMPEG_PATH`. runa does not download it. |
 | futures | local | https://crates.io/crates/futures | Rust dependency |
 | heed | local | https://crates.io/crates/heed | P2.8 prompt cache: LMDB via heed (mmap KV, fastest local store). |
 | hf-hub | local | https://crates.io/crates/hf-hub | P2.4 HF downloads (blocking API: sync CLI, runtime on bg thread). |
 | hound | local | https://crates.io/crates/hound | Rust dependency |
 | insta | local | https://crates.io/crates/insta | Snapshot tests for stable library renderings (fit verdict report). |
-| keyring | local | https://crates.io/crates/keyring | P3.8 OS keychain. Env vars still win. |
+| keychain-secret | local | https://github.com/pyrlyn/crates | P17.19 keychain read and inline-secret scan. Git rev pin; not on crates.io. |
+| keyring | local | https://crates.io/crates/keyring | P3.8 OS keychain, transitive through `keychain-secret`. Env vars still win. |
 | libc | local | https://crates.io/crates/libc | P10.2 macOS sysctl for the Apple P-core default (`hw.perflevel0.logicalcpu`, macOS-only dep of `runa-engine`). |
 | llama-cpp-2 | local | https://crates.io/crates/llama-cpp-2 | Local GGUF / llama.cpp |
 | llama-cpp-sys-2 | local | https://crates.io/crates/llama-cpp-sys-2 | Rust dependency |
@@ -66,6 +68,7 @@ Project programs and direct packages from manifests.
 | rubato | local | https://crates.io/crates/rubato | Rust dependency |
 | rmcp | local | https://crates.io/crates/rmcp | P8.3 MCP client (stdio servers) for the run/chat tool loop. |
 | rustyline | local | https://crates.io/crates/rustyline | P2.3 REPL line editing + file history. |
+| schemars | local (dev) | https://crates.io/crates/schemars | JSON Schema of `[store]` (`runa-models`) |
 | serde | local | https://crates.io/crates/serde | Serialization |
 | serde_json | local | https://crates.io/crates/serde_json | JSON |
 | sha2 | local | https://crates.io/crates/sha2 | Rust dependency |
@@ -82,3 +85,10 @@ Project programs and direct packages from manifests.
 | unicode-width | local | https://crates.io/crates/unicode-width | P8.6 TUI transcript word wrap. |
 | whisper-rs | local | https://crates.io/crates/whisper-rs | Rust dependency |
 | wiremock | local | https://crates.io/crates/wiremock | Rust dependency |
+
+## Linkers
+
+- **Windows (MSVC):** `rust-lld` through `.cargo/config.toml` (`[target.*-pc-windows-msvc] linker`). It ships with rustup, nothing to install.
+- **Linux:** `mold`, pinned in `mise.toml` for Linux only and driven by `clang`. Opt-in, off by default: `cargo --config .cargo/mold.toml <cmd>` (or `just mold <cmd>` where the repo has a justfile). CI and the default build keep the stock linker.
+- **macOS:** Apple's native linker (mold has no macOS support).
+- **Cranelift:** not used. It needs a nightly toolchain and this repository is on stable.
