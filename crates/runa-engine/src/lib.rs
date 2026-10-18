@@ -13,6 +13,7 @@
 
 pub mod embed;
 pub mod generate;
+pub mod infill;
 pub mod load;
 pub mod lora;
 mod media;
@@ -30,6 +31,7 @@ mod vision;
 pub use generate::{
     ChatMessage, GenEvent, GenerateRequest, Generation, StopReason, ToolCall, Usage,
 };
+pub use infill::Infill;
 pub use load::{EngineError, KvKind, LoadConfig, LoadedModel, load, planner_kv_type};
 pub use lora::{DEFAULT_LORA_SCALE, LoraSpec, parse_lora_spec};
 #[cfg(feature = "mistralrs")]
