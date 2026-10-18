@@ -1,0 +1,509 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "da63d3df38ec9890",
+      "context": "ccddbdcd4fb5c351",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "6038fa0a3c7bc10a",
+      "context": "c4ddaf7a350273b9",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "artipacked",
+      "fingerprint": "234b2b68ee403749",
+      "context": "d3143a570de5238c",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "e7d8888819c84908",
+      "context": "816e0f851ecc34f4",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "e78dd65b3b1a6401",
+      "context": "b0967c8487932811",
+      "occurrence": 0,
+      "message": "action \"Swatinem/rust-cache@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "36a7e3225259b16f",
+      "context": "603f15ef59e4fa85",
+      "occurrence": 0,
+      "message": "action \"mozilla-actions/sccache-action@v0.0.11\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "b85314f1e61c9351",
+      "context": "2cd7ccacaf000f0a",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "artipacked",
+      "fingerprint": "9a638b08f3103ff7",
+      "context": "d01e019e6d1aaeac",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "31d390e2c4438617",
+      "context": "259278491621688d",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "d048528f7208bebf",
+      "context": "8ae8f62d03ddfd62",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "e8804900e864fc00",
+      "context": "b6947f11d58c90aa",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "c63faebe3d4b3de9",
+      "context": "64a7c95b399f8b27",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "artipacked",
+      "fingerprint": "e941c884afcd68dd",
+      "context": "5daafa57dbdb2b94",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "e736b77d4fd73ca8",
+      "context": "7b7d360a2361bede",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "aeebf7bb8ec6ebc2",
+      "context": "38953648e2574689",
+      "occurrence": 0,
+      "message": "action \"Swatinem/rust-cache@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "pipeline-without-pipefail",
+      "fingerprint": "d4f04405b12eb3bf",
+      "context": "592ee15ee2f07b71",
+      "occurrence": 0,
+      "message": "failure of \"runa\" is hidden in the pipeline \"./target/dist/runa bench --mode cpu --ctx 1024 --pp 512 --tg...\" because the default shell runs \"bash -e {0}\" without pipefail. add \"set -o pipefail\" before the pipeline or use \"shell: bash\", which runs with pipefail"
+    },
+    {
+      "file": ".github/workflows/perf.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "038aa57e2cddec4b",
+      "context": "64aac30c4664f84f",
+      "occurrence": 0,
+      "message": "action \"actions/upload-artifact@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-ci-alert.yml",
+      "rule": "dangerous-triggers",
+      "fingerprint": "e1b416090046774f",
+      "context": "36b936d1654e3276",
+      "occurrence": 0,
+      "message": "trigger \"workflow_run\" is dangerous: it runs in the context of the default branch with a write token and secrets, but processes artifacts and metadata produced by a run that a fork may control. consider a reusable workflow called with \"workflow_call\" instead, and never trust the artifacts or the event payload"
+    },
+    {
+      "file": ".github/workflows/release-ci-alert.yml",
+      "rule": "workflow-run-names",
+      "fingerprint": "88b4b05e4e54d8f3",
+      "context": "becef795608ca146",
+      "occurrence": 0,
+      "message": "workflow \"license-check\" specified at \"workflows\" of \"workflow_run\" event is not found in the repository. a workflow is specified by its \"name:\" or its file path when it has no name"
+    },
+    {
+      "file": ".github/workflows/release-failure.yml",
+      "rule": "concurrency-limits",
+      "fingerprint": "48c2d6b5885070b9",
+      "context": "081b2e27040f94d3",
+      "occurrence": 0,
+      "message": "workflow has no \"concurrency:\", so every run of it executes at the same time even when a newer run supersedes the older ones. add a top-level \"concurrency:\" with a \"group:\" and \"cancel-in-progress: true\""
+    },
+    {
+      "file": ".github/workflows/release-failure.yml",
+      "rule": "dangerous-triggers",
+      "fingerprint": "e1b416090046774f",
+      "context": "36b936d1654e3276",
+      "occurrence": 0,
+      "message": "trigger \"workflow_run\" is dangerous: it runs in the context of the default branch with a write token and secrets, but processes artifacts and metadata produced by a run that a fork may control. consider a reusable workflow called with \"workflow_call\" instead, and never trust the artifacts or the event payload"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "d85f08af5a1a45e9",
+      "context": "ac4dfc0df980d900",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "f3571a0dc86b66e3",
+      "context": "e494612bcf68cffe",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "artipacked",
+      "fingerprint": "47b459c18e0a755b",
+      "context": "7f1ee547ccd272db",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "2a9b74b17eec0abd",
+      "context": "0a07db5107fb1e15",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "cache-poisoning",
+      "fingerprint": "fc605265ed231423",
+      "context": "5d961434733f45cc",
+      "occurrence": 0,
+      "message": "jdx/mise-action restores a cache although the job runs \"gh release upload\", so a poisoned cache entry can end up in the published artifacts. set \"cache: false\", or set \"cache-mode: none\" on the job"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "477faf7cb534aec0",
+      "context": "d0163cc31320c88c",
+      "occurrence": 0,
+      "message": "action \"Swatinem/rust-cache@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "cache-poisoning",
+      "fingerprint": "46c20dbbeb97ef21",
+      "context": "48ef6451bcab3ebc",
+      "occurrence": 0,
+      "message": "swatinem/rust-cache restores a cache although the job runs \"gh release upload\", so a poisoned cache entry can end up in the published artifacts. remove this step or set \"lookup-only: true\", or set \"cache-mode: none\" on the job"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "afd66ff4b64e163f",
+      "context": "eac2d98edc2fb426",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "9fab947855b4bc5c",
+      "context": "971e90e9e4a18279",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "artipacked",
+      "fingerprint": "e6d794a00d26dd82",
+      "context": "5ad10b4b345c0140",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "pipeline-without-pipefail",
+      "fingerprint": "a22e5f6abcb77411",
+      "context": "bae2c3549a89ef9a",
+      "occurrence": 0,
+      "message": "failure of \"curl\" is hidden in the pipeline \"curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pu...\" because the default shell runs \"bash -e {0}\" without pipefail. add \"set -o pipefail\" before the pipeline or use \"shell: bash\", which runs with pipefail"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "28e98c2d20600d84",
+      "context": "d5f4d01a939e9317",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "cache-poisoning",
+      "fingerprint": "7fd24bc010b23156",
+      "context": "d75d298aa9a9dd26",
+      "occurrence": 0,
+      "message": "jdx/mise-action restores a cache although the job runs \"gh release upload\", so a poisoned cache entry can end up in the published artifacts. set \"cache: false\", or set \"cache-mode: none\" on the job"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "71db748afc7eeece",
+      "context": "e9f0ab4d977838c6",
+      "occurrence": 0,
+      "message": "action \"Swatinem/rust-cache@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "cache-poisoning",
+      "fingerprint": "28f27ce3601c4c97",
+      "context": "90d197cda428946c",
+      "occurrence": 0,
+      "message": "swatinem/rust-cache restores a cache although the job runs \"gh release upload\", so a poisoned cache entry can end up in the published artifacts. remove this step or set \"lookup-only: true\", or set \"cache-mode: none\" on the job"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "4ef60478302ff58f",
+      "context": "afb17efbe19bfe8d",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "81bfae335eee71b9",
+      "context": "13f5ff76e1bcd5c6",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "artipacked",
+      "fingerprint": "f87d6d7a2ff48e0e",
+      "context": "eecfba25b3824e3f",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "022d1447d2acde44",
+      "context": "58fd71403ae6c08a",
+      "occurrence": 0,
+      "message": "action \"Jimver/cuda-toolkit@v0.2.24\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "15f8f2e7c498e070",
+      "context": "50efe30dec745239",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "cache-poisoning",
+      "fingerprint": "6b99da04f3cb417c",
+      "context": "2f57d0dd93bf19bb",
+      "occurrence": 0,
+      "message": "jdx/mise-action restores a cache although the job runs \"gh release upload\", so a poisoned cache entry can end up in the published artifacts. set \"cache: false\", or set \"cache-mode: none\" on the job"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "431e534793173b4f",
+      "context": "cb1eb81a61b5c04a",
+      "occurrence": 0,
+      "message": "action \"Swatinem/rust-cache@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/release-variants.yml",
+      "rule": "cache-poisoning",
+      "fingerprint": "7f8c10c2e70077db",
+      "context": "f0707333bb2aa84c",
+      "occurrence": 0,
+      "message": "swatinem/rust-cache restores a cache although the job runs \"gh release upload\", so a poisoned cache entry can end up in the published artifacts. remove this step or set \"lookup-only: true\", or set \"cache-mode: none\" on the job"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "excessive-permissions",
+      "fingerprint": "b96eb14dd5b1d621",
+      "context": "829eff0266c816ee",
+      "occurrence": 0,
+      "message": "\"contents: write\" is granted to every job of the workflow, which lets any of them push commits and tags and create or delete releases. set \"permissions: {}\" at the workflow level and grant \"contents: write\" only to the job which needs it"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "unverified-download",
+      "fingerprint": "a63a8f36258de99d",
+      "context": "584bde46015f0b95",
+      "occurrence": 0,
+      "message": "the script downloaded from \"https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh\" is run by \"sh\" without being verified, so whoever controls that server or the connection to it controls this job. if it installs a tool, mise can install it and record its checksum in mise.lock (jdx/mise-action in CI). otherwise check the checksum or signature (sha256sum -c, gpg --verify, cosign verify-blob or gh attestation verify) before running the file"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "template-injection",
+      "fingerprint": "7651b9211cb0dc99",
+      "context": "84c9534e7e387cce",
+      "occurrence": 0,
+      "message": "\"inputs.tag\" is an input chosen by whoever runs this, which is not validated and can hold shell syntax. avoid using it directly in inline scripts. instead, pass it through an environment variable. see https://docs.github.com/en/actions/reference/security/secure-use#good-practices-for-mitigating-script-injection-attacks for more details"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "unverified-download",
+      "fingerprint": "10f4d6cab0cf62b1",
+      "context": "84fb9e202fde43c8",
+      "occurrence": 0,
+      "message": "the script downloaded from \"https://sh.rustup.rs\" is run by \"sh\" without being verified, so whoever controls that server or the connection to it controls this job. if it installs a tool, mise can install it and record its checksum in mise.lock (jdx/mise-action in CI). otherwise check the checksum or signature (sha256sum -c, gpg --verify, cosign verify-blob or gh attestation verify) before running the file"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "shellcheck",
+      "fingerprint": "5e6f650db1ae1e68",
+      "context": "47abb0d086eacf94",
+      "occurrence": 0,
+      "message": "shellcheck reported issue in this script: SC2086:info:3:30: Double quote to prevent globbing and word splitting"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "shellcheck",
+      "fingerprint": "5d0bee5750acd9d5",
+      "context": "3edffa2c095c86bd",
+      "occurrence": 0,
+      "message": "shellcheck reported issue in this script: SC2129:style:2:1: Consider using { cmd1; cmd2; } >> file instead of individual redirects"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "shellcheck",
+      "fingerprint": "2c00ec9c2c9e4de2",
+      "context": "329518a306f370d9",
+      "occurrence": 0,
+      "message": "shellcheck reported issue in this script: SC2129:style:5:1: Consider using { cmd1; cmd2; } >> file instead of individual redirects"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "shellcheck",
+      "fingerprint": "9e21d5253946cc83",
+      "context": "2f6be48f477efb33",
+      "occurrence": 0,
+      "message": "shellcheck reported issue in this script: SC2086:info:4:76: Double quote to prevent globbing and word splitting"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "concurrency-limits",
+      "fingerprint": "48c2d6b5885070b9",
+      "context": "081b2e27040f94d3",
+      "occurrence": 0,
+      "message": "workflow has no \"concurrency:\", so every run of it executes at the same time even when a newer run supersedes the older ones. add a top-level \"concurrency:\" with a \"group:\" and \"cancel-in-progress: true\""
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "dangerous-triggers",
+      "fingerprint": "a93f6bb245795441",
+      "context": "679173a66b3203d5",
+      "occurrence": 0,
+      "message": "trigger \"issue_comment\" is dangerous: it runs in the context of the default branch with a write token and secrets and can be started by anyone who can comment. check the permission of the commenter and never run code of the pull request"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "excessive-permissions",
+      "fingerprint": "dd679b5ebcd5ef19",
+      "context": "b853991f6f9c84a0",
+      "occurrence": 0,
+      "message": "\"pull-requests: write\" is granted to every job of the workflow, which lets any of them create and modify pull requests, comments and reviews, and the workflow runs on \"issue_comment\" which people without write access can trigger. set \"permissions: {}\" at the workflow level and grant \"pull-requests: write\" only to the job which needs it"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "3251edda7fcea613",
+      "context": "8a8120cc08f341df",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "unused-job-output",
+      "fingerprint": "1dd6a80a53700c95",
+      "context": "4f0181f77e145d34",
+      "occurrence": 0,
+      "message": "output \"ref\" of job \"gate\" is never used: no other job reads \"needs.gate.outputs.ref\". remove it"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "3781be190c0b341b",
+      "context": "c0eaee11f2bf50e2",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "4d49067772613a21",
+      "context": "08f6f8b577fdde52",
+      "occurrence": 0,
+      "message": "action \"actions/checkout@v4\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "artipacked",
+      "fingerprint": "76989765c321ab56",
+      "context": "e1c6836d5c811478",
+      "occurrence": 0,
+      "message": "actions/checkout leaves the GITHUB_TOKEN in the git config of the workspace, where a later step such as an artifact upload can publish it. set \"persist-credentials: false\" under \"with:\" unless a later step needs to push"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "bdb8be53e6f4afde",
+      "context": "d163b4a46849dfa4",
+      "occurrence": 0,
+      "message": "action \"jdx/mise-action@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "aa52932f19e4a81a",
+      "context": "345bacf9a945e2c2",
+      "occurrence": 0,
+      "message": "action \"Swatinem/rust-cache@v2\" must be pinned to a full-length commit SHA like \"{owner}/{repo}@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/review.yml",
+      "rule": "missing-timeout",
+      "fingerprint": "0420f3e7defb85b5",
+      "context": "2e86feff4ba86db5",
+      "occurrence": 0,
+      "message": "\"timeout-minutes\" is not set at this job. Set it to avoid wasting runner minutes when the job hangs"
+    }
+  ]
+}

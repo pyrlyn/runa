@@ -1,0 +1,4 @@
+# jactionlint configuration: https://github.com/jdx/jactionlint/blob/main/docs/config.md
+# The default profile applies. `baseline: auto` hides the findings recorded in
+# .github/jactionlint-baseline.json; refresh it with `mise x -- jactionlint --baseline-write`.
+baseline: auto
