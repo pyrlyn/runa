@@ -34,7 +34,6 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
-| P20.1 | in progress | medium | M | ready | Claude Code / claude-opus-5-5 |
 
 ## Tasks
 
@@ -72,21 +71,6 @@ Plan:
 Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
 Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
-
-### P20.1. Fill-in-the-middle completion endpoint for Kerf
-
-Requested by Kerf (pyrlyn/kerf task T14, local code completion): the editor sends the text before and after the cursor and gets back the middle. Chat and agents stay on `/v1/chat/completions` and `cox acp`; this is the inline-completion path only.
-
-`POST /v1/infill` with llama-server's `/infill` field names (`input_prefix`, `input_suffix`, `n_predict`, `temperature`, `stop`, `model`; reply `content`, `stop_type`, `tokens_evaluated`, `tokens_predicted`), so a client written for llama-server needs only the path. Under `/v1/`, so `--api-key` protects it like every other generation route.
-
-Plan:
-1. `runa-engine`: `GenerateRequest.infill` (prefix, suffix). The prompt is the model's own FIM tokens in PSM order (`<pre> prefix <suf> suffix <mid>`, BOS when the GGUF asks for it). llama-cpp-2 0.1.133 exposes neither `llama_vocab_fim_*` nor tokenization without special-token parsing, so FIM ids come from the GGUF `tokenizer.ggml.fim_{pre,suf,mid}_token_id` keys, else from the spellings llama.cpp's vocab loader recognises, each checked to be one special token. A model without them is refused (`infill_unsupported`, 400), never prompted through a chat template.
-2. Editor text is untrusted: control tokens that special-token parsing finds in it are re-tokenized as plain text, so a file containing `<|fim_middle|>` or `<|endoftext|>` cannot reshape the prompt. The prefix keeps its tail and the suffix its head to fit `n_ctx - n_predict`.
-3. The mistral backend refuses `infill`; the daemon protocol does not carry it.
-4. `runa serve`: the handler in `serve/infill.rs`, body checks (one of prefix or suffix non-empty, `n_predict` 1..=4096, default 128).
-5. Tests: weight-free prompt-layout, trimming and re-tokenization tests on a scripted tokenizer; handler tests on a fake engine thread; a Qwen3-0.6B engine test that soft-skips without the fixture. Docs: a `docs/guide.md` section and a `docs/memory.md` entry, each with its `docs/ru/` and `docs/uk/` translation.
-
-Machine check: `cargo test -p runa-engine --lib infill`, `cargo test -p runa --lib serve::infill`, `cargo test -p runa-engine --test infill_qwen3` (with the fixture), `cargo clippy --workspace -- -D warnings`, `python3 scripts/lint-tasks.py docs/tasks.md`.
 
 ## Reference
 
