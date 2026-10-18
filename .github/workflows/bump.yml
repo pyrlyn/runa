@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   bump:
-    uses: pyrlyn/ci/.github/workflows/bump.yml@341896b491b89d93a1940313c0149ddfd8fae9c2 # main
+    uses: pyrlyn/ci/.github/workflows/bump.yml@main
     permissions:
       contents: write # the bump branch, the tag and the release
       pull-requests: write # merge or close the bump pull request

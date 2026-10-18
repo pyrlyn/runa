@@ -49,6 +49,28 @@ runa chat qwen                    # REPL; добавьте --tui для полн
 
 ## Полезные следующие шаги
 
+**Проверка перед загрузкой** — `fit` читает заголовок модели удалённо (без весов) и печатает вердикт. Для `hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf` при `--ctx 16384 --kv q8_0` на Mac с Apple silicon и 64 ГиБ памяти вывод был таким:
+
+```sh
+runa fit hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf --ctx 16384 --kv q8_0
+```
+
+```text
+Verdict: FITS GPU
+Exit code: 0
+
+Memory:
+  GPU weights:  1854.1 MiB
+  Compute buf:  582.7 MiB
+  KV cache:     408.0 MiB
+  GPU total:    2844.8 MiB
+
+GPU decode:  224.8 tok/s  |  prefill: 224.8 tok/s  |  TTFT: 4.55s
+CPU decode:  11.7 tok/s  |  prefill: 11.7 tok/s  |  TTFT: 87.45s
+```
+
+(Строки с нулём опущены; скорости — оценки, пока `runa bench` их не откалибрует.)
+
 **Калибровка прогнозов скорости** — каждый `runa bench` дописывает результат в базу
 калибровки; последующие `fit` / `--recommend` масштабируются по истории измерений:
 

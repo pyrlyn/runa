@@ -22,6 +22,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which runner the macOS jobs use: pyrlyn/ci's macos-runner action reads the MACOS_RUNNER
+  # variable (unset or `hosted` = the hosted label, `xcode-27-local` = the dedicated Mac).
+  macos-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.r.outputs.value }}
+    steps:
+      - id: r
+        uses: pyrlyn/ci/.github/actions/macos-runner@4b5b5470544893cd515b88c751e92728341c6daa # main
+        with:
+          runner: ${{ vars.MACOS_RUNNER }}
+          value: '["macos-14"]'
+
   # infra's config action on .github/infra.yml: `docs-only` is "true" when every changed file
   # is documentation (fails open: "false" when unsure, e.g. a .github/ change). A failed
   # `config` runs everything.
@@ -33,18 +47,19 @@ jobs:
       docs-only: ${{ steps.config.outputs.docs-only }}
     steps:
       - id: config
-        uses: pyrlyn/ci/.github/actions/config@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+        uses: pyrlyn/ci/.github/actions/config@main
 
   ci:
     name: ${{ matrix.os }} (${{ matrix.target }})
-    needs: config
+    needs: [config, macos-runner]
     # Skip draft PRs (push/workflow_dispatch have no pull_request object). Never skipped for a
     # docs-only change: a matrix job skipped at job level reports one check under its raw name
     # and the required `<os> (<target>)` checks would wait, so every step is a no-op instead.
     if: >-
       !cancelled()
       && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    runs-on: ${{ matrix.os }}
+    # MACOS_RUNNER (pyrlyn/ci macos-runner): unset/hosted = the hosted label, xcode-27-local = the dedicated Mac (fork PRs keep the hosted label)
+    runs-on: ${{ vars.MACOS_CI_DISABLED == 'true' && (startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'xcode')) && 'ubuntu-22.04' || startsWith(matrix.os, 'macos') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON(needs.macos-runner.outputs.value)[0] || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +80,7 @@ jobs:
     # restore/save (~2.5 min on ubuntu/macos). Test semantics are unchanged;
     # failure backtraces keep symbols but lose line numbers.
     env:
-      RUN: ${{ needs.config.outputs.docs-only != 'true' }}
+      RUN: ${{ needs.config.outputs.docs-only != 'true' && !(vars.MACOS_CI_DISABLED == 'true' && (startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'xcode'))) }}
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
 
@@ -288,6 +303,6 @@ jobs:
     steps:
       # The shared action skips new branches, bot and earlier auto-revert commits and pushes
       # touching .github/ (GITHUB_TOKEN cannot push workflow files). No re-apply PR, as before.
-      - uses: pyrlyn/ci/.github/actions/revert-on-failure@4e652d891cc6e6f0be316eda1a1f9630d76a8b7e # main
+      - uses: pyrlyn/ci/.github/actions/revert-on-failure@main
         with:
           reapply-pr: "false"

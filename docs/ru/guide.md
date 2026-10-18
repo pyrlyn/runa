@@ -165,13 +165,16 @@ serve: idle qwen2-0_5b-instruct-q4_0: prompt cache released (model kept)
 вычислительного буфера (линейно по ubatch), а не только весов:
 
 ```sh
-runa fit --recommend --offline --top 5
+RUNA_FAKE_VRAM=12288 runa fit --recommend --offline --top 5
 # runa fit --recommend · VRAM 12 GiB (RUNA_FAKE_VRAM) · RAM 16 GiB · ctx 8192 · kv f16 · offline: sizes only
 #  1. gpt-oss 20B                tier 4    ~11 tok/s  FITS CPU
 #     runa pull hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf
 #  2. Qwen2.5 VL 7B Instruct     tier 3    ~98 tok/s  FITS GPU
 #     ...
 ```
+
+`RUNA_FAKE_VRAM` — тестовый хук, значение в МиБ: пример притворяется, что у машины GPU на 12 ГиБ. Без него
+runa читает вашу машину, и числа будут другими.
 
 Длинный контекст на большой модели больше не «помещается» офлайн, при этом
 не помещаясь онлайн. `~` обозначает оценки по размеру.
