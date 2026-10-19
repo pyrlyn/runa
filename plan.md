@@ -34,6 +34,19 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
+| P21.1 | todo | high | M | ready | |
+| P21.2 | todo | medium | M | ready | |
+| P21.3 | todo | medium | S | ready | |
+| P21.4 | todo | low | S | ready | |
+| P21.5 | todo | low | S | ready | |
+| P21.6 | todo | low | S | ready | |
+| P21.7 | todo | low | S | ready | |
+| P21.8 | todo | low | S | ready | |
+| P21.9 | todo | low | S | ready | |
+| P21.10 | todo | low | S | ready | |
+| P21.11 | todo | low | S | ready | |
+| P21.12 | todo | low | S | ready | |
+| P21.13 | todo | low | S | ready | |
 
 ## Tasks
 
@@ -71,6 +84,94 @@ Plan:
 Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
 Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
+
+## Audit 2026-10-19
+
+Three review passes over `main` at 525b1bb (pass 1: module walk; pass 2: entry points and threats; pass 3: docs vs code and tests). Fixed in the same PR and recorded in `done.md` as P21.0: the `/review` workflow gate, cross-site websocket and DNS-rebinding reads, the daemon socket mode, and the snapshot pre-download size check. Overlap with the 2026-10-01 audit (#26, closed by #44): its HF token, daemon socket unlink, temp-file and `image_url` items are fixed and not repeated here. Line numbers are as of 525b1bb.
+
+### P21.1. main does not build: llama-cpp-2/llama-cpp-sys-2 0.1.159 break `runa-engine`
+
+Found by pass 3 (tests/build). Renovate PRs #107 and #108 moved `crates/runa-engine/Cargo.toml` from `=0.1.133` to `=0.1.159`. That release removed or renamed the APIs `runa-engine` uses: `llama_cpp_2::model::AddBos` (`src/embed.rs:9`, `src/generate.rs:21`, `src/infill.rs:14`), `LlamaModel::str_to_token` (`src/embed.rs:42`), `ChatTemplateResult`/`GrammarTrigger`/`GrammarTriggerType` and `llama_cpp_2::openai` (`src/structured.rs:14-15`), 26 errors in total (`cargo test -p runa --lib`, 2026-10-19). The `ci` run on `main` at 525b1bb is red, and `revert-on-failure` did not revert the renovate merges. `Cargo.lock` is also out of sync: a plain build rewrites `rubato` 5.0.0 to 5.0.1, so `--locked` builds fail.
+
+What: either pin both crates back to `=0.1.133` (a version change, needs Ivan's approval) or port `runa-engine` to the 0.1.159 API, then commit the regenerated `Cargo.lock`. Add `llama-cpp-2`/`llama-cpp-sys-2` to a renovate group that needs the full CI (or `automerge: false`) so an API break cannot land again.
+
+Why: nothing on `main` builds, so no fix (including the P21.0 commits) can be tested. Done: `cargo build --workspace --locked` and `cargo test --workspace --lib` pass on `main`.
+
+### P21.2. `./runa.toml` in the working directory can spawn MCP servers
+
+Found by passes 1 and 2. `config_paths()` (`crates/runa/src/cli/config.rs:86`) reads `./runa.toml` after the user config, and `load_mcp_servers()` (`:719`) takes `[mcp.servers.*]` from it. `mcp::start` (`crates/runa/src/mcp.rs:248`) then spawns each `command` with its `args`/`env` on `runa run`/`chat`. Running runa inside a cloned, untrusted repository runs whatever command that repository's `runa.toml` names.
+
+What: read `[mcp.servers]` only from `~/.config/runa/config.toml` (and `--mcp`), or require a trust step for the project file (for example a `runa trust` list keyed by the file's canonical path and hash). Document the rule in `docs/config.md` with `docs/ru/` and `docs/uk/`. Test: a project `runa.toml` with `[mcp.servers.x]` is ignored (or refused) until trusted.
+
+Why: a config file a repository ships is untrusted input (workspace trust-boundary rule).
+
+### P21.3. Whisper and media decode block the async runtime in `serve`
+
+Found by pass 1. `audio_transcriptions` (`crates/runa/src/serve/mod.rs`) calls `runa_media::transcribe_file` directly inside the async handler, and `content_text` → `decode_input_audio`/`image_data_to_temp` decode base64 and audio on the request task. Whisper runs for seconds to minutes and stalls that tokio worker: `/health`, the dashboard websocket and other requests on the worker wait.
+
+What: run `transcribe_file` and `decode_audio` inside `tokio::task::spawn_blocking` (the pool already does this for generation), keeping the temp file alive until the blocking task returns. Test: a handler test with a slow fake transcriber shows `/health` answering while a transcription runs.
+
+Why: one upload must not freeze the server.
+
+### P21.4. `serve --api-key` is only accepted on the command line
+
+Found by passes 1 and 2. `Serve { api_key }` (`crates/runa/src/cli/mod.rs:186-188`) has no `env =` source, and `docs/guide.md:288` shows `--api-key "$SERVE_KEY"`. The key then shows in `ps` output and shell history for every local user.
+
+What: enable clap's `env` feature in the workspace `clap` dependency and add `env = "RUNA_SERVE_API_KEY"` to the argument (flag still wins). Update `docs/guide.md` and `docs/config.md` plus `docs/ru/` and `docs/uk/`. Test: `Cli::try_parse_from` with the variable set yields the key.
+
+### P21.5. `/dashboard/snapshot` stays open under `--api-key` and carries error traces
+
+Found by passes 2 and 3. `protect_v1` (`crates/runa/src/serve/mod.rs`) gates only `/v1/`. `/dashboard/snapshot` and `/dashboard/ws` stay open on a non-loopback bind (documented in `docs/dashboard.md:17-18`) and return in-flight routes and models, `errors.recent` with panic text from `catch_panic` and every `deny()` message.
+
+What: when `--api-key` is set on a non-loopback bind, require the key for `/dashboard/snapshot` and `/dashboard/ws` too (a `?key=` or cookie set by the page after a prompt), or drop traces from the snapshot when the bind is not loopback. Test: with a key set, an unauthenticated snapshot request is 401.
+
+### P21.6. `serve` on loopback has no `Host` check (DNS rebinding reaches `/v1`)
+
+Found by pass 2. P21.0 added `is_local_host_header` and applies it to `runa web`. `runa serve` on its default `127.0.0.1` bind without `--api-key` still answers any `Host`, so a DNS-rebinding page can drive `/v1/chat/completions` through the victim's browser.
+
+What: when the bind is loopback and no key is set, wrap the router in the same `Host` check as `stats_web::require_local_host`. Mention it in `docs/guide.md` (with translations). Test: a request with `Host: evil.example` is 403, `Host: 127.0.0.1:8080` is 200.
+
+### P21.7. Daemon NDJSON reader has no line-length cap
+
+Found by pass 1. `daemon_proto::read_line` (`crates/runa/src/daemon/proto.rs:404`) uses `AsyncBufReadExt::read_line` with no limit, so a client that never sends `\n` grows the daemon's memory without bound.
+
+What: read through `take(MAX_LINE + 1)` (for example 16 MiB, enough for an image-bearing request) and answer `bad request: line too long`. Test: an over-long line returns that error and the daemon keeps serving.
+
+### P21.8. Video helpers: predictable temp dir and unbounded frame buffer
+
+Found by pass 1. `ffmpeg_audio_wav` (`crates/runa-media/src/video.rs`) writes to `temp_dir()/runa-vid-<pid>/track.wav` with `create_dir_all` and ffmpeg `-y`. On Linux `/tmp` is shared, so another user can pre-create that directory or a symlink and have the file written where they choose. `ffmpeg_raw_frames` reads all frames of a video into one `Vec` with no cap.
+
+What: use `tempfile::tempdir()` for the WAV, and cap the frame count (or stream frames) by duration × fps. Test: two calls get different private directories; a long input stops at the cap.
+
+### P21.9. Workflow actions pinned by tag, shared workflows by `@main`
+
+Found by pass 2. `review.yml`, `release-variants.yml`, `perf.yml` and `release.yml` use `actions/checkout@v4/v6`, `jdx/mise-action@v2`, `Swatinem/rust-cache@v2`, `Jimver/cuda-toolkit@v0.2.36` and `actions/*-artifact@v7/v8` by tag. `ci.yml:306` runs `pyrlyn/ci/.github/actions/revert-on-failure@main` with `contents: write`, and `pipeline.yml`, `coderabbit-issues.yml`, `release-ci-alert.yml` call `pyrlyn/ci` workflows at `@main`. A moved tag or a bad push to `pyrlyn/ci` runs with these permissions.
+
+What: pin every `uses:` to a full SHA with a `# vX` comment (as `ci.yml:34` already does) and let renovate bump the SHAs; refresh `.github/jactionlint-baseline.json`.
+
+### P21.10. Usage journal grows without bound
+
+Found by pass 1. `usage_log::append` (`crates/runa/src/usage_log.rs:100-115`) appends to `usage.jsonl` forever, and `runa web` re-reads the whole file on every change.
+
+What: rotate at a size cap (for example 16 MiB, keep one `.1`), or compact old days into the summary. Test: appending past the cap rotates and `runa stats` still reads both files.
+
+### P21.11. Docs index and translations are out of step
+
+Found by pass 3. `README.md`'s Docs table misses `docs/baselines.md`, `kernels.md`, `perf-nightly.md`, `profiles.md`, `release.md`, `release-1.0.md` and `site.md` although `docs/README.md` lists them (CLAUDE.md §10 wants both). `docs/ru/` and `docs/uk/` have no `development.md`, `perf-nightly.md`, `release.md`, `release-1.0.md` or `tasks.md` (§13), unless these are maintainer-only like `sonarcloud-setup.md`, which `docs/README.md` does not index. Also `todo.md` was empty while `plan.md` had P14.2 and K7 (synced in this change).
+
+What: add the missing README rows, and either translate those pages or mark them maintainer-only in CLAUDE.md §13.
+
+### P21.12. Runtime environment variables missing from the docs
+
+Found by pass 3. `RUNA_MEMORY_CEILING_MIB` (`crates/runa/src/cli/mod.rs:812`), `RUNA_PROMPT_CACHE` (`:1119`), `RUNA_NO_PROMPT_CACHE` (`:1144`, `:1171`) and `RUNA_TASK_REGISTRY` (`:1800`) change behaviour but appear in no `docs/` page (§10: document what the tree ships).
+
+What: add them to the environment table in `docs/config.md` with `docs/ru/` and `docs/uk/`.
+
+### P21.13. GGUF pulls with no reported size are not capped while downloading
+
+Found by pass 1. P21.0 added a pre-download size check, but when the Hub HEAD reports no `x-linked-size`, `hf-hub` downloads the whole file and `verify_downloaded` (`crates/runa/src/pull.rs`) rejects it only afterwards, so an oversized file still lands on disk first.
+
+What: refuse a pull with no reported size unless `RUNA_MAX_MODEL_BYTES` is set, or download through the capped `Fetcher` stream instead of `hf-hub`. Test: a mocked HEAD without size is refused.
 
 ## Reference
 

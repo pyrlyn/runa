@@ -1692,3 +1692,16 @@ Check (evidence): `cargo test -p runa-engine --lib infill` 7 passed;
 `auto_npu_verdict_mentioned_only_when_requested`) read `synthetic-*.gguf`, which
 `origin/main` stores as Git LFS pointers ("wrong magic bytes"), and fail the same
 way without this change.
+
+### P21.0. Audit 2026-10-19: safe fixes
+
+Completed 2026-10-19.
+
+Three review passes (module walk, entry points and threats, docs vs code and tests). The findings that are safe to fix in code are fixed here; the rest are P21.1–P21.13 in `plan.md`.
+
+- `.github/workflows/review.yml`: `/review` needs a comment from an OWNER, MEMBER or COLLABORATOR. The job that runs PR code gets `contents: read` and `persist-credentials: false`. Before, any GitHub user could run a PR's build scripts with a `pull-requests: write` token in `.git/config` (high, pass 2).
+- `serve`'s `/dashboard/ws` and `runa web`'s `/ws` answer 403 when a browser `Origin` does not match `Host`; `runa web` also refuses a non-local `Host` (DNS rebinding). Before, any page could read the dashboard stream and the usage journal (medium, pass 2).
+- The daemon socket is chmod 0600 after bind (low, pass 1).
+- `pull` checks the Hub-reported size against the limit before each snapshot file download, not only after (low, pass 1).
+
+Check (evidence): `actionlint` on `review.yml` clean; `rustfmt --edition 2024 --check` clean on the changed files; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors. New tests `ws_origin_must_match_host_when_present`, `local_host_header_rejects_rebinding_names`, `daemon_socket_is_owner_only`, `oversized_hub_size_is_refused_before_download` are not run: `main` does not compile against llama-cpp-2 0.1.159 (P21.1), so they need CI on a fixed `main`.
