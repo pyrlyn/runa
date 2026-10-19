@@ -13,7 +13,7 @@ default = []
 # P4.1 audio decode.
 symphonia = { version = "=0.6.1", features = ["mp3", "aac", "flac", "ogg", "pcm", "wav", "isomp4"] }
 hound = "=3.5.1"
-rubato = "=5.0.0"
+rubato = "=5.0.1"
 sha2 = "=0.11.0"
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
