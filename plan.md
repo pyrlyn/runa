@@ -147,7 +147,7 @@ What: use `tempfile::tempdir()` for the WAV, and cap the frame count (or stream 
 
 Found by pass 2. `review.yml`, `release-variants.yml`, `perf.yml` and `release.yml` use `actions/checkout@v4/v6`, `jdx/mise-action@v2`, `Swatinem/rust-cache@v2`, `Jimver/cuda-toolkit@v0.2.36` and `actions/*-artifact@v7/v8` by tag. `ci.yml:306` runs `pyrlyn/ci/.github/actions/revert-on-failure@main` with `contents: write`, and `pipeline.yml`, `coderabbit-issues.yml`, `release-ci-alert.yml` call `pyrlyn/ci` workflows at `@main`. A moved tag or a bad push to `pyrlyn/ci` runs with these permissions.
 
-What: pin every `uses:` to a full SHA with a `# vX` comment (as `ci.yml:34` already does) and let renovate bump the SHAs; refresh `.github/jactionlint-baseline.json`.
+What: pin every third-party `uses:` to a full SHA with a `# vX` comment (as `ci.yml:34` already does) and let renovate bump the SHAs; refresh `.github/jactionlint-baseline.json`. Do not pin `pyrlyn/ci` yet: its `no-pinned-ci.yml` check fails pull requests that pin it, while the org docs require SHA pins. pyrlyn/.github T7 (pyrlyn/.github#12) settles that rule first.
 
 ### P21.10. Usage journal grows without bound
 
