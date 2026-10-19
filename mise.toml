@@ -3,7 +3,7 @@
 # version; this file exists so `mise install` bootstraps a matching toolchain
 # for contributors who manage tools with mise. Keep the two files in sync.
 [tools]
-uv = "0.12.23" # installs the pipx: ptools tool
+uv = "0.13.0" # installs the pipx: ptools tool
 "pipx:git+https://github.com/pyrlyn/tools.git" = "d6eb6452cbb7ec4b350de87194548915c2648c27" # `mise run sweep`, `just cache`, `just swarfr` (ptools, Python; pyrlyn/tools#8, repin to a tag once merged)
 "cargo:cargo-sweep" = "0.8.0" # `mise run sweep`: drops build artifacts unused for 1 day (ptools sweep)
 mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with `cargo --config .cargo/mold.toml`
