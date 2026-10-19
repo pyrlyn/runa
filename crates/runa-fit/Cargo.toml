@@ -17,7 +17,7 @@ serde_json = { version = "=1.0.154" }
 # runtime-agnostic (one-shot CLI fetch; bulk/async download lands in P2.4).
 reqwest = { version = "=0.13.5", default-features = false, features = ["blocking", "rustls"] }
 # P8.4 embedded `catalog.toml` for `runa fit --recommend`.
-toml = "=1.1.5"
+toml = "=1.1.8"
 
 [dev-dependencies]
 insta = "1.48.0"

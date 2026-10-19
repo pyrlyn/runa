@@ -22,4 +22,4 @@ schemars = "1.2.2"
 # aulo's speech-capture.
 config-schema = { git = "https://github.com/pyrlyn/crates-packages", rev = "38bf6ce5a7e9ff0563b5bcb870699de51bd87fb3" }
 tempfile = "3"
-toml = "=1.1.5"
+toml = "=1.1.8"
