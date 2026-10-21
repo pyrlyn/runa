@@ -34,8 +34,22 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
+| P21.1 | in progress | high | M | ready | Claude Code / claude-opus-5-5 |
 
 ## Tasks
+
+### P21.1. `runa-core` contract, slice 1: shared types and the `Backend` trait
+
+GitHub issue #32. The whole issue does not fit the 500-line task limit, so it is split; this slice ships the contract and the adapter impls, and the binary migration (P21.2, P21.3) stays in `roadmap.md`.
+
+Plan:
+1. `runa-core`: `ChatMessage`, `Request`, `Event` (text, reasoning, tool calls, usage, stop), `Usage`, `StopReason`, `Mode`, `BackendError`, the `Backend` trait (`generate(&Request) -> EventStream`) and a `ScriptedBackend` fake. No I/O, no new dependency.
+2. `runa-engine`: drop its own `ChatMessage`/`Usage`/`StopReason`/`GenEvent`/`Mode` definitions and re-export the core ones; `GenerateRequest::from(&Request)`; `Backend` for `LoadedModel` and `MistralModel`. `runa-pool`: `Backend` for `LocalEngine`.
+3. `runa-cloud`: `OpenAiBackend` and `AnthropicBackend` over the existing clients; the forced `answer` tool moves from `crates/runa/src/cloud.rs` into `runa-cloud` so both paths share it.
+4. `crates/runa`: `drain_local` takes any `Event` stream; `drain_daemon` maps `DaemonEvent` to `Event` and reuses it; a scripted-backend test drives the CLI drain and tool-call path without a model.
+5. Docs: `docs/memory.md` entries, ADR-free (no decision changes), `roadmap.md` P21.2/P21.3.
+
+Machine check: `cargo test -p runa-core -p runa-cloud`, `cargo test -p runa --lib`, `moon run root:test-fast`, `cargo clippy --workspace -- -D warnings`, `python3 scripts/lint-tasks.py docs/tasks.md`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
