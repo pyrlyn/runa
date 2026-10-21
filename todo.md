@@ -1,1 +1,0 @@
-- P21.1. `runa-core` contract, slice 1: shared types and the `Backend` trait
