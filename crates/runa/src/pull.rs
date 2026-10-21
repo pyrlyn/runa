@@ -453,6 +453,13 @@ fn pull_safetensors(repo: &str) -> Result<PulledModel, String> {
     })
 }
 
+/// Resolve a model reference: local path → alias → pull store (P2.4).
+/// Never downloads (that is `pull`'s job — plan D12, no silent fetches).
+pub(crate) fn resolve_model(model_ref: &str) -> Result<PathBuf, String> {
+    let aliases = crate::config::load_aliases()?;
+    find_local(model_ref, &aliases)
+}
+
 /// Resolve a model reference for `run`/`chat` against local files, aliases
 /// and the pull store (no downloading — that is `pull`'s job).
 pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, String> {

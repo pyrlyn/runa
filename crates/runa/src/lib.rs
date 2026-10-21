@@ -22,6 +22,8 @@ mod dashboard;
 mod fit;
 #[cfg(fuzzing)]
 pub mod fuzz_hooks;
+mod hw;
+mod json;
 mod mcp;
 pub mod placer;
 mod pull;
@@ -33,8 +35,4 @@ mod usage_log;
 
 pub(crate) use cli::config;
 pub use cli::run;
-pub(crate) use cli::{
-    AutoPlacement, ModeChoice, auto_placement, json_escape, memory_ceiling_mib, parse_mode_choice,
-    preflight_grow, ram_bytes, resolve_model, vram_bytes,
-};
 pub(crate) use daemon::proto as daemon_proto;

@@ -9,17 +9,17 @@ use std::path::{Path, PathBuf};
 
 use runa_core::{BackendKind, ThinkConfig, ThinkOverrides};
 use runa_engine::{
-    ChatMessage, GenEvent, GenerateRequest, LoadConfig, LoraSpec, Mode, Placement, SamplingConfig,
-    StopReason, ToolCall, Usage, load, parse_rpc_list,
+    ChatMessage, GenEvent, GenerateRequest, LoadConfig, LoraSpec, Mode, Placement, PromptCache,
+    SamplingConfig, StopReason, ToolCall, Usage, load, parse_rpc_list,
 };
 
-use crate::cli::{
-    ToolArgs, attach_prompt_cache, attach_prompt_cache_local, cli_think, daemon_generate,
-    drain_daemon, json_escape, parse_mode, resolve_model,
-};
-use crate::config;
+use crate::config::{self, cli_think};
+use crate::daemon;
 use crate::daemon_proto;
+use crate::json::escape as json_escape;
 use crate::mcp;
+use crate::placer::parse_mode;
+use crate::pull::resolve_model;
 use crate::tui;
 use crate::usage_log;
 use runa_pool::engine;
@@ -252,6 +252,156 @@ impl Session {
 /// Chat-time engine (P9.1 + P9.2): mistral requests always run a managed
 /// local backend; gguf requests prefer the daemon and fall back to a
 /// local load (`Daemon(None)` = the daemon serves the session).
+/// MCP tool loop flags shared by `run` and `chat` (P8.3).
+#[derive(Debug, clap::Args)]
+pub(crate) struct ToolArgs {
+    /// Stdio MCP server whose tools the model may call: '<command args>'
+    /// (shell quoting groups spaces, e.g. `--mcp "python3 'my dir/s.py'"`;
+    /// repeatable; adds to `[mcp.servers]` in config).
+    #[arg(long, value_name = "COMMAND")]
+    pub(crate) mcp: Vec<String>,
+    /// Stop after this many tool-call rounds without an answer.
+    #[arg(long, value_name = "N", default_value_t = 8)]
+    pub(crate) max_tool_rounds: u32,
+}
+
+fn default_prompt_cache_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("RUNA_PROMPT_CACHE")
+        && !p.is_empty()
+    {
+        return PathBuf::from(p);
+    }
+    if let Ok(p) = std::env::var("XDG_CACHE_HOME")
+        && !p.is_empty()
+    {
+        return PathBuf::from(p).join("runa").join("kv");
+    }
+    match config::home_dir() {
+        Some(home) => home.join(".cache").join("runa").join("kv"),
+        None => std::env::temp_dir().join("runa-kv"),
+    }
+}
+
+pub(crate) fn attach_prompt_cache(
+    engine: &mut engine::LocalEngine,
+    disabled: bool,
+    explicit: Option<&Path>,
+) -> Result<(), String> {
+    if !engine.is_gguf() {
+        // The mistral backend manages its own KV; there is nothing to attach.
+        return Ok(());
+    }
+    if disabled || std::env::var_os("RUNA_NO_PROMPT_CACHE").is_some() {
+        return Ok(());
+    }
+    let (dir, required) = match explicit {
+        Some(p) => (p.to_path_buf(), true),
+        None => (default_prompt_cache_dir(), false),
+    };
+    match PromptCache::open(&dir) {
+        Ok(cache) => {
+            engine.attach_prompt_cache(cache);
+            Ok(())
+        }
+        Err(e) if required => Err(format!("prompt-cache: {e}")),
+        Err(e) => {
+            eprintln!("prompt-cache: disabled ({e})");
+            Ok(())
+        }
+    }
+}
+
+/// `attach_prompt_cache` for a bare ggml load (P9.1 daemon path): the
+/// caller holds a `LoadedModel`, not a `LocalEngine`.
+pub(crate) fn attach_prompt_cache_local(
+    loaded: &mut runa_engine::LoadedModel,
+    disabled: bool,
+    explicit: Option<&Path>,
+) -> Result<(), String> {
+    if disabled || std::env::var_os("RUNA_NO_PROMPT_CACHE").is_some() {
+        return Ok(());
+    }
+    let (dir, required) = match explicit {
+        Some(p) => (p.to_path_buf(), true),
+        None => (default_prompt_cache_dir(), false),
+    };
+    match PromptCache::open(&dir) {
+        Ok(cache) => {
+            loaded.attach_prompt_cache(cache);
+            Ok(())
+        }
+        Err(e) if required => Err(format!("prompt-cache: {e}")),
+        Err(e) => {
+            eprintln!("prompt-cache: disabled ({e})");
+            Ok(())
+        }
+    }
+}
+
+/// Send one request to the daemon; transport errors mean "no daemon".
+pub(crate) fn daemon_generate(
+    model: &str,
+    req: &GenerateRequest,
+) -> Result<Vec<daemon_proto::DaemonEvent>, String> {
+    let dreq = daemon_proto::DaemonRequest::new(model.to_owned(), req);
+    daemon_proto::request_sync(
+        &daemon_proto::default_socket_path(),
+        &dreq,
+        daemon::REQUEST_TIMEOUT,
+    )
+}
+
+/// Drain daemon events like [`drain_local`]: answer text to stdout,
+/// reasoning to stderr. A daemon-side `error` fails the request.
+pub(crate) fn drain_daemon(
+    events: &[daemon_proto::DaemonEvent],
+    print: bool,
+) -> Result<LocalTurn, String> {
+    use daemon_proto::DaemonEvent;
+    let mut turn = LocalTurn {
+        text: String::new(),
+        calls: Vec::new(),
+        usage: None,
+        reason: StopReason::MaxTokens,
+    };
+    for ev in events {
+        match ev {
+            DaemonEvent::Text { text } => {
+                if print {
+                    print!("{text}");
+                    io::stdout().flush().map_err(|e| format!("stdout: {e}"))?;
+                }
+                turn.text.push_str(text);
+            }
+            DaemonEvent::Reasoning { text } => {
+                if print {
+                    eprint!("{text}");
+                    io::stderr().flush().map_err(|e| format!("stderr: {e}"))?;
+                }
+            }
+            DaemonEvent::ToolCalls { calls } => {
+                turn.calls = calls.iter().cloned().map(ToolCall::from).collect();
+            }
+            DaemonEvent::Usage {
+                prompt_tokens,
+                generated_tokens,
+                reasoning_tokens,
+            } => {
+                turn.usage = Some(Usage {
+                    prompt_tokens: *prompt_tokens,
+                    generated_tokens: *generated_tokens,
+                    reasoning_tokens: *reasoning_tokens,
+                    pp_toks_per_s: 0.0,
+                    tg_toks_per_s: 0.0,
+                });
+            }
+            DaemonEvent::Done { stop } => turn.reason = daemon_proto::parse_stop(stop),
+            DaemonEvent::Error { message } => return Err(message.clone()),
+        }
+    }
+    Ok(turn)
+}
+
 enum ChatEngine {
     Managed(engine::LocalEngine),
     Daemon(Option<runa_engine::LoadedModel>),

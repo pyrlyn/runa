@@ -5,35 +5,34 @@
 //! Command parsing and the subcommands other than the chat session.
 
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Read};
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
-use runa_core::{BackendKind, ThinkConfig, ThinkOverrides, parse_budget};
+use runa_core::{BackendKind, ThinkConfig};
 use runa_engine::{
-    ChatMessage, GenerateRequest, KvKind, LoadConfig, LoraSpec, Mode, Placement, PromptCache,
-    SamplingConfig, StopReason, ToolCall, Usage, VisionFrame, VisionSource, parse_device_list,
-    parse_rpc_list, parse_tensor_split, planner_kv_type,
+    ChatMessage, GenerateRequest, KvKind, LoadConfig, Placement, SamplingConfig, Usage,
+    VisionFrame, VisionSource, parse_device_list, parse_rpc_list, parse_tensor_split,
+    planner_kv_type,
 };
-use runa_fit::{
-    Descriptor, NpuKind, Reader, check_fit, estimate_compute, estimate_kv, estimate_speed_single,
-    npu_present, read_local_prefix,
-};
-use runa_memory::{ClaimError, MemoryManager, SysinfoBackend, TaskRegistry};
+use runa_memory::{ClaimError, TaskRegistry};
 
 pub(crate) mod config;
 
 use crate::bench;
 use crate::cloud;
 use crate::daemon;
-use crate::daemon_proto;
 use crate::fit;
 use crate::mcp;
-use crate::placer;
-use crate::pull;
+use crate::placer::{
+    self, AutoPlacement, ModeChoice, auto_placement, parse_mode_choice, preflight_grow,
+};
+use crate::pull::{self, resolve_model};
 use crate::serve;
+use crate::session::{ToolArgs, attach_prompt_cache, daemon_generate, drain_daemon};
 use crate::stats_web;
 use crate::usage_log;
+use config::cli_think;
 use runa_pool::engine;
 
 /// Run AI models locally or through the OpenAI and Anthropic APIs.
@@ -732,124 +731,6 @@ pub(crate) struct RunArgs {
     tools: ToolArgs,
 }
 
-/// MCP tool loop flags shared by `run` and `chat` (P8.3).
-#[derive(Debug, clap::Args)]
-pub(crate) struct ToolArgs {
-    /// Stdio MCP server whose tools the model may call: '<command args>'
-    /// (shell quoting groups spaces, e.g. `--mcp "python3 'my dir/s.py'"`;
-    /// repeatable; adds to `[mcp.servers]` in config).
-    #[arg(long, value_name = "COMMAND")]
-    pub(crate) mcp: Vec<String>,
-    /// Stop after this many tool-call rounds without an answer.
-    #[arg(long, value_name = "N", default_value_t = 8)]
-    pub(crate) max_tool_rounds: u32,
-}
-
-/// Resolve a model reference: local path → alias → pull store (P2.4).
-/// Never downloads (that is `pull`'s job — plan D12, no silent fetches).
-pub(crate) fn resolve_model(model_ref: &str) -> Result<PathBuf, String> {
-    let aliases = config::load_aliases()?;
-    pull::find_local(model_ref, &aliases)
-}
-
-pub(crate) fn parse_mode(mode: &str) -> Result<Mode, String> {
-    Mode::parse(mode).ok_or_else(|| format!("{mode}: --mode must be cpu | gpu | hybrid"))
-}
-
-pub(crate) enum ModeChoice {
-    Auto,
-    Fixed(Mode),
-}
-
-pub(crate) fn parse_mode_choice(mode: &str) -> Result<ModeChoice, String> {
-    if mode.eq_ignore_ascii_case("auto") {
-        return Ok(ModeChoice::Auto);
-    }
-    Mode::parse(mode)
-        .map(ModeChoice::Fixed)
-        .ok_or_else(|| format!("{mode}: --mode must be cpu | gpu | hybrid | auto"))
-}
-
-pub(crate) fn vram_bytes() -> Result<(u64, &'static str), String> {
-    if let Ok(s) = std::env::var("RUNA_FAKE_VRAM") {
-        let mib: u64 = s
-            .parse()
-            .map_err(|_| format!("RUNA_FAKE_VRAM={s}: expected integer MiB"))?;
-        return Ok((mib.saturating_mul(1024 * 1024), "RUNA_FAKE_VRAM"));
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let mut sys = sysinfo::System::new();
-        sys.refresh_memory();
-        // Unified memory stand-in until the P1.6 wired_limit probe is wired here.
-        let assumed = sys.total_memory().saturating_mul(3) / 4;
-        Ok((assumed, "macos-unified-75pct"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok((0, "unknown"))
-    }
-}
-
-pub(crate) fn ram_bytes() -> u64 {
-    // Test hook like RUNA_FAKE_VRAM: forces a CPU NO FIT on big hosts.
-    if let Some(mib) = std::env::var("RUNA_FAKE_RAM")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        return mib.saturating_mul(1024 * 1024);
-    }
-    let mut sys = sysinfo::System::new();
-    sys.refresh_memory();
-    sys.total_memory()
-}
-
-fn bytes_to_mib(bytes: u64) -> u64 {
-    bytes.div_ceil(1024 * 1024)
-}
-
-pub(crate) fn memory_ceiling_mib() -> u64 {
-    if let Ok(s) = std::env::var("RUNA_MEMORY_CEILING_MIB")
-        && let Ok(n) = s.parse::<u64>()
-    {
-        return n;
-    }
-    ram_bytes() / (1024 * 1024)
-}
-
-/// P7.3: refuse a run whose KV+compute demand exceeds the fit ceiling
-/// and `max_growth_mib` before llama allocates arenas. Warns first when
-/// the demand alone breaches the `[system] max_load_percent` cap.
-pub(crate) fn preflight_grow(
-    path: &Path,
-    ctx: u32,
-    kv_type: &str,
-    extra_bytes: u64,
-    max_load_percent: Option<u8>,
-) -> Result<(), String> {
-    let policy = config::resolve_memory_policy()?;
-    let header = read_local_prefix(path).map_err(|e| e.to_string())?;
-    let reader = Reader::parse(&header.bytes).map_err(|e| e.to_string())?;
-    let desc = Descriptor::from_reader(&reader).map_err(|e| e.to_string())?;
-    let kv = estimate_kv(&desc, u64::from(ctx), kv_type);
-    let compute = estimate_compute(&desc, 512);
-    let demand_bytes = kv
-        .kv_bytes
-        .saturating_add(compute.compute_bytes)
-        .saturating_add(extra_bytes);
-    config::warn_if_demand_over_limit(demand_bytes, max_load_percent)?;
-    let demand = bytes_to_mib(demand_bytes);
-    if demand == 0 {
-        return Ok(());
-    }
-    let mm = MemoryManager::new(
-        policy,
-        memory_ceiling_mib(),
-        Box::new(SysinfoBackend::new()),
-    );
-    mm.grow_for(demand).map_err(|e| format!("unfit: {e}"))
-}
-
 fn cmd_media_probe(path: &Path, json: bool) -> Result<(), String> {
     let decoded = runa_media::decode_audio(path).map_err(|e| e.to_string())?;
     if json {
@@ -924,159 +805,6 @@ fn cmd_media_transcribe(
     Ok(())
 }
 
-fn auto_verdict_line(report: &runa_fit::FitReport, vram: u64, src: &str) -> String {
-    let gpu_mib = report.plan.gpu_total_bytes as f64 / 1_048_576.0;
-    let vram_mib = vram / 1_048_576;
-    let speed = report
-        .speed_gpu
-        .as_ref()
-        .or(report.speed_cpu.as_ref())
-        .map(|s| format!(" · {:.1} tok/s decode", s.decode_toks_per_sec))
-        .unwrap_or_default();
-    format!(
-        "runa auto {} · GPU {gpu_mib:.1} MiB · VRAM {vram_mib} MiB ({src}){speed}",
-        report.verdict
-    )
-}
-
-fn placement_from_report(report: &runa_fit::FitReport) -> Placement {
-    match &report.verdict {
-        runa_fit::Verdict::Gpu => Placement::gpu(),
-        runa_fit::Verdict::Cpu => Placement::cpu(),
-        runa_fit::Verdict::Hybrid {
-            gpu_layers,
-            total_layers,
-        } => {
-            if *gpu_layers >= *total_layers && *total_layers > 0 {
-                Placement::hybrid_moe()
-            } else {
-                Placement {
-                    n_gpu_layers: *gpu_layers as u32,
-                    cpu_patterns: Vec::new(),
-                    main_gpu: 0,
-                    devices: Vec::new(),
-                    tensor_split: Vec::new(),
-                    rpc_servers: Vec::new(),
-                }
-            }
-        }
-        runa_fit::Verdict::NoFit => Placement::cpu(),
-    }
-}
-
-pub(crate) enum AutoPlacement {
-    Local(Placement),
-    Cloud(runa_cloud::CloudRef),
-}
-
-/// P9.4: explicit NPU opt-in (`RUNA_NPU=hexagon|openvino`). `None` = not
-/// requested (the default; placement never touches NPU — plan D12). An
-/// unrecognized value is an explicit error, never silently ignored.
-fn npu_request() -> Result<Option<NpuKind>, String> {
-    match std::env::var("RUNA_NPU") {
-        Err(_) => Ok(None),
-        Ok(raw) if raw.trim().is_empty() => Ok(None),
-        Ok(raw) => match NpuKind::parse(&raw) {
-            Some(kind) => Ok(Some(kind)),
-            None => Err(format!("RUNA_NPU={raw}: expected hexagon|openvino")),
-        },
-    }
-}
-
-/// P9.4: NPU status suffix for the `runa auto` verdict line. Pure (request
-/// and probe result passed explicitly) so unit tests need no env. Empty
-/// unless the user opted in — the verdict never mentions NPU by default.
-fn npu_verdict_note(
-    request: Option<NpuKind>,
-    present: Option<NpuKind>,
-    stub_decode_tps: f64,
-) -> String {
-    let Some(want) = request else {
-        return String::new();
-    };
-    match present {
-        Some(have) if have == want => format!(
-            " · NPU {want} present (opt-in stub): ~{stub_decode_tps:.1} tok/s decode \
-             (uncalibrated Tier-3 estimate); placement stays CPU — no ggml backend in llama-cpp-2"
-        ),
-        Some(have) => format!(
-            " · NPU {want} requested but only {have} present; \
-             staying on CPU (explicit, no silent fallback)"
-        ),
-        None => format!(
-            " · NPU {want} requested but not present; \
-             staying on CPU (explicit, no silent fallback)"
-        ),
-    }
-}
-
-pub(crate) fn auto_placement(
-    path: &Path,
-    ctx: u32,
-    on_unfit: &config::OnUnfit,
-    kv_type: &str,
-    mmproj: Option<&Path>,
-    draft: Option<&Path>,
-    loras: &[LoraSpec],
-) -> Result<AutoPlacement, String> {
-    let header = read_local_prefix(path).map_err(|e| e.to_string())?;
-    let reader = Reader::parse(&header.bytes).map_err(|e| e.to_string())?;
-    let desc = Descriptor::from_reader(&reader).map_err(|e| e.to_string())?;
-    let mmproj_path = mmproj
-        .map(Path::to_path_buf)
-        .or_else(|| runa_fit::sibling_mmproj(path));
-    let mmproj_bytes = mmproj_path
-        .as_ref()
-        .map(|p| runa_fit::mmproj_file_bytes(p))
-        .unwrap_or(0);
-    let draft_bytes = draft.map(runa_fit::mmproj_file_bytes).unwrap_or(0);
-    // LoRA adapters (P8.5): file sizes join the weight budget like the
-    // draft model does.
-    let lora_bytes: u64 = loras
-        .iter()
-        .map(|s| runa_fit::mmproj_file_bytes(&s.path))
-        .sum();
-    let (mut config, vram_src) =
-        fit::machine_config(ctx, kv_type, mmproj_bytes.saturating_add(draft_bytes))?;
-    config.planner.lora_bytes = lora_bytes;
-    let report = check_fit(&desc, &config);
-    // P9.4: NPU is opt-in only (`RUNA_NPU`) and stub-only (no ggml backend):
-    // the note names the request/probe outcome explicitly; without a request
-    // the verdict line is byte-identical to the pre-NPU format.
-    let npu_note = match npu_request()? {
-        None => String::new(),
-        Some(want) => {
-            let kv = estimate_kv(&desc, u64::from(ctx), kv_type);
-            let tps = estimate_speed_single(&desc, &kv, u64::from(ctx), 1024, &want.hw_spec())
-                .decode_toks_per_sec;
-            npu_verdict_note(Some(want), npu_present(), tps)
-        }
-    };
-    let line = format!(
-        "{}{}",
-        auto_verdict_line(&report, config.planner.vram_bytes, vram_src),
-        npu_note
-    );
-    match &report.verdict {
-        runa_fit::Verdict::NoFit => match on_unfit {
-            config::OnUnfit::Cpu => {
-                eprintln!("{line} · on_unfit=cpu → CPU");
-                Ok(AutoPlacement::Local(Placement::cpu()))
-            }
-            config::OnUnfit::Error => Err(format!("unfit: {line} · on_unfit=error")),
-            config::OnUnfit::Cloud(spec) => {
-                let cloud = cloud::cloud_from_on_unfit(spec)?;
-                eprintln!("{line} · on_unfit=cloud:{spec}");
-                Ok(AutoPlacement::Cloud(cloud))
-            }
-        },
-        _ => {
-            eprintln!("{line}");
-            Ok(AutoPlacement::Local(placement_from_report(&report)))
-        }
-    }
-}
-
 /// Prompt from argv, else from piped stdin.
 fn read_prompt(arg: Option<String>) -> Result<String, String> {
     if let Some(p) = arg {
@@ -1115,79 +843,6 @@ fn read_json_schema(arg: &str) -> Result<String, String> {
     Ok(text)
 }
 
-fn default_prompt_cache_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("RUNA_PROMPT_CACHE")
-        && !p.is_empty()
-    {
-        return PathBuf::from(p);
-    }
-    if let Ok(p) = std::env::var("XDG_CACHE_HOME")
-        && !p.is_empty()
-    {
-        return PathBuf::from(p).join("runa").join("kv");
-    }
-    match config::home_dir() {
-        Some(home) => home.join(".cache").join("runa").join("kv"),
-        None => std::env::temp_dir().join("runa-kv"),
-    }
-}
-
-pub(crate) fn attach_prompt_cache(
-    engine: &mut engine::LocalEngine,
-    disabled: bool,
-    explicit: Option<&Path>,
-) -> Result<(), String> {
-    if !engine.is_gguf() {
-        // The mistral backend manages its own KV; there is nothing to attach.
-        return Ok(());
-    }
-    if disabled || std::env::var_os("RUNA_NO_PROMPT_CACHE").is_some() {
-        return Ok(());
-    }
-    let (dir, required) = match explicit {
-        Some(p) => (p.to_path_buf(), true),
-        None => (default_prompt_cache_dir(), false),
-    };
-    match PromptCache::open(&dir) {
-        Ok(cache) => {
-            engine.attach_prompt_cache(cache);
-            Ok(())
-        }
-        Err(e) if required => Err(format!("prompt-cache: {e}")),
-        Err(e) => {
-            eprintln!("prompt-cache: disabled ({e})");
-            Ok(())
-        }
-    }
-}
-
-/// `attach_prompt_cache` for a bare ggml load (P9.1 daemon path): the
-/// caller holds a `LoadedModel`, not a `LocalEngine`.
-pub(crate) fn attach_prompt_cache_local(
-    loaded: &mut runa_engine::LoadedModel,
-    disabled: bool,
-    explicit: Option<&Path>,
-) -> Result<(), String> {
-    if disabled || std::env::var_os("RUNA_NO_PROMPT_CACHE").is_some() {
-        return Ok(());
-    }
-    let (dir, required) = match explicit {
-        Some(p) => (p.to_path_buf(), true),
-        None => (default_prompt_cache_dir(), false),
-    };
-    match PromptCache::open(&dir) {
-        Ok(cache) => {
-            loaded.attach_prompt_cache(cache);
-            Ok(())
-        }
-        Err(e) if required => Err(format!("prompt-cache: {e}")),
-        Err(e) => {
-            eprintln!("prompt-cache: disabled ({e})");
-            Ok(())
-        }
-    }
-}
-
 fn parse_kv_kind(raw: &str) -> Result<KvKind, String> {
     raw.parse::<KvKind>().map_err(|e| format!("--kv: {e}"))
 }
@@ -1207,31 +862,6 @@ pub(crate) fn resolve_kv(
         None => both,
     };
     Ok((k, v))
-}
-
-pub(crate) fn cli_think(
-    think: Option<&str>,
-    think_budget: Option<u32>,
-    effort: Option<&str>,
-    show_reasoning: bool,
-    no_show_reasoning: bool,
-) -> Result<ThinkConfig, String> {
-    let mut o = ThinkOverrides::default();
-    if let Some(s) = think {
-        o.think = Some(ThinkOverrides::parse_think(s)?);
-    }
-    if let Some(n) = think_budget {
-        o.budget = Some(parse_budget(&n.to_string())?);
-    }
-    if let Some(s) = effort {
-        o.effort = Some(runa_core::Effort::parse(s)?);
-    }
-    if no_show_reasoning {
-        o.show = Some(false);
-    } else if show_reasoning {
-        o.show = Some(true);
-    }
-    config::resolve_think(o)
 }
 
 fn collect_vision_frames(
@@ -1661,70 +1291,6 @@ fn try_daemon_run(
     Some(drain_daemon(&events, !args.json).map(|turn| finish_run(&turn, args.json, &args.model)))
 }
 
-/// Send one request to the daemon; transport errors mean "no daemon".
-pub(crate) fn daemon_generate(
-    model: &str,
-    req: &GenerateRequest,
-) -> Result<Vec<daemon_proto::DaemonEvent>, String> {
-    let dreq = daemon_proto::DaemonRequest::new(model.to_owned(), req);
-    daemon_proto::request_sync(
-        &daemon_proto::default_socket_path(),
-        &dreq,
-        daemon::REQUEST_TIMEOUT,
-    )
-}
-
-/// Drain daemon events like [`drain_local`]: answer text to stdout,
-/// reasoning to stderr. A daemon-side `error` fails the request.
-pub(crate) fn drain_daemon(
-    events: &[daemon_proto::DaemonEvent],
-    print: bool,
-) -> Result<crate::session::LocalTurn, String> {
-    use daemon_proto::DaemonEvent;
-    let mut turn = crate::session::LocalTurn {
-        text: String::new(),
-        calls: Vec::new(),
-        usage: None,
-        reason: StopReason::MaxTokens,
-    };
-    for ev in events {
-        match ev {
-            DaemonEvent::Text { text } => {
-                if print {
-                    print!("{text}");
-                    io::stdout().flush().map_err(|e| format!("stdout: {e}"))?;
-                }
-                turn.text.push_str(text);
-            }
-            DaemonEvent::Reasoning { text } => {
-                if print {
-                    eprint!("{text}");
-                    io::stderr().flush().map_err(|e| format!("stderr: {e}"))?;
-                }
-            }
-            DaemonEvent::ToolCalls { calls } => {
-                turn.calls = calls.iter().cloned().map(ToolCall::from).collect();
-            }
-            DaemonEvent::Usage {
-                prompt_tokens,
-                generated_tokens,
-                reasoning_tokens,
-            } => {
-                turn.usage = Some(Usage {
-                    prompt_tokens: *prompt_tokens,
-                    generated_tokens: *generated_tokens,
-                    reasoning_tokens: *reasoning_tokens,
-                    pp_toks_per_s: 0.0,
-                    tg_toks_per_s: 0.0,
-                });
-            }
-            DaemonEvent::Done { stop } => turn.reason = daemon_proto::parse_stop(stop),
-            DaemonEvent::Error { message } => return Err(message.clone()),
-        }
-    }
-    Ok(turn)
-}
-
 /// Shared `run` epilogue (local and daemon paths): `--json` object or a
 /// trailing newline plus the usage line on stderr.
 fn finish_run(turn: &crate::session::LocalTurn, json: bool, model: &str) {
@@ -1755,24 +1321,6 @@ fn finish_run(turn: &crate::session::LocalTurn, json: bool, model: &str) {
             );
         }
     }
-}
-
-/// One local generation, drained.
-/// Minimal JSON string escaping (no serde in the binary crate).
-pub(crate) fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 fn cmd_pull(model_ref: &str) -> Result<(), String> {
@@ -1937,46 +1485,6 @@ fn doctor(json: bool) {
                  placement stays CPU"
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod npu_tests {
-    use super::{NpuKind, npu_verdict_note};
-
-    #[test]
-    fn no_request_means_no_note() {
-        assert_eq!(npu_verdict_note(None, Some(NpuKind::Hexagon), 12.0), "");
-        assert_eq!(npu_verdict_note(None, None, 12.0), "");
-    }
-
-    #[test]
-    fn present_match_names_npu_and_stays_cpu() {
-        let note = npu_verdict_note(Some(NpuKind::Hexagon), Some(NpuKind::Hexagon), 12.34);
-        assert!(note.contains("NPU hexagon present"), "{note}");
-        assert!(note.contains("12.3"), "{note}");
-        assert!(note.contains("placement stays CPU"), "{note}");
-    }
-
-    #[test]
-    fn mismatch_and_absent_are_explicit() {
-        let note = npu_verdict_note(Some(NpuKind::Hexagon), Some(NpuKind::OpenVino), 1.0);
-        assert!(note.contains("only openvino present"), "{note}");
-        assert!(note.contains("no silent fallback"), "{note}");
-
-        let note = npu_verdict_note(Some(NpuKind::OpenVino), None, 1.0);
-        assert!(
-            note.contains("NPU openvino requested but not present"),
-            "{note}"
-        );
-        assert!(note.contains("no silent fallback"), "{note}");
-    }
-
-    #[test]
-    fn request_parsing_accepts_known_names() {
-        assert_eq!(NpuKind::parse("hexagon"), Some(NpuKind::Hexagon));
-        assert_eq!(NpuKind::parse("openvino"), Some(NpuKind::OpenVino));
-        assert_eq!(NpuKind::parse("tpu"), None);
     }
 }
 

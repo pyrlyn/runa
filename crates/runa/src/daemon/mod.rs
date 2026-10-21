@@ -140,7 +140,7 @@ async fn serve(
     let warm = Arc::new(Warmup::new(default_id, Arc::clone(&progress)));
     let mm = Arc::new(MemoryManager::new(
         policy,
-        crate::memory_ceiling_mib(),
+        crate::hw::memory_ceiling_mib(),
         Box::new(SysinfoBackend::new()),
     ));
     if let Some(parent) = socket.parent() {

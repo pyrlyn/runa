@@ -249,7 +249,7 @@ async fn listen(
     let idle_timeout = std::time::Duration::from_secs(policy.idle_timeout_s.max(1));
     let mm = Arc::new(MemoryManager::new(
         policy,
-        crate::memory_ceiling_mib(),
+        crate::hw::memory_ceiling_mib(),
         Box::new(runa_memory::SysinfoBackend::new()),
     ));
     let pool = Arc::new(Mutex::new(pool.with_idle_timeout(idle_timeout)));
@@ -1809,7 +1809,7 @@ pub(crate) fn model_specs_from_paths(
         let resolved = if path.is_file() {
             path
         } else {
-            crate::resolve_model(path.to_str().unwrap_or(""))?
+            crate::pull::resolve_model(path.to_str().unwrap_or(""))?
         };
         let stem = resolved
             .file_stem()

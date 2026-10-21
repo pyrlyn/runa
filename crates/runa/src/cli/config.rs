@@ -480,6 +480,31 @@ pub(crate) fn resolve_think(cli: ThinkOverrides) -> Result<ThinkConfig, String> 
     cfg.apply(&cli)
 }
 
+pub(crate) fn cli_think(
+    think: Option<&str>,
+    think_budget: Option<u32>,
+    effort: Option<&str>,
+    show_reasoning: bool,
+    no_show_reasoning: bool,
+) -> Result<ThinkConfig, String> {
+    let mut o = ThinkOverrides::default();
+    if let Some(s) = think {
+        o.think = Some(ThinkOverrides::parse_think(s)?);
+    }
+    if let Some(n) = think_budget {
+        o.budget = Some(parse_budget(&n.to_string())?);
+    }
+    if let Some(s) = effort {
+        o.effort = Some(runa_core::Effort::parse(s)?);
+    }
+    if no_show_reasoning {
+        o.show = Some(false);
+    } else if show_reasoning {
+        o.show = Some(true);
+    }
+    resolve_think(o)
+}
+
 fn think_from_env() -> Result<ThinkOverrides, String> {
     let mut o = ThinkOverrides::default();
     if let Ok(s) = std::env::var("RUNA_THINK")
@@ -714,9 +739,19 @@ fn overrides_from_think_table(
     Ok(o)
 }
 
+/// A stdio MCP server: `--mcp '<command args>'` or `[mcp.servers.<name>]`.
+/// Config data, so it lives here and `mcp` imports it (issue #31).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct McpServer {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
 /// `[mcp.servers.<name>]` from every config file; a later file replaces a
 /// server with the same name (P8.3).
-pub(crate) fn load_mcp_servers() -> Result<Vec<crate::mcp::McpServer>, String> {
+pub(crate) fn load_mcp_servers() -> Result<Vec<McpServer>, String> {
     let mut servers = std::collections::BTreeMap::new();
     for path in config_paths() {
         let Some(text) = read_config_text(&path)? else {
@@ -728,7 +763,7 @@ pub(crate) fn load_mcp_servers() -> Result<Vec<crate::mcp::McpServer>, String> {
 }
 
 fn merge_mcp_toml(
-    servers: &mut std::collections::BTreeMap<String, crate::mcp::McpServer>,
+    servers: &mut std::collections::BTreeMap<String, McpServer>,
     text: &str,
     origin: &str,
 ) -> Result<(), String> {
@@ -768,7 +803,7 @@ fn merge_mcp_toml(
         };
         servers.insert(
             name.clone(),
-            crate::mcp::McpServer {
+            McpServer {
                 name: name.clone(),
                 command: command.to_owned(),
                 args,

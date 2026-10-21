@@ -9,7 +9,8 @@ use std::ffi::OsString;
 
 use clap::Parser;
 
-use crate::cli::{Cli, Commands, ToolArgs};
+use crate::cli::{Cli, Commands};
+use crate::session::ToolArgs;
 
 pub(crate) fn run(data: &[u8]) {
     match env!("CARGO_BIN_NAME") {
@@ -131,7 +132,7 @@ fn cli_argv(data: &[u8]) {
 
 fn flags(backend: &str, mode: &str, device: Option<&str>, rpc: Option<&str>, lora: &[String]) {
     let _ = runa_core::BackendKind::parse(backend);
-    let _ = crate::cli::parse_mode_choice(mode);
+    let _ = crate::placer::parse_mode_choice(mode);
     if let Some(s) = device {
         let _ = runa_engine::parse_device_list(s);
     }
@@ -159,7 +160,7 @@ fn model_ref(s: &str) {
 
 fn tools(t: &ToolArgs) {
     for spec in &t.mcp {
-        let _ = crate::mcp::McpServer::from_flag(spec);
+        let _ = crate::config::McpServer::from_flag(spec);
     }
 }
 
@@ -171,7 +172,7 @@ fn cli_config(data: &[u8]) {
     };
     crate::config::fuzz_config_text(text);
     let _ = crate::tui::parse_slash(text);
-    let _ = crate::mcp::McpServer::from_flag(text);
+    let _ = crate::config::McpServer::from_flag(text);
 }
 
 /// Client ↔ daemon NDJSON lines over the local socket.

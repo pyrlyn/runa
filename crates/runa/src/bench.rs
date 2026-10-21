@@ -18,7 +18,8 @@ use runa_fit::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::{AutoPlacement, ModeChoice, auto_placement, parse_mode_choice, resolve_model};
+use crate::placer::{AutoPlacement, ModeChoice, auto_placement, parse_mode_choice};
+use crate::pull::resolve_model;
 
 /// SHA-256 of the first 1 MiB concatenated with the last 1 MiB.
 pub(crate) fn model_hash(path: &Path) -> Result<String, String> {
