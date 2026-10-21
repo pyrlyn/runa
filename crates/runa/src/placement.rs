@@ -19,6 +19,14 @@ use crate::config;
 use crate::fit;
 use crate::pull;
 
+/// Marks a no-fit error. Text, not a type: it crosses `runa-pool`'s
+/// `String`-typed `Placer`, serve answers it with 503 and the CLI exits 2.
+pub(crate) const UNFIT_PREFIX: &str = "unfit: ";
+
+pub(crate) fn unfit(msg: impl std::fmt::Display) -> String {
+    format!("{UNFIT_PREFIX}{msg}")
+}
+
 /// Resolve a model reference: local path → alias → pull store (P2.4).
 /// Never downloads (that is `pull`'s job — plan D12, no silent fetches).
 pub(crate) fn resolve_model(model_ref: &str) -> Result<PathBuf, String> {
@@ -121,7 +129,7 @@ pub(crate) fn preflight_grow(
         memory_ceiling_mib(),
         Box::new(SysinfoBackend::new()),
     );
-    mm.grow_for(demand).map_err(|e| format!("unfit: {e}"))
+    mm.grow_for(demand).map_err(unfit)
 }
 
 fn auto_verdict_line(report: &runa_fit::FitReport, vram: u64, src: &str) -> String {
@@ -263,7 +271,7 @@ pub(crate) fn auto_placement(
                 eprintln!("{line} · on_unfit=cpu → CPU");
                 Ok(AutoPlacement::Local(Placement::cpu()))
             }
-            config::OnUnfit::Error => Err(format!("unfit: {line} · on_unfit=error")),
+            config::OnUnfit::Error => Err(unfit(format_args!("{line} · on_unfit=error"))),
             config::OnUnfit::Cloud(spec) => {
                 let cloud = cloud::cloud_from_on_unfit(spec)?;
                 eprintln!("{line} · on_unfit=cloud:{spec}");

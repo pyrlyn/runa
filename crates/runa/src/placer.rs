@@ -78,9 +78,9 @@ pub(crate) fn local_placer(
             &config.loras,
         )? {
             crate::AutoPlacement::Local(p) => Ok(overrides.apply(p)),
-            crate::AutoPlacement::Cloud(_) => {
-                Err("unfit: auto mode chose cloud fallback; serve is local-only".into())
-            }
+            crate::AutoPlacement::Cloud(_) => Err(crate::placement::unfit(
+                "auto mode chose cloud fallback; serve is local-only",
+            )),
         }
     }))
 }
@@ -109,7 +109,9 @@ fn fit_check_no_fit(path: &Path, ctx: u32, lora_bytes: u64) -> Result<(), String
         },
     );
     if matches!(report.verdict, runa_fit::Verdict::NoFit) {
-        return Err(format!("unfit: model does not fit (ctx={ctx})"));
+        return Err(crate::placement::unfit(format_args!(
+            "model does not fit (ctx={ctx})"
+        )));
     }
     Ok(())
 }

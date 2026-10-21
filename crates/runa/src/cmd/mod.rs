@@ -12,27 +12,36 @@ use crate::cli::{Cli, Commands, MediaAction, config};
 use crate::{bench, daemon, fit, placer, pull, serve, stats_web};
 
 mod doctor;
+mod error;
 mod media;
 mod models;
 mod run;
 mod stats;
 mod tasks;
 
+use error::CmdError;
+
 #[cfg(not(fuzzing))]
 pub fn run() {
     let cli = Cli::parse();
-    if let Err(e) = config::reject_inline_in_config_files() {
-        eprintln!("runa: error: {e}");
-        std::process::exit(2);
+    let rc = bootstrap()
+        .map_err(CmdError::Config)
+        .and_then(|()| dispatch(cli.command).map_err(CmdError::from));
+    if let Err(e) = rc {
+        eprintln!("runa: error: {}", e.message());
+        std::process::exit(e.exit_code());
     }
-    match config::load_store() {
-        Ok(store) => pull::init_store(store),
-        Err(e) => {
-            eprintln!("runa: error: {e}");
-            std::process::exit(2);
-        }
-    }
-    let rc = match cli.command {
+}
+
+/// Config checks every command needs before it runs.
+fn bootstrap() -> Result<(), String> {
+    config::reject_inline_in_config_files()?;
+    pull::init_store(config::load_store()?);
+    Ok(())
+}
+
+fn dispatch(command: Commands) -> Result<(), String> {
+    match command {
         Commands::Run(args) => run::cmd_run(&args),
         Commands::Fit(args) => fit::cmd_fit(&args),
         Commands::Chat {
@@ -267,14 +276,5 @@ pub fn run() {
         Commands::Tasks { action } => tasks::cmd_tasks(action),
         Commands::Stats { since, json } => stats::cmd_stats(since.as_deref(), json),
         Commands::Web { host, port } => stats_web::cmd_web(&host, port),
-    };
-    if let Err(e) = rc {
-        let (code, msg) = if let Some(msg) = e.strip_prefix("unfit: ") {
-            (2, msg)
-        } else {
-            (1, e.as_str())
-        };
-        eprintln!("runa: error: {msg}");
-        std::process::exit(code);
     }
 }
