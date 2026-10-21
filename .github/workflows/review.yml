@@ -10,18 +10,23 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   gate:
     name: gate /review command
     # Only PR comments (not issues), only the `/review` command, only PRs
-    # targeting main that are open and not drafts.
+    # targeting main that are open and not drafts. The review job runs the PR's
+    # code (build scripts, mise tools), so only people with write access may
+    # trigger it: any GitHub user can comment on a public PR.
     if: >-
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/review') &&
-      github.event.issue.state == 'open'
+      github.event.issue.state == 'open' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+        github.event.comment.author_association)
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     outputs:
       sha: ${{ steps.pr.outputs.sha }}
       ref: ${{ steps.pr.outputs.ref }}
@@ -55,10 +60,14 @@ jobs:
     name: review checks (ubuntu)
     needs: gate
     runs-on: ubuntu-22.04
+    # Untrusted PR code runs here: no write scopes and no token left in .git/config.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
       - name: Install tools via mise (K2, D21)
         uses: jdx/mise-action@v2
         with:
@@ -83,8 +92,10 @@ jobs:
   report:
     name: report back to PR
     needs: [gate, review]
-    if: always()
+    if: always() && needs.gate.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - name: Comment result
         env:
