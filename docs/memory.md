@@ -876,3 +876,40 @@ Crate: `runa-models`. Config: `[store] dirs, cache_dir, max_bytes`
   `max_tokens`.
 - Used by: `POST /v1/infill` (`serve/infill.rs`), which answers both errors
   with HTTP 400.
+
+## P21.1 — the `runa-core` contract
+
+### `trait runa_core::Backend { fn generate(&mut self, req: &Request) -> Result<EventStream<'_>, BackendError> }`
+
+- One generation: `Request` (messages, `max_tokens`, stop strings, think,
+  JSON Schema, tools, `tool_choice`) in, `Event` out (`Text`, `Reasoning`,
+  `ToolCalls`, `Usage`, `Done(StopReason)`). The stream ends with `Done`;
+  `Usage`, when counted, comes right before it. `Reasoning` is omitted when
+  `think.show` is false.
+- `ChatMessage`, `Usage`, `StopReason` and `Mode` live in `runa-core`;
+  `runa-engine` re-exports them, and its `GenEvent` is `runa_core::Event`.
+- Implemented by: `runa_engine::LoadedModel`, `runa_engine::MistralModel`
+  (feature `mistralrs`), `runa_pool::engine::LocalEngine`,
+  `runa_cloud::OpenAiBackend`, `runa_cloud::AnthropicBackend`.
+
+### `struct runa_core::ScriptedBackend`
+
+- `ScriptedBackend::new(turns)` replays one scripted `Vec<Event>` per
+  `generate` call and records every request in `requests`; a call past the
+  last turn fails. For tests that must not load a model or reach a network.
+
+### `fn OpenAiBackend::new(client, model)` / `fn AnthropicBackend::new(client, model)`
+
+- Each owns a current-thread tokio runtime: call `generate` from a plain
+  thread or `spawn_blocking`, never inside an async task. One non-streamed
+  request per call.
+- Errors: stop strings and `tool_choice` are refused, not dropped. Anthropic
+  maps `system` messages to `system`, `tool` messages to `tool_result`
+  blocks, and a JSON Schema to the forced `answer` tool (thinking off); it
+  refuses to replay assistant tool calls while thinking is on, because the
+  portable message carries no thinking signatures.
+
+### `fn runa_cloud::answer_tool(schema: Value) -> (Vec<Value>, Value)`
+
+- `tools` and the forced `tool_choice` for Anthropic structured output
+  (`ANSWER_TOOL` = `"answer"`). Used by `runa run` and `AnthropicBackend`.

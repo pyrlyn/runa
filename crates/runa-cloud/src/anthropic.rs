@@ -99,6 +99,24 @@ pub fn tools_from_openai(tools: &Value) -> Vec<Value> {
         .collect()
 }
 
+/// Name of the forced tool that carries structured output: the Messages
+/// API has no `response_format`, so the schema rides a tool the model must
+/// call, and that call's input is the answer.
+pub const ANSWER_TOOL: &str = "answer";
+
+/// `tools` and the forced `tool_choice` for structured output (P8.1).
+/// Forced tool use rules out thinking: callers turn it off.
+pub fn answer_tool(schema: Value) -> (Vec<Value>, Value) {
+    (
+        vec![json!({
+            "name": ANSWER_TOOL,
+            "description": "Reply with the answer in this shape.",
+            "input_schema": schema,
+        })],
+        json!({"type": "tool", "name": ANSWER_TOOL}),
+    )
+}
+
 /// Outgoing Messages request.
 #[derive(Debug, Clone)]
 pub struct AnthropicRequest {

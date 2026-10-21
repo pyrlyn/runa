@@ -5,15 +5,15 @@
 //! Command parsing and the subcommands other than the chat session.
 
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Read};
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use runa_core::{BackendKind, ThinkConfig, ThinkOverrides, parse_budget};
 use runa_engine::{
     ChatMessage, GenerateRequest, KvKind, LoadConfig, LoraSpec, Mode, Placement, PromptCache,
-    SamplingConfig, StopReason, ToolCall, Usage, VisionFrame, VisionSource, parse_device_list,
-    parse_rpc_list, parse_tensor_split, planner_kv_type,
+    SamplingConfig, Usage, VisionFrame, VisionSource, parse_device_list, parse_rpc_list,
+    parse_tensor_split, planner_kv_type,
 };
 use runa_fit::{
     Descriptor, NpuKind, Reader, check_fit, estimate_compute, estimate_kv, estimate_speed_single,
@@ -1680,49 +1680,7 @@ pub(crate) fn drain_daemon(
     events: &[daemon_proto::DaemonEvent],
     print: bool,
 ) -> Result<crate::session::LocalTurn, String> {
-    use daemon_proto::DaemonEvent;
-    let mut turn = crate::session::LocalTurn {
-        text: String::new(),
-        calls: Vec::new(),
-        usage: None,
-        reason: StopReason::MaxTokens,
-    };
-    for ev in events {
-        match ev {
-            DaemonEvent::Text { text } => {
-                if print {
-                    print!("{text}");
-                    io::stdout().flush().map_err(|e| format!("stdout: {e}"))?;
-                }
-                turn.text.push_str(text);
-            }
-            DaemonEvent::Reasoning { text } => {
-                if print {
-                    eprint!("{text}");
-                    io::stderr().flush().map_err(|e| format!("stderr: {e}"))?;
-                }
-            }
-            DaemonEvent::ToolCalls { calls } => {
-                turn.calls = calls.iter().cloned().map(ToolCall::from).collect();
-            }
-            DaemonEvent::Usage {
-                prompt_tokens,
-                generated_tokens,
-                reasoning_tokens,
-            } => {
-                turn.usage = Some(Usage {
-                    prompt_tokens: *prompt_tokens,
-                    generated_tokens: *generated_tokens,
-                    reasoning_tokens: *reasoning_tokens,
-                    pp_toks_per_s: 0.0,
-                    tg_toks_per_s: 0.0,
-                });
-            }
-            DaemonEvent::Done { stop } => turn.reason = daemon_proto::parse_stop(stop),
-            DaemonEvent::Error { message } => return Err(message.clone()),
-        }
-    }
-    Ok(turn)
+    crate::session::drain_local(events.iter().map(|ev| ev.clone().into_event()), print)
 }
 
 /// Shared `run` epilogue (local and daemon paths): `--json` object or a

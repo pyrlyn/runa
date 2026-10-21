@@ -356,6 +356,29 @@ impl DaemonEvent {
         }
     }
 
+    /// Client side: back to the core event; a daemon `error` becomes `Err`.
+    pub fn into_event(self) -> Result<GenEvent, String> {
+        Ok(match self {
+            DaemonEvent::Text { text } => GenEvent::Text(text),
+            DaemonEvent::Reasoning { text } => GenEvent::Reasoning(text),
+            DaemonEvent::ToolCalls { calls } => {
+                GenEvent::ToolCalls(calls.into_iter().map(ToolCall::from).collect())
+            }
+            DaemonEvent::Usage {
+                prompt_tokens,
+                generated_tokens,
+                reasoning_tokens,
+            } => GenEvent::Usage(runa_engine::Usage {
+                prompt_tokens,
+                generated_tokens,
+                reasoning_tokens,
+                ..runa_engine::Usage::default()
+            }),
+            DaemonEvent::Done { stop } => GenEvent::Done(parse_stop(&stop)),
+            DaemonEvent::Error { message } => return Err(message),
+        })
+    }
+
     /// Terminal line: `done` stops, `error` fails the request.
     pub fn is_terminal(&self) -> bool {
         matches!(self, DaemonEvent::Done { .. } | DaemonEvent::Error { .. })

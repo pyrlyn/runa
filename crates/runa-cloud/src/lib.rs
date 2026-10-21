@@ -9,6 +9,7 @@
 //! Anthropic: P3.6 (`reqwest` + SSE). OpenAI: P3.5 (`async-openai` 0.41.3).
 
 mod anthropic;
+mod backend;
 mod media;
 pub mod openai;
 mod prices;
@@ -16,9 +17,11 @@ mod routing;
 mod secrets;
 
 pub use anthropic::{
-    AnthropicClient, AnthropicEvent, AnthropicRequest, ChatTurn, ImageBlock, PdfBlock,
-    adaptive_model, build_body, parse_message, parse_sse, thinking_body, tools_from_openai,
+    ANSWER_TOOL, AnthropicClient, AnthropicEvent, AnthropicRequest, ChatTurn, ImageBlock, PdfBlock,
+    adaptive_model, answer_tool, build_body, parse_message, parse_sse, thinking_body,
+    tools_from_openai,
 };
+pub use backend::{AnthropicBackend, OpenAiBackend};
 pub use media::{
     MediaError, MediaLimits, PreparedImage, RawImage, anthropic_image_blocks, anthropic_pdf_block,
     downscale, frames_as_images, openai_image_parts, prepare_images,

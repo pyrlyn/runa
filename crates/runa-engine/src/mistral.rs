@@ -89,6 +89,16 @@ impl MistralModel {
     }
 }
 
+impl runa_core::Backend for MistralModel {
+    fn generate(
+        &mut self,
+        req: &runa_core::Request,
+    ) -> Result<runa_core::EventStream<'_>, runa_core::BackendError> {
+        let generation = MistralModel::generate(self, GenerateRequest::from(req))?;
+        Ok(Box::new(generation.map(|ev| ev.map_err(Into::into))))
+    }
+}
+
 /// Lazily-driven mistral.rs generation. Terminal order matches the ggml
 /// backend: queued `Text`/`Reasoning` pieces, then `Usage`, then `Done`.
 pub struct MistralGeneration {
