@@ -12,9 +12,11 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use axum::extract::Request;
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
-use axum::http::header;
-use axum::response::IntoResponse;
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Value, json};
@@ -47,7 +49,13 @@ async fn listen(host: &str, port: u16) -> Result<(), String> {
         .route("/stats.css", get(style))
         .route("/health", get(health))
         .route("/api/snapshot", get(snapshot))
-        .route("/ws", get(move |ws| ws_upgrade(ws, rx.clone())));
+        .route(
+            "/ws",
+            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+                ws_upgrade(headers, ws, rx.clone())
+            }),
+        )
+        .layer(middleware::from_fn(require_local_host));
     let addr = bind_addr(host, port)?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -104,8 +112,31 @@ async fn snapshot() -> Result<Json<Value>, (axum::http::StatusCode, String)> {
     }
 }
 
-async fn ws_upgrade(ws: WebSocketUpgrade, rx: watch::Receiver<String>) -> impl IntoResponse {
+/// The journal stays on this machine: refuse a `Host` that is not local
+/// (DNS rebinding) before any route runs.
+async fn require_local_host(req: Request, next: Next) -> Response {
+    let local = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(crate::serve::is_local_host_header);
+    if local {
+        next.run(req).await
+    } else {
+        StatusCode::FORBIDDEN.into_response()
+    }
+}
+
+async fn ws_upgrade(
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+    rx: watch::Receiver<String>,
+) -> Response {
+    if !crate::serve::ws_origin_allowed(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     ws.on_upgrade(move |socket| push(socket, rx))
+        .into_response()
 }
 
 async fn push(mut socket: WebSocket, mut rx: watch::Receiver<String>) {
