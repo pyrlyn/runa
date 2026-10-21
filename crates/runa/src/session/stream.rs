@@ -1,0 +1,68 @@
+// Copyright (c) 2026 Ivan Tugay
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
+
+//! Draining a generation to the terminal: answer to stdout, reasoning to stderr.
+
+use std::io::{self, Write};
+
+use runa_engine::{ChatMessage, GenEvent, StopReason, ToolCall, Usage};
+
+use super::history;
+
+pub(crate) struct LocalTurn {
+    pub(crate) text: String,
+    pub(crate) calls: Vec<ToolCall>,
+    pub(crate) usage: Option<Usage>,
+    pub(crate) reason: StopReason,
+}
+
+/// Drain a generation; with `print`, answer text streams to stdout and
+/// reasoning to stderr. Generic over every event source: the ggml and
+/// mistral streams, any `runa_core::Backend`, and the daemon wire.
+pub(crate) fn drain_local<E: std::fmt::Display>(
+    stream: impl Iterator<Item = Result<GenEvent, E>>,
+    print: bool,
+) -> Result<LocalTurn, String> {
+    let mut turn = LocalTurn {
+        text: String::new(),
+        calls: Vec::new(),
+        usage: None,
+        reason: StopReason::MaxTokens,
+    };
+    for ev in stream {
+        match ev.map_err(|e| e.to_string())? {
+            GenEvent::Text(piece) => {
+                if print {
+                    print!("{piece}");
+                    io::stdout().flush().map_err(|e| format!("stdout: {e}"))?;
+                }
+                turn.text.push_str(&piece);
+            }
+            GenEvent::Reasoning(piece) => {
+                if print {
+                    eprint!("{piece}");
+                    io::stderr().flush().map_err(|e| format!("stderr: {e}"))?;
+                }
+            }
+            GenEvent::Usage(u) => turn.usage = Some(u),
+            GenEvent::ToolCalls(calls) => turn.calls = calls,
+            GenEvent::Done(r) => turn.reason = r,
+        }
+    }
+    Ok(turn)
+}
+
+/// Record the assistant turn that made tool calls; returns the calls.
+/// With `print`, the streamed answer line is ended first.
+pub(crate) fn push_tool_calls(
+    messages: &mut Vec<ChatMessage>,
+    turn: &LocalTurn,
+    print: bool,
+) -> Vec<ToolCall> {
+    if print && !turn.calls.is_empty() && !turn.text.is_empty() {
+        println!();
+    }
+    history::push_tool_calls(messages, &turn.text, &turn.calls);
+    turn.calls.clone()
+}

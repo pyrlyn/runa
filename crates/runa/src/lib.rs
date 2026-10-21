@@ -17,12 +17,14 @@
 mod bench;
 pub(crate) mod cli;
 mod cloud;
+mod cmd;
 pub mod daemon;
 mod dashboard;
 mod fit;
 #[cfg(fuzzing)]
 pub mod fuzz_hooks;
 mod mcp;
+mod placement;
 pub mod placer;
 mod pull;
 pub mod serve;
@@ -32,9 +34,10 @@ mod tui;
 mod usage_log;
 
 pub(crate) use cli::config;
-pub use cli::run;
-pub(crate) use cli::{
-    AutoPlacement, ModeChoice, auto_placement, json_escape, memory_ceiling_mib, parse_mode_choice,
+pub use cmd::run;
+pub(crate) use daemon::proto as daemon_proto;
+pub(crate) use placement::{
+    AutoPlacement, ModeChoice, auto_placement, memory_ceiling_mib, parse_mode_choice,
     preflight_grow, ram_bytes, resolve_model, vram_bytes,
 };
-pub(crate) use daemon::proto as daemon_proto;
+pub(crate) use session::json_escape;

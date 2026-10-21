@@ -11,6 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
+pub(crate) mod client;
 pub(crate) mod proto;
 #[cfg(unix)]
 use std::sync::atomic::AtomicU32;
@@ -249,6 +250,13 @@ fn bind_daemon_socket_locked(socket: &Path) -> Result<(UnixListener, (u64, u64))
     }
     let listener =
         UnixListener::bind(socket).map_err(|e| format!("bind {}: {e}", socket.display()))?;
+    // A client can make the daemon load any model path it names, so other
+    // local users must not reach the socket whatever the umask was.
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("chmod {}: {e}", socket.display()))?;
+    }
     let id = socket_id(socket)
         .ok_or_else(|| format!("socket {}: bound but cannot stat", socket.display()))?;
     Ok((listener, id))
@@ -660,6 +668,23 @@ mod tests {
             .unwrap();
             let events = serve_request(&pool, &mm, &stale).await;
             assert!(matches!(events[0], DaemonEvent::Error { .. }));
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_socket_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("d.sock");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (_listener, _id) = bind_daemon_socket(&path).unwrap();
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "{mode:o}");
         });
     }
 

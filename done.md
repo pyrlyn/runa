@@ -1731,3 +1731,49 @@ could not build for lack of disk space; `cargo clippy --workspace -- -D warnings
 `cargo fmt --all -- --check` clean; `python3 scripts/lint-tasks.py docs/tasks.md`
 0 errors. `moon run :test` was not run (no disk space for weights). Code size: about 615
 added non-test lines, over the 500-line limit, mostly doc comments.
+### P21.1. Split the `runa` CLI and chat-session modules (GitHub issue #30)
+
+`crates/runa/src/main.rs` is already a thin entry (P17.7), but its code now sits in two fat files: `cli/mod.rs` (2124 lines: clap types, dispatch, placement policy, flag input, `run`, daemon client, small commands) and `session/mod.rs` (1249 lines: history, REPL, TUI loop). The CLI exit code is picked by `strip_prefix("unfit: ")`.
+
+Plan:
+1. `cli/mod.rs` keeps the clap types only; flag/stdin input moves to `cli/input.rs`; hardware and placement policy to a top-level `placement.rs`.
+2. `cmd/mod.rs` holds `run()` (bootstrap, dispatch, exit code); one module per command: `cmd/run.rs`, `cmd/media.rs`, `cmd/tasks.rs`, `cmd/stats.rs`, `cmd/models.rs`, `cmd/doctor.rs`.
+3. Daemon client (`daemon_generate`, `drain_daemon`, the socket probe) moves to `daemon/client.rs`.
+4. `session/` splits into `history.rs` and `format.rs` (no printing, unit tests), `stream.rs` (printing drain), `repl.rs`, `screen.rs` (TUI loop); `mod.rs` keeps the session state.
+5. Exit codes come from a `CmdError` enum (`Config`/`Unfit` → 2, else 1).
+6. CLAUDE.md §8 lists the new modules; pure moves otherwise, CLI output byte-identical.
+
+Machine check: no file in `crates/runa/src` above ~1000 lines except `serve/mod.rs` and `cli/config.rs`; `cargo test --workspace` (trycmd, e2e, docs lint) green; `cargo clippy --workspace -- -D warnings`; `python3 scripts/lint-tasks.py docs/tasks.md`.
+
+Completed 2026-10-21.
+
+Check (evidence), run on this Mac (arm64) with `llama-cpp-2`/`llama-cpp-sys-2`
+pinned back to `=0.1.133` locally only, because `origin/main` at 525b1bb does
+not compile against the `=0.1.159` pins from #107/#108 (26 errors in
+`runa-engine`, before and after this change):
+`cargo fmt --all -- --check` clean; `cargo clippy --workspace -- -D warnings`
+and `cargo clippy -p runa --all-targets -- -D warnings` clean;
+`cargo test -p runa --lib` 147 passed; `cargo test -p runa-memory` green;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors;
+`cargo test --workspace --no-fail-fast`: 547 passed, 43 failed, 2 ignored. Every
+failure reads a fixture this checkout lacks: 41 need
+`tests/fixtures/qwen2-0_5b-instruct-q4_0.gguf` (git-ignored, not downloaded in
+this session) and 2 read `synthetic-*.gguf`, which are Git LFS pointers here
+("wrong magic bytes"). `trycmd`, `doctor`, `security`, `secrets`, `cloud`,
+`media` and the 7 weight-free `e2e` tests pass. The model-backed `e2e` tests
+still need a run with the qwen2 fixture.
+Line counts after the split: largest new file `cmd/run.rs` 572;
+`cli/mod.rs` 493, `session/mod.rs` 122; only `serve/mod.rs` (2348) and
+`cli/config.rs` (1491) stay above 1000, as the issue allows.
+### P21.0. Audit 2026-10-19: safe fixes
+
+Completed 2026-10-19.
+
+Three review passes (module walk, entry points and threats, docs vs code and tests). The findings that are safe to fix in code are fixed here; the rest are P21.1–P21.13 in `plan.md`.
+
+- `.github/workflows/review.yml`: `/review` needs a comment from an OWNER, MEMBER or COLLABORATOR. The job that runs PR code gets `contents: read` and `persist-credentials: false`. Before, any GitHub user could run a PR's build scripts with a `pull-requests: write` token in `.git/config` (high, pass 2).
+- `serve`'s `/dashboard/ws` and `runa web`'s `/ws` answer 403 when a browser `Origin` does not match `Host`; `runa web` also refuses a non-local `Host` (DNS rebinding). Before, any page could read the dashboard stream and the usage journal (medium, pass 2).
+- The daemon socket is chmod 0600 after bind (low, pass 1).
+- `pull` checks the Hub-reported size against the limit before each snapshot file download, not only after (low, pass 1).
+
+Check (evidence): `actionlint` on `review.yml` clean; `rustfmt --edition 2024 --check` clean on the changed files; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors. New tests `ws_origin_must_match_host_when_present`, `local_host_header_rejects_rebinding_names`, `daemon_socket_is_owner_only`, `oversized_hub_size_is_refused_before_download` are not run: `main` does not compile against llama-cpp-2 0.1.159 (P21.1), so they need CI on a fixed `main`.

@@ -16,6 +16,8 @@ the server does not send them anywhere else.
 The UI loads `/dashboard/snapshot` once (TanStack Query), then applies each
 websocket frame on top of that cache. `--api-key` covers `/v1` only.
 `/dashboard` stays open on the same bind so a browser can load the page.
+`/dashboard/ws` answers 403 when a browser's `Origin` does not match the
+`Host` it dialled, so a page on another site cannot read the stream.
 
 ## Quotas
 
