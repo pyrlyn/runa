@@ -73,7 +73,7 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 
 | Path | Responsibility |
 |------|----------------|
-| `crates/runa` | Library plus CLI. `main.rs` calls `run`. Modules: `cli/` (clap and `config.rs`), `serve/`, `daemon/` (`mod.rs` and `proto.rs`), `session/`, plus `tui`, `mcp`, `pull`, `bench`, `fit`, `placer`, `cloud` |
+| `crates/runa` | Library plus CLI. `main.rs` calls `run`. Modules: `cli/` (clap and `config.rs`), `serve/`, `daemon/` (`mod.rs` and `proto.rs`), `session/`, plus `tui`, `mcp`, `pull`, `bench`, `fit`, `placer`, `cloud`, `hw`, `json`. The module graph stays acyclic: no module reaches back into `lib.rs` or into a parent that declares it (`root:lint-modules`) |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors. No engine dependency |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling loop, mtmd, state save; vendored patches behind features (`rpc`, `hexagon`/`openvino` stubs) |
 | `crates/runa-pool` | `LocalEngine` (backend dispatch) and `ModelPool` behind serve/daemon, as a library: another program embeds local inference through it (P16.2). Placement is injected (`Placer`), so it needs no config or fit code |
@@ -84,7 +84,7 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 | `crates/runa-cloud` | OpenAI + Anthropic adapters, price table (`docs/prices.toml`) |
 | `crates/runa-kernels` | Own kernels behind the D1 gate; Zig preferred (D23) |
 | `tests/fixtures` | Fixtures — read its `README.md` before adding a file |
-| `scripts/` | `lint-tasks.py`, fixture guards/cleanup, `perf-regress.py`, `release.sh` (the release version rule, P13.3), dist and smoke helpers |
+| `scripts/` | `lint-tasks.py`, `check-module-cycles.py`, fixture guards/cleanup, `perf-regress.py`, `release.sh` (the release version rule, P13.3), dist and smoke helpers |
 | `docs/` | Documentation, indexed by `docs/README.md`; ADRs in `docs/adr/` |
 
 Rust owns orchestration, C owns the compute core (D1); do not rewrite ggml,
@@ -106,6 +106,7 @@ Run these before requesting a merge or closing a task. They mirror
 | Fast tests | `moon run root:test-fast` (library tests plus weight-free integration tests; no GGUF download, no engine e2e) |
 | Tests | `cargo test --workspace --lib`, then `moon run :test` for the full set |
 | Registry lint | `moon run root:lint-tasks` (or `python3 scripts/lint-tasks.py docs/tasks.md`) |
+| Module cycles | `moon run root:lint-modules` (or `python3 scripts/check-module-cycles.py`; local only, not in `ci.yml` yet) |
 | Memory crate | `cargo test -p runa-memory` (claim/release/double-claim, P7.4) |
 | Fixture budget | `python3 scripts/check-fixture-size.py` (≤ 3 GiB per file) |
 | Perf gate self-test | `python3 scripts/perf-regress.py --self-test` |
