@@ -434,7 +434,7 @@ Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo
 
 #### Crates today
 
-- `crates/runa` — CLI binary: clap surface in `main.rs`, plus `serve.rs`, `daemon.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `placer.rs`.
+- `crates/runa` — library plus thin binary: clap types in `cli/`, one module per command in `cmd/`, chat in `session/`, plus `serve/`, `daemon/`, `placement.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `placer.rs`.
 - `crates/runa-core` — `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors (no engine dependency).
 - `crates/runa-engine` — `llama-cpp-2` wrapper: load, placement, sampling, mtmd, state save; features such as `rpc`.
 - `crates/runa-pool` — `LocalEngine` backend dispatch and `ModelPool` behind serve/daemon; a library so another program can embed local inference (P16.2).
@@ -446,7 +446,7 @@ Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo
 
 #### Commands today
 
-From `crates/runa/src/main.rs` `Commands`: `run` / `chat`, `fit`, `pull` / `models`, `bench`, `serve`, `daemon`, `doctor`, `media`, `tasks`.
+From `crates/runa/src/cli/mod.rs` `Commands`: `run` / `chat`, `fit`, `pull` / `models`, `bench`, `serve`, `daemon`, `doctor`, `media`, `tasks`.
 
 #### Gaps vs llama.cpp / Ollama
 
@@ -467,7 +467,7 @@ From `crates/runa/src/main.rs` `Commands`: `run` / `chat`, `fit`, `pull` / `mode
 #### Architecture
 
 - **Good split:** `runa-core` Backend trait; `runa-fit` isolated from the engine; cloud adapters in their own crate.
-- **Coupling:** most product surface concentrates in fat `crates/runa/src/main.rs` — hard to reuse serve/daemon without the binary.
+- **Coupling:** serve and the daemon link through the `runa` library (P17.7) and the CLI is split per command (P21.1); the auto placement policy still lives in the `runa` crate and reaches the pool through a `String`-typed `Placer`.
 - **Dual-backend drift risk:** GGUF (`llama-cpp-2`) + optional mistral.rs; pins live in `docs/versions.md`.
 - **`runa-memory` mixes** runtime adaptive memory with the plan-file claim registry (different lifetimes/audiences).
 
