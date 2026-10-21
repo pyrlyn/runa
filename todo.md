@@ -1,1 +1,0 @@
-- P21.1. Split the `runa` CLI and chat-session modules (GitHub issue #30)

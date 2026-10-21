@@ -34,23 +34,8 @@ Stale review items, closed and not added. The review checked the older roadmap l
 | --- | --- | --- | --- | --- | --- |
 | P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
 | K7 | in progress | medium | M | ready | Grok Bot |
-| P21.1 | in progress | high | M | ready | Claude Opus 5.5 |
 
 ## Tasks
-
-### P21.1. Split the `runa` CLI and chat-session modules (GitHub issue #30)
-
-`crates/runa/src/main.rs` is already a thin entry (P17.7), but its code now sits in two fat files: `cli/mod.rs` (2124 lines: clap types, dispatch, placement policy, flag input, `run`, daemon client, small commands) and `session/mod.rs` (1249 lines: history, REPL, TUI loop). The CLI exit code is picked by `strip_prefix("unfit: ")`.
-
-Plan:
-1. `cli/mod.rs` keeps the clap types only; flag/stdin input moves to `cli/input.rs`; hardware and placement policy to a top-level `placement.rs`.
-2. `cmd/mod.rs` holds `run()` (bootstrap, dispatch, exit code); one module per command: `cmd/run.rs`, `cmd/media.rs`, `cmd/tasks.rs`, `cmd/stats.rs`, `cmd/models.rs`, `cmd/doctor.rs`.
-3. Daemon client (`daemon_generate`, `drain_daemon`, the socket probe) moves to `daemon/client.rs`.
-4. `session/` splits into `history.rs` and `format.rs` (no printing, unit tests), `stream.rs` (printing drain), `repl.rs`, `screen.rs` (TUI loop); `mod.rs` keeps the session state.
-5. Exit codes come from a `CmdError` enum (`Config`/`Unfit` → 2, else 1).
-6. CLAUDE.md §8 lists the new modules; pure moves otherwise, CLI output byte-identical.
-
-Machine check: no file in `crates/runa/src` above ~1000 lines except `serve/mod.rs` and `cli/config.rs`; `cargo test --workspace` (trycmd, e2e, docs lint) green; `cargo clippy --workspace -- -D warnings`; `python3 scripts/lint-tasks.py docs/tasks.md`.
 
 ### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
 
