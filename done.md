@@ -1692,3 +1692,46 @@ Check (evidence): `cargo test -p runa-engine --lib infill` 7 passed;
 `auto_npu_verdict_mentioned_only_when_requested`) read `synthetic-*.gguf`, which
 `origin/main` stores as Git LFS pointers ("wrong magic bytes"), and fail the same
 way without this change.
+
+## GitHub issues
+
+### Issue #31. Remove module cycles in crates/runa
+
+Modules in `crates/runa/src` called back into the crate root (the items `lib.rs`
+re-exported from `cli`), and `config` and `mcp` used each other, so no module
+could move to its own crate. Done when no module names a root item, `config`
+does not reference `mcp`, and a script keeps the module graph acyclic.
+
+Plan (as executed):
+1. `hw.rs` (new, leaf): `vram_bytes`, `ram_bytes`, `memory_ceiling_mib`, and
+   `machine_config` from `fit.rs` (it had to leave `fit`, or
+   `placer → fit → bench → placer` stays a cycle).
+2. `placer.rs`: `parse_mode`, `ModeChoice`, `parse_mode_choice`,
+   `preflight_grow`, `AutoPlacement`, `auto_placement` and the NPU note helpers
+   with their tests.
+3. `pull.rs`: `resolve_model`, next to `find_local`. It cannot go into `config`
+   because `pull` already imports `config`.
+4. `json.rs` (new, leaf): `escape`, the old `json_escape`, unchanged, plus a
+   round-trip test.
+5. `config`: the `McpServer` struct (config data) and `cli_think`; `mcp` keeps
+   `McpServer::from_flag` and imports the type.
+6. `session`: `ToolArgs`, `attach_prompt_cache(_local)`, `daemon_generate`,
+   `drain_daemon`, which `session` used to import from `cli`.
+7. `lib.rs` re-exports only `cli::run` and the `config` / `daemon_proto` module
+   aliases.
+8. `scripts/check-module-cycles.py` (with `--self-test`) and the
+   `root:lint-modules` moon task; listed in CLAUDE.md §8/§9 and CONTRIBUTING.md.
+
+Check (evidence): `python3 scripts/check-module-cycles.py` reports
+"20 modules, no cycles" (on `origin/main` it reported two cycles: `config ↔ mcp`
+and an 11-module cycle through the root); `--self-test` 5/5 ok;
+`rg 'crate::[a-z_]+\(' crates/runa/src --glob '!main.rs'` finds nothing.
+`origin/main` does not build: Renovate #107/#108 bumped `llama-cpp-2` and
+`llama-cpp-sys-2` to 0.1.159, and `runa-engine` has 26 compile errors against
+that API. So the checks below ran with both pins set back to 0.1.133 locally;
+that pin change is not committed. `cargo test -p runa --lib` 142 passed;
+`cargo test -p runa --test trycmd --test doctor --test cloud --test security
+--test secrets --test media` all passed; `cargo clippy -p runa --all-targets --
+-D warnings` and `cargo fmt --all -- --check` clean. Not run: the full
+`moon run :test`, because the disk kept running out and the git-ignored qwen2
+fixture was missing (`--test bench` failed on "no such model file").
