@@ -23,7 +23,7 @@ hexagon = ["runa-engine/hexagon"]
 openvino = ["runa-engine/openvino"]
 mtmd = ["runa-engine/mtmd"]
 # P9.2: mistral.rs backend for safetensors dirs (`--backend mistral`).
-mistralrs = ["runa-engine/mistralrs"]
+mistralrs = ["runa-engine/mistralrs", "runa-pool/mistralrs"]
 # P9.3: real ggml RPC backend (vendored b7709 `ggml-rpc.cpp` in runa-engine).
 # Enables `--rpc` registration in `load()`; without it `--rpc` fails
 # explicitly with `Unsupported`. Default builds stay GGUF-local.
@@ -34,16 +34,18 @@ clap = { workspace = true, features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.39"
-raw-cpuid = "11"
 chrono = "0.4"
-rayon = "1"
 anyhow = { workspace = true }
 runa-core = { path = "../runa-core" }
 runa-fit = { path = "../runa-fit" }
 runa-memory = { path = "../runa-memory" }
 # P2.3 run/chat CLI on the engine wrapper.
 runa-engine = { path = "../runa-engine" }
-# P3.8 secrets (env / keyring / reject inline keys).
+# P16.2 engine wrapper + model pool, shared with embedders of local inference.
+runa-pool = { path = "../runa-pool" }
+# P18.1 model store: [store] folders, download store, size cap.
+runa-models = { path = "../runa-models" }
+# P3.8 secrets (env / keychain / reject inline keys). P17.19 reads them through keychain-secret.
 runa-cloud = { path = "../runa-cloud" }
 runa-media = { path = "../runa-media" }
 # P2.3 REPL line editing + file history.
@@ -53,8 +55,8 @@ hf-hub = { version = "=1.0.0", features = ["blocking"] }
 # P2.4 SHA-256 verification of downloads.
 sha2 = "=0.11.0"
 # P2.4 minimal config ([models] aliases; full figment layering later).
-toml = "=1.1.5"
-axum = { version = "0.8", features = ["json", "http1", "tokio", "multipart"] }
+toml = "=1.1.8"
+axum = { version = "0.8", features = ["json", "http1", "tokio", "multipart", "ws"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "process", "signal", "sync", "time"] }
 futures = "0.3.34"
 # P8.3 MCP client (stdio servers) for the run/chat tool loop.

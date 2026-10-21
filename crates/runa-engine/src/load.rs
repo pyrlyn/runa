@@ -184,6 +184,11 @@ pub enum EngineError {
     /// return `NoKvCacheSlot`.
     #[error("context_length_exceeded: prompt has {prompt_tokens} tokens, n_ctx is {n_ctx}")]
     ContextExceeded { prompt_tokens: u32, n_ctx: u32 },
+    /// The model has no fill-in-the-middle tokens, or the request mixes
+    /// infill with chat-only inputs (P20.1). The prefix lets `serve` answer
+    /// 400 instead of 500.
+    #[error("infill_unsupported: {0}")]
+    InfillUnsupported(String),
     /// `--device` index/name is unknown (P2.9).
     #[error("{0}")]
     BadDevices(String),

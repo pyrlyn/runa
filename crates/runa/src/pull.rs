@@ -18,33 +18,44 @@
 //! `hf:<repo>:safetensors`: `config.json` + tokenizer + `*.safetensors`
 //! land as a model directory the mistral backend loads locally.
 
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hf_hub::{HFClientSync, split_id};
 use runa_fit::{Fetcher, HfRef, ModelSource, parse_model_ref, pick_quant, resolve_hf_url};
+use runa_models::ModelStore;
 use sha2::{Digest, Sha256};
 
 use crate::config::AliasTable;
 
-/// Data root: `$XDG_DATA_HOME/runa`, else `~/.local/share/runa`.
-pub fn data_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME")
-        && !xdg.is_empty()
-    {
-        return PathBuf::from(xdg).join("runa");
-    }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home)
-        .join(".local")
-        .join("share")
-        .join("runa")
+/// The `[store]` config, installed once at startup by [`init_store`].
+static STORE: OnceLock<ModelStore> = OnceLock::new();
+
+/// Install the configured store; a second call is ignored.
+pub fn init_store(store: ModelStore) {
+    let _ = STORE.set(store);
 }
 
-/// Local model store.
+/// The installed store, or the default one. The default is rebuilt on every
+/// call because it reads `XDG_DATA_HOME`, which the tests repoint.
+fn store() -> Cow<'static, ModelStore> {
+    match STORE.get() {
+        Some(s) => Cow::Borrowed(s),
+        None => Cow::Owned(ModelStore::default()),
+    }
+}
+
+/// Download store (`[store] cache_dir`, default `<data dir>/models`).
 pub fn models_dir() -> PathBuf {
-    data_dir().join("models")
+    store().cache_dir().to_path_buf()
+}
+
+/// Extra model folders from `[store] dirs`.
+pub fn extra_dirs() -> Vec<PathBuf> {
+    store().dirs().to_vec()
 }
 
 /// Store directory for one repo (`owner--name`, filesystem-safe).
@@ -105,20 +116,15 @@ fn legacy_repo_dirname(repo: &str) -> String {
         .collect()
 }
 
-/// Refuse fresh `pull` downloads larger than this (3 GiB).
-///
-/// Files above the limit do not fit the test-fixture budget and usually mean
-/// a wrong quant tag. Override with `RUNA_MAX_MODEL_BYTES` (integer bytes)
-/// on machines that genuinely need bigger files. The guard applies to fresh
-/// downloads only, never to already-verified cached files.
-pub const MAX_MODEL_BYTES: u64 = 3 * 1024 * 1024 * 1024;
-
+/// Cap on fresh `pull` downloads: `RUNA_MAX_MODEL_BYTES` (integer bytes),
+/// else `[store] max_bytes`, else 3 GiB. Already-verified cached files are
+/// never re-checked against it.
 fn max_model_bytes() -> u64 {
     std::env::var("RUNA_MAX_MODEL_BYTES")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|v| *v > 0)
-        .unwrap_or(MAX_MODEL_BYTES)
+        .unwrap_or_else(|| store().max_bytes())
 }
 
 fn check_size_limit(size: u64, repo: &str, file: &str) -> Result<(), String> {
@@ -130,6 +136,15 @@ fn check_size_limit(size: u64, repo: &str, file: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Refuse before downloading when the Hub already reports a size over the
+/// limit; the post-download check alone lets the bytes land on disk first.
+fn precheck_remote_size(meta: &runa_fit::FileMeta, repo: &str, file: &str) -> Result<(), String> {
+    match meta.size {
+        Some(size) => check_size_limit(size, repo, file),
+        None => Ok(()),
+    }
 }
 
 /// A pulled (or already-present) model file.
@@ -178,7 +193,12 @@ fn write_sidecar(dest: &Path, size: u64, sha256: &str) {
         "{{\"size\":{size},\"sha256\":{},\"verified_at\":{now}}}",
         serde_json::Value::String(sha256.to_owned())
     );
-    let _ = fs::write(sidecar_for(dest), meta);
+    if let Err(e) = fs::write(sidecar_for(dest), meta) {
+        eprintln!(
+            "warning: verification sidecar {}: {e}",
+            sidecar_for(dest).display()
+        );
+    }
 }
 
 fn mtime_secs(path: &Path) -> Option<u64> {
@@ -283,9 +303,7 @@ pub fn pull(model_ref: &str) -> Result<PulledModel, String> {
         &file,
     );
     let meta = fetcher.head_metadata(&url).map_err(|e| e.to_string())?;
-    if let Some(size) = meta.size {
-        check_size_limit(size, &repo, &file)?;
-    }
+    precheck_remote_size(&meta, &repo, &file)?;
 
     let dest = repo_dir(&repo).join(&file);
     if let Some(hit) = cached_if_verified(&dest, &meta, &repo, &file) {
@@ -413,6 +431,7 @@ fn pull_safetensors(repo: &str) -> Result<PulledModel, String> {
             file,
         );
         let meta = fetcher.head_metadata(&url).map_err(|e| e.to_string())?;
+        precheck_remote_size(&meta, repo, file)?;
         let dest = dir.join(file);
         if let Some(hit) = cached_if_verified(&dest, &meta, repo, file) {
             total += hit.size;
@@ -448,7 +467,7 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
     // 1. Literal local path: a .gguf file or a mistral model directory.
     let direct = PathBuf::from(model_ref);
     if direct.is_file() {
-        return Ok(direct);
+        return checked(direct);
     }
     if direct.is_dir() {
         return Ok(direct);
@@ -507,9 +526,9 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
             ModelSource::Local(_) => {} // fell through: is_file was false above
         }
     }
-    // 4. Bare filename anywhere in the store.
-    if let Some(p) = find_bare_filename(model_ref) {
-        return Ok(p);
+    // 4. Bare filename anywhere in the store or the `[store] dirs`.
+    if let Some(p) = store().find_file(model_ref) {
+        return checked(p);
     }
     if model_ref.starts_with("hf:") {
         return Err(format!(
@@ -521,43 +540,16 @@ pub fn find_local(model_ref: &str, aliases: &AliasTable) -> Result<PathBuf, Stri
     ))
 }
 
-fn find_bare_filename(name: &str) -> Option<PathBuf> {
-    let root = models_dir();
-    let mut stack = vec![root];
-    while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(dir).ok()?;
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.file_name().map(|n| n == name).unwrap_or(false) {
-                return Some(p);
-            }
-        }
-    }
-    None
+/// A local model file the user named or dropped into a folder: refuse pickle
+/// files and anything whose bytes are not the format it claims (P18.2).
+fn checked(path: PathBuf) -> Result<PathBuf, String> {
+    runa_models::detect(&path).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
-/// Every stored model file (for `runa models`).
+/// Every model file in the store and the `[store] dirs` (for `runa models`).
 pub fn list_models() -> Vec<PathBuf> {
-    let root = models_dir();
-    let mut out = Vec::new();
-    let mut stack = vec![root];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(dir) else {
-            continue;
-        };
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().map(|x| x == "gguf").unwrap_or(false) {
-                out.push(p);
-            }
-        }
-    }
-    out.sort();
-    out
+    store().list_files("gguf")
 }
 
 #[cfg(test)]
@@ -620,6 +612,20 @@ mod tests {
                 find_local("hf:test/local-model:tiny-Q4_0.gguf", &AliasTable::default()).unwrap();
             assert_eq!(path, dest);
         });
+    }
+
+    #[test]
+    fn find_local_refuses_pickle_and_fake_gguf() {
+        let d = tempfile::tempdir().unwrap();
+        let pt = d.path().join("w.pt");
+        let fake = d.path().join("fake.gguf");
+        std::fs::write(&pt, b"anything").unwrap();
+        std::fs::write(&fake, b"not a model").unwrap();
+        let none = AliasTable::default();
+        let err = find_local(pt.to_str().unwrap(), &none).unwrap_err();
+        assert!(err.contains("pickle"), "{err}");
+        let err = find_local(fake.to_str().unwrap(), &none).unwrap_err();
+        assert!(err.contains("corrupt GGUF"), "{err}");
     }
 
     #[test]
@@ -793,9 +799,9 @@ mod tests {
         unsafe {
             std::env::remove_var("RUNA_MAX_MODEL_BYTES");
         }
-        assert_eq!(MAX_MODEL_BYTES, 3 * 1024 * 1024 * 1024);
+        assert_eq!(runa_models::DEFAULT_MAX_BYTES, 3 * 1024 * 1024 * 1024);
         check_size_limit(0, "r", "f").unwrap();
-        check_size_limit(MAX_MODEL_BYTES, "r", "f").unwrap();
+        check_size_limit(runa_models::DEFAULT_MAX_BYTES, "r", "f").unwrap();
     }
 
     #[test]
@@ -804,9 +810,29 @@ mod tests {
         unsafe {
             std::env::remove_var("RUNA_MAX_MODEL_BYTES");
         }
-        let err = check_size_limit(MAX_MODEL_BYTES + 1, "org/repo", "big.gguf").unwrap_err();
+        let err = check_size_limit(runa_models::DEFAULT_MAX_BYTES + 1, "org/repo", "big.gguf")
+            .unwrap_err();
         assert!(err.contains("org/repo/big.gguf"), "{err}");
         assert!(err.contains("RUNA_MAX_MODEL_BYTES"), "{err}");
+    }
+
+    #[test]
+    fn oversized_hub_size_is_refused_before_download() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var("RUNA_MAX_MODEL_BYTES");
+        }
+        let big = FileMeta {
+            size: Some(runa_models::DEFAULT_MAX_BYTES + 1),
+            sha256: None,
+        };
+        let err = precheck_remote_size(&big, "o/n", "model.safetensors").unwrap_err();
+        assert!(err.contains("o/n/model.safetensors"), "{err}");
+        let unknown = FileMeta {
+            size: None,
+            sha256: None,
+        };
+        precheck_remote_size(&unknown, "o/n", "model.safetensors").unwrap();
     }
 
     #[test]
@@ -815,7 +841,7 @@ mod tests {
         unsafe {
             std::env::set_var("RUNA_MAX_MODEL_BYTES", "9999999999");
         }
-        check_size_limit(MAX_MODEL_BYTES + 1, "r", "f").unwrap();
+        check_size_limit(runa_models::DEFAULT_MAX_BYTES + 1, "r", "f").unwrap();
         unsafe {
             std::env::remove_var("RUNA_MAX_MODEL_BYTES");
         }

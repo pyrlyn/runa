@@ -519,12 +519,13 @@ mod tests {
 
     #[test]
     fn real_moe_fixture_small_vram_parks_experts_on_cpu() {
-        // End-to-end over the real 30B-A3B header (P0.7 fixture): 8 GiB VRAM
-        // must keep attention/dense on GPU while experts spill to CPU.
+        // End-to-end over the real 30B-A3B GGUF *header* (tensor infos with
+        // real expert byte sizes; weights truncated — ~6 MiB local fixture).
+        // 8 GiB VRAM must keep attention/dense on GPU while experts spill to CPU.
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures/Qwen3-30B-A3B-Q4_K_M.gguf");
         if !path.is_file() {
-            // Fixture not downloaded (P0.7): don't fail the suite.
+            // Fixture not present: don't fail the suite.
             return;
         }
         let h = crate::remote::read_local_prefix(&path).expect("fixture header");

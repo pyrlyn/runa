@@ -2,9 +2,9 @@
 #
 # Default GitHub Release artifacts are portable CPU builds (ggml runtime
 # dispatch). GPU variants are extra `--features` (same target triples):
-#   macOS arm64  — cargo build --release --features metal
-#   Linux x86_64 — cargo build --release --features vulkan
-#                  cargo build --release --features cuda   (needs CUDA toolkit)
+#   macOS arm64  — cargo build --profile dist --features metal
+#   Linux x86_64 — cargo build --profile dist --features vulkan
+#                  cargo build --profile dist --features cuda   (needs CUDA toolkit)
 #   Windows      — CPU (Vulkan/CUDA: same flags locally)
 #
 # Homebrew: the `homebrew` installer ships `runa.rb` on the GitHub Release.

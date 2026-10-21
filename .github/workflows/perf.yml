@@ -5,6 +5,9 @@ name: perf
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   bench:
     name: ${{ matrix.label }}

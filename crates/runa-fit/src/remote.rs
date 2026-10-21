@@ -165,6 +165,11 @@ pub fn cache_root() -> PathBuf {
     {
         return PathBuf::from(home).join(".cache");
     }
+    if let Ok(home) = env::var("USERPROFILE")
+        && !home.is_empty()
+    {
+        return PathBuf::from(home).join(".cache");
+    }
     env::temp_dir()
 }
 

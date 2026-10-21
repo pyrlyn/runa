@@ -1,6 +1,15 @@
-# Todo
-
 - P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
-- P14.3. Add fast testing
-- P14.4. Add web dashboard
-- P16.2. Library target for in-process local inference
+- K7. Fuzz testing with cargo-fuzz / libFuzzer
+- P21.1. main does not build: llama-cpp-2/llama-cpp-sys-2 0.1.159 break `runa-engine`
+- P21.2. `./runa.toml` in the working directory can spawn MCP servers
+- P21.3. Whisper and media decode block the async runtime in `serve`
+- P21.4. `serve --api-key` is only accepted on the command line
+- P21.5. `/dashboard/snapshot` stays open under `--api-key` and carries error traces
+- P21.6. `serve` on loopback has no `Host` check (DNS rebinding reaches `/v1`)
+- P21.7. Daemon NDJSON reader has no line-length cap
+- P21.8. Video helpers: predictable temp dir and unbounded frame buffer
+- P21.9. Workflow actions pinned by tag, shared workflows by `@main`
+- P21.10. Usage journal grows without bound
+- P21.11. Docs index and translations are out of step
+- P21.12. Runtime environment variables missing from the docs
+- P21.13. GGUF pulls with no reported size are not capped while downloading

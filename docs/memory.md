@@ -1,4 +1,4 @@
-# docs/memory.md — public methods: `MemoryManager` and `TaskRegistry`
+# Public methods: `MemoryManager` and `TaskRegistry`
 
 Crate: `runa-memory` (plan D17/D18, phase P7, metrics M11/M12).
 Targets: M11 (idle RSS ≤ floor + 10 %), M12 (no double-held task).
@@ -8,6 +8,33 @@ Config: `[memory] idle_timeout_s, floor_mib, max_growth_mib`;
 Conventions: `demand_mib`/`rss_mib` are MiB (`u64`). Timestamps are UTC
 RFC 3339 strings. Errors are documented per method; all methods are
 synchronous and thread-safe (`Send + Sync`).
+
+---
+
+## Library entry points
+
+The `runa` package is a library and a binary. `src/main.rs` calls `run`.
+Another program links the library and calls serve or the daemon itself.
+
+### `fn run()`
+
+- Effect: parse argv and run one subcommand. Usage errors exit the process.
+- Call when: you are the `runa` binary.
+
+### `fn serve::cmd_serve(opts: ServeOpts) -> Result<(), String>`
+
+- Effect: bind the OpenAI-compatible HTTP server and block until it stops.
+- `ServeOpts` carries the models, host, port, API key, mode, context,
+  parallelism, LoRA adapters, and [`placer::PlacementOverrides`].
+- The CLI fills `ServeOpts` from flags and calls this. `/health` stays open;
+  a non-loopback host still requires an API key.
+
+### `fn daemon::cmd_daemon(opts: DaemonOpts) -> Result<(), String>`
+
+- Effect: install, uninstall, or run the background daemon (Unix socket).
+- `DaemonOpts` carries the models, mode, context, socket path, and whether
+  this invocation installs or removes the unit.
+- The CLI fills `DaemonOpts` from flags and calls this.
 
 ---
 
@@ -78,6 +105,15 @@ model. Every transition logs before/after RSS.
   `--kv q8_0`, or cloud — same vocabulary as `runa fit`).
 - Check: heavy-ctx test passes without mid-run OOM; over-ceiling test
   asserts the `Err` carries a suggestion.
+
+### `fn set_log(&self, log: impl Fn(&str) + Send + Sync + 'static)`
+
+- Effect: replace the sink for transition lines (`memory: {action}: rss {before} -> {after} MiB`).
+- Default: each line is printed with `eprintln`. The CLI does not call
+  this, so serve, daemon, and `run` keep that stderr.
+- Call when: an embedder wants those lines in its own log, or wants
+  silence (`set_log(|_| {})`).
+- Check: `set_log_receives_the_transition_line`.
 
 ---
 
@@ -314,7 +350,7 @@ JSON text, mirroring how the ggml backend surfaces unrequested tool markup.
   for safetensors refs, and `runa fit` refuses mistral directories —
   both with an explicit message.
 - `serve` resolves the backend per model (`Auto` detects); the pool thread
-  holds `LocalEngine` (`run`/`chat` share the enum in `runa/src/engine.rs`);
+  holds `LocalEngine` (`run`/`chat` share the enum in `runa-pool/src/engine.rs`);
   `/v1/embeddings` on a mistral model errors explicitly (gguf only).
 
 ## P9.1 (`runa daemon` background service)
@@ -322,6 +358,10 @@ JSON text, mirroring how the ggml backend surfaces unrequested tool markup.
 The daemon keeps models warm between CLI calls, owns one
 `MemoryManager` over a real RSS backend, and serves `run` / `chat` over a
 Unix socket (`~/.cache/runa/runa.sock`, `RUNA_DAEMON_SOCK` overrides).
+Two starters take an exclusive lock on `<socket-filename>.lock` before
+connect, unlink, and bind, so one cannot remove a socket the other just
+bound. The lock file stays; the lock is the open file and drops when
+that file closes.
 Wire: one NDJSON [`DaemonRequest`] line per request, a stream of
 [`DaemonEvent`] lines ending in `done` / `error` per reply
 (`crates/runa/src/daemon_proto.rs`). `run` / `chat` dial first and fall
@@ -551,6 +591,15 @@ per-engine activity and both long-lived processes sweep it.
   and after on qwen2-0.5B) — the gate stays infeasible without model
   unload, which D17 forbids.
 
+### `fn set_log(log: impl Fn(&str) + Send + Sync + 'static)` (`runa-pool`)
+
+- Effect: replace every library line from `runa-pool` (warm-up ready or
+  failed, load progress, engine panic, LRU unload, idle sweep). The
+  text of each line is unchanged.
+- Default: `eprintln`. The CLI does not call this. An embedder passes
+  its own sink, or `set_log(|_| {})` for silence.
+- Check: `set_log_captures_a_warm_up_failure`.
+
 ## P10.6 — Anthropic SSE streaming tool support
 
 Crate: `runa-cloud` (`anthropic::parse_sse`); the CLI tool loop
@@ -736,3 +785,94 @@ decides (plan D12 — loud, never blocking).
   daemon owns placement and knows no per-request cap) and is
   rejected on `--backend mistral` (never warned there, so never
   silently accepted).
+
+## P14.4 — serve dashboard model residency
+
+### `fn ModelPool::loaded_weight_bytes(&self) -> Vec<(String, u64)>`
+
+- Returns: one `(id, bytes)` pair per engine currently resident, sorted by
+  id. `bytes` is the spec file length, or for a directory spec the sum of
+  the regular files directly inside that directory.
+- Example: `lock(&pool).loaded_weight_bytes()`.
+- Notes: approximate on-disk weight size, not process RSS. The serve
+  dashboard (`docs/dashboard.md`) publishes this list. Empty when nothing
+  is loaded.
+
+## P18.1 — model store (`runa-models`)
+
+Crate: `runa-models`. Config: `[store] dirs, cache_dir, max_bytes`
+(`docs/config.md`). No engine dependency: it hands out paths.
+
+### `StoreConfig`
+
+- Fields: `dirs: Vec<PathBuf>`, `cache_dir: Option<PathBuf>`,
+  `max_bytes: Option<NonZeroU64>`; `Default` is an empty `[store]`.
+- Deserializes the `[store]` table; unknown keys and `max_bytes = 0` are
+  errors.
+
+### `fn ModelStore::new(config: &StoreConfig) -> Result<ModelStore, ConfigError>`
+
+- Returns: the store with `~/` expanded against `home_dir()`.
+- Errors: `ConfigError::Relative` for a relative path,
+  `ConfigError::NoHome` for `~/` without `HOME`/`USERPROFILE`.
+- `ModelStore::default()` is the store with no `[store]` table.
+
+### `fn cache_dir(&self) -> &Path` / `fn dirs(&self) -> &[PathBuf]` / `fn max_bytes(&self) -> u64`
+
+- The download store, the extra folders in config order, and the fresh
+  download cap (default `DEFAULT_MAX_BYTES`, 3 GiB).
+
+### `fn find_file(&self, name: &str) -> Option<PathBuf>`
+
+- Returns: the first regular file named `name` under the download store,
+  then each folder, searched recursively.
+- Notes: symlinked directories are not entered (no link cycles);
+  unreadable or missing folders are skipped; a file whose canonical path
+  leaves its root (a symlink out of the folder) is skipped (P18.2).
+
+### `fn list_files(&self, ext: &str) -> Vec<PathBuf>`
+
+- Returns: every file with extension `ext` under all roots, sorted and
+  without duplicates.
+
+### `fn home_dir() -> Option<PathBuf>` / `fn data_dir() -> PathBuf` / `fn default_cache_dir() -> PathBuf`
+
+- `$HOME` (else `$USERPROFILE`); the data root (`$XDG_DATA_HOME/runa`,
+  else `%LOCALAPPDATA%\runa` on Windows, else `~/.local/share/runa`); its
+  `models` folder. Read from the environment on every call.
+
+## P18.2 — local model files (`runa-models`)
+
+### `enum ModelFormat { Gguf, Safetensors, Wasm }`
+
+- A model file format told apart by its leading bytes; `Display` prints
+  `GGUF`, `safetensors`, `Wasm`.
+
+### `fn detect(path: &Path) -> Result<ModelFormat, FormatError>`
+
+- Returns: the format of `path`, after its header is checked: GGUF through
+  the capped `runa-fit` reader, safetensors by its 8-byte length (at most
+  `MAX_SAFETENSORS_HEADER`, 100 MiB), JSON header and every `data_offsets`
+  pair inside the file, Wasm by `\0asm` plus a core (1) or component
+  version word.
+- Errors: `FormatError::Pickle` for `.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`,
+  `.pickle` (by name, before reading) or pickle / PyTorch zip contents;
+  `Mismatch` when `.gguf`, `.safetensors` or `.wasm` names another format;
+  `Corrupt` for a bad header; `Unknown` for anything else; `Io`.
+- Used by: `runa` on a literal local file and on a bare file name found in
+  the store (`find_local`).
+
+## P20.1 — fill-in-the-middle (`runa-engine`, `runa serve`)
+
+### `struct Infill { prefix: String, suffix: String }`
+
+- Text before and after the cursor. Set as `GenerateRequest.infill` (default
+  `None`); `LoadedModel::generate` then builds the model's FIM prompt instead
+  of rendering `messages`, which must stay empty, as must media, tools and
+  grammars.
+- Errors: `EngineError::InfillUnsupported` (`infill_unsupported: …`) when the
+  model has no FIM tokens, the request mixes in chat-only inputs, or the
+  backend is mistral; `ContextExceeded` when `n_ctx` has no room after
+  `max_tokens`.
+- Used by: `POST /v1/infill` (`serve/infill.rs`), which answers both errors
+  with HTTP 400.

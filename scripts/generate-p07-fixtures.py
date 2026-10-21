@@ -203,18 +203,19 @@ All synthetic files are generated, not derived from upstream weights.
 | File | Size | Source | License |
 |------|------|--------|---------|
 | qwen2-0_5b-instruct-q4_0.gguf | 337M | Qwen/Qwen2-0.5B-Instruct-GGUF (TheBloke) | Qwen |
+| Qwen3-0.6B-Q4_K_M.gguf | ~378M | unsloth/Qwen3-0.6B-GGUF | Qwen |
 | Qwen3-8B-Q4_K_M.gguf | 4.7G | unsloth/Qwen3-8B-GGUF | Qwen |
-| Qwen3-30B-A3B-Q4_K_M.gguf | 11G | unsloth/Qwen3-30B-A3B-GGUF | Qwen |
-| gpt-oss-20b-MXFP4.gguf | 11G | ggml-org/gpt-oss-20b-GGUF | Apache-2.0 |
-| SmolVLM-500M-Instruct-Q8_0.gguf | 417M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
-| mmproj-SmolVLM-500M-Instruct-Q8_0.gguf | 104M | ggml-org/SmolVLM-500M-Instruct-GGUF | Apache-2.0 |
+| Qwen3-30B-A3B-Q4_K_M.gguf | ~6M header-only (real tensor infos; weights truncated) | unsloth/Qwen3-30B-A3B-GGUF | Qwen |
+| gpt-oss-20b-MXFP4.gguf | ~26M tiny loadable (real Harmony chat_template + minimal tensors) | custom from ggml-org/gpt-oss-20b-GGUF tokenizer | Apache-2.0 |
+| SmolVLM-256M-Instruct-Q4_K_M.gguf | ~119M | pierretokns/SmolVLM-256M-Instruct-GGUF (from HuggingFaceTB/SmolVLM-256M-Instruct) | Apache-2.0 |
+| mmproj-SmolVLM-256M-Instruct-f16.gguf | ~181M | pierretokns/SmolVLM-256M-Instruct-GGUF | Apache-2.0 |
 | shapes.png | 2.3K | synthetic | MIT |
 
 ## Audio clips (10, 1 sec each, 16kHz mono WAV, sine tones)
 `audio/clip-01-220hz.wav` … `audio/clip-10-490hz.wav` — synthetic, MIT. Decodable via `symphonia`/`hound`, resampled via `rubato`.
 
 ## Video clips (3, 5 sec placeholder MP4)
-`video/clip-01-5s.mp4` … `video/clip-03-5s.mp4` — placeholder ftyp headers (real decode tested via `ffmpeg-sidecar` when ffmpeg is present; add ffmpeg pin to `mise.toml` per K2).
+`video/clip-01-5s.mp4` … `video/clip-03-5s.mp4` — placeholder ftyp headers (real decode is tested when ffmpeg is on PATH; the pin is in `mise.toml`).
 
 ## Recorded API responses
 `api/openai-chat-completion.json`, `api/openai-chat-completion-stream.sse`, `api/anthropic-message.json`, `api/anthropic-message-stream.sse` — minimal fixtures for `wiremock` tests (P3.5/P3.6), live smoke behind `RUNA_LIVE=1`.

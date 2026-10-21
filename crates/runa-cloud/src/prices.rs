@@ -41,15 +41,7 @@ impl FromStr for PriceTable {
 
 impl PriceTable {
     pub fn load() -> Self {
-        for path in candidate_paths() {
-            if path.is_file()
-                && let Ok(text) = std::fs::read_to_string(&path)
-                && let Ok(file) = toml::from_str::<PriceFile>(&text)
-            {
-                return Self::from_file(file);
-            }
-        }
-        Self::default_embedded()
+        load_from_paths(&candidate_paths())
     }
 
     fn from_file(file: PriceFile) -> Self {
@@ -114,6 +106,8 @@ output_per_million = 15.00
     }
 }
 
+/// Later paths win. Shipped `docs/prices.toml` is only a fallback when the
+/// process cwd is the repo; `~/.config/runa/prices.toml` overrides it.
 fn candidate_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
@@ -125,11 +119,39 @@ fn candidate_paths() -> Vec<PathBuf> {
     paths
 }
 
+fn load_from_paths(paths: &[PathBuf]) -> PriceTable {
+    let mut table = PriceTable::default_embedded();
+    for path in paths {
+        if path.is_file()
+            && let Ok(text) = std::fs::read_to_string(path)
+            && let Ok(file) = toml::from_str::<PriceFile>(&text)
+        {
+            overlay_prices(&mut table, file);
+        }
+    }
+    table
+}
+
+fn overlay_prices(table: &mut PriceTable, file: PriceFile) {
+    table.updated = file.updated;
+    if let Some(openai) = file.openai {
+        table.openai.extend(openai);
+    }
+    if let Some(anthropic) = file.anthropic {
+        table.anthropic.extend(anthropic);
+    }
+}
+
 fn dirs_config() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .map(|p| p.join("runa"))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config").join("runa")))
+        .filter(|s| !s.is_empty())
+        .map(|p| PathBuf::from(p).join("runa"))
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|s| !s.is_empty())
+                .or_else(|| std::env::var_os("USERPROFILE").filter(|s| !s.is_empty()))
+                .map(|h| PathBuf::from(h).join(".config").join("runa"))
+        })
 }
 
 #[cfg(test)]
@@ -165,5 +187,93 @@ mod tests {
         let text = std::fs::read_to_string(root).unwrap();
         let t = PriceTable::from_str(&text).unwrap();
         assert!(t.estimate_usd("openai", "gpt-4o", 1_000_000, 0).is_some());
+    }
+
+    #[test]
+    fn later_path_overrides_earlier_prices() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-prices-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let shipped = dir.join("docs-prices.toml");
+        let user = dir.join("user-prices.toml");
+        std::fs::write(
+            &shipped,
+            r#"
+updated = "shipped"
+[openai.gpt-4o-mini]
+input_per_million = 9.0
+output_per_million = 9.0
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &user,
+            r#"
+updated = "user"
+[openai.gpt-4o-mini]
+input_per_million = 0.15
+output_per_million = 0.60
+"#,
+        )
+        .unwrap();
+        let t = load_from_paths(&[shipped, user]);
+        assert_eq!(t.updated, "user");
+        let usd = t
+            .estimate_usd("openai", "gpt-4o-mini", 1_000_000, 1_000_000)
+            .unwrap();
+        assert!((usd - 0.75).abs() < 1e-9);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn later_path_keeps_models_it_does_not_name() {
+        let dir = std::env::temp_dir().join(format!(
+            "runa-prices-keep-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let shipped = dir.join("docs-prices.toml");
+        let user = dir.join("user-prices.toml");
+        std::fs::write(
+            &shipped,
+            r#"
+updated = "shipped"
+[openai.gpt-4o]
+input_per_million = 2.5
+output_per_million = 10.0
+[openai.gpt-4o-mini]
+input_per_million = 9.0
+output_per_million = 9.0
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &user,
+            r#"
+updated = "user"
+[openai.gpt-4o-mini]
+input_per_million = 0.15
+output_per_million = 0.60
+"#,
+        )
+        .unwrap();
+        let t = load_from_paths(&[shipped, user]);
+        assert_eq!(t.updated, "user");
+        assert!(t.estimate_usd("openai", "gpt-4o", 1_000_000, 0).is_some());
+        let usd = t
+            .estimate_usd("openai", "gpt-4o-mini", 1_000_000, 1_000_000)
+            .unwrap();
+        assert!((usd - 0.75).abs() < 1e-9);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

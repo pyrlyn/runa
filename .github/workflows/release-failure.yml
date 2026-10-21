@@ -22,7 +22,7 @@ jobs:
     permissions:
       actions: read # failed job names
       issues: write
-    uses: pyrlyn/ci/.github/workflows/notify-release-failure.yml@d709124d53dd4923eff8f594b3155842508b0049
+    uses: pyrlyn/ci/.github/workflows/notify-release-failure.yml@main
     with:
       workflow: ${{ github.event.workflow_run.name }}
       ref: ${{ github.event.workflow_run.head_branch }}

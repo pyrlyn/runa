@@ -4,12 +4,49 @@ https://github.com/pyrlyn/runa
 
 A single CLI that runs AI models locally (GGUF via ggml/llama.cpp) or through OpenAI/Anthropic APIs; fit checker, three compute modes, adaptive memory, OpenAI-compatible server.
 
+## Cloud review findings (2026-10-08)
+
+New bugs, dead code and moves from a read-only Cursor cloud review of the current tree (agent `bc-b9ffebc5-a30f-5261-a881-c62018ac3f66`; full report: `cloud/runa.md` in the private `listepo/roadmap` repo). They form phase P17: P17.1–P17.20, ordered by priority (there is no P0; P1 is high, P2 is medium). **confirmed** means seen in the tree; **suspected** means plausible from the code but not proven (no tests or Miri were run). Line numbers are as of the review. Every finding from that review is closed; the entries are in `done.md` under P17.
+
+Stale review items, closed and not added. The review checked the older roadmap list for runa against the tree; these items are already fixed or are not bugs. None of them is in this plan or `todo.md`:
+
+- E1, licence files missing: not a bug. `LICENSE`, `LICENSE-ROYALTY-FREE.md` and `PRICING.md` are tracked, the workspace is `GPL-3.0-or-later` (`Cargo.toml`) and the README documents the three-licence model. Why the Cargo field names only the GPL is P17.1 (`done.md`).
+- E3, local `image_url` paths: fixed in P15.1 (`done.md`). `serve.rs:1381-1382` rejects anything but `data:` before any stat; test `image_url_rejects_local_paths_without_statting`.
+- E4, GGUF `n_dims` over-allocation and divide by zero: fixed. Capacity is capped (`gguf.rs:324-329`), alignment is checked (`:346-348`), `head_dim` uses `checked_div` (`descriptor.rs:138`), `tensor_bytes` uses `checked_mul` (`ggml_types.rs:87-89`).
+- E5, daemon unlinks a live socket: fixed in P15.1. `daemon.rs:196-215` connects first and unlinks only on `ConnectionRefused`/`NotFound`; test `second_daemon_does_not_unlink_a_live_socket`. The leftover race is P17.10.
+- E6, dead website link in the README: not a bug. `README.md:7` no longer links a Pages URL.
+- E8, config precedence for `[audio]`/`[memory]`: fixed in P15.1. CLI, then env, then files (`config.rs:495-520`); test `later_config_file_overrides_memory_and_audio`. Prices and partial `[memory]` tables are fixed in the PR #62 audit bundle (`done.md`).
+- P17.2, price-table later-wins: fixed in the PR #62 audit bundle (`done.md`).
+- P17.3, partial `[memory]` overlay: fixed in the PR #62 audit bundle (`done.md`).
+- P17.4, `USERPROFILE` when `HOME` is unset: fixed in the PR #62 audit bundle (`done.md`).
+- P17.5, Whisper download cap and SHA-256 pins: fixed in the PR #62 audit bundle (`done.md`).
+- P17.6, empty `parakeet` feature: removed; `transcribe_parakeet` says "not available yet" (`done.md`).
+- P17.9, panic text in `error.message`: fixed. `catch_panic` returns `"internal error"` and logs the panic (`done.md`).
+- P17.14, `runa-core` docs advertised a `Backend` trait: crate docs now name `BackendKind` (`done.md`).
+- P17.15, unused `raw-cpuid` and `rayon` on the CLI crate: removed (`done.md`).
+- E15, wrong origin / dirty checkout: not a bug. `origin` is `pyrlyn/runa` and the checkout is `main`.
+- E22, move `theme.js` to the brand repo: not a bug. There is no `site/` tree.
+- E23, streaming collect-then-replay: fixed in P16.1 (`done.md`). `serve.rs:620-626` streams through `generate_stream_on`; test `first_token_reaches_the_client_before_generation_ends`.
+- P17.8, non-loopback `serve` without a key: fixed (`done.md`). A non-loopback `--host` is refused unless `--api-key` is set; `/v1` then requires `Authorization: Bearer`. `/health` stays open.
+- P17.1, Cargo `license` vs the three README licences: documented (`done.md`). The field stays `GPL-3.0-or-later` because crates.io accepts only SPDX License List identifiers and rejects `LicenseRef-*`.
+
 | # | Status | Priority | Complexity | Readiness | Agent |
 | --- | --- | --- | --- | --- | --- |
-| P14.2 | in progress | high | S | ready | Muse Spark |
-| P14.3 | todo | medium | M | ready | — |
-| P14.4 | todo | medium | M | ready | — |
-| P16.2 | todo | low | M | ready | — |
+| P14.2 | in progress | high | S | ready | Cursor Grok 4.7 |
+| K7 | in progress | medium | M | ready | Grok Bot |
+| P21.1 | todo | high | M | ready | |
+| P21.2 | todo | medium | M | ready | |
+| P21.3 | todo | medium | S | ready | |
+| P21.4 | todo | low | S | ready | |
+| P21.5 | todo | low | S | ready | |
+| P21.6 | todo | low | S | ready | |
+| P21.7 | todo | low | S | ready | |
+| P21.8 | todo | low | S | ready | |
+| P21.9 | todo | low | S | ready | |
+| P21.10 | todo | low | S | ready | |
+| P21.11 | todo | low | S | ready | |
+| P21.12 | todo | low | S | ready | |
+| P21.13 | todo | low | S | ready | |
 
 ## Tasks
 
@@ -23,32 +60,118 @@ glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
 ketch install runa works.
 
-### P14.3. Add fast testing
+### K7. Fuzz testing with cargo-fuzz / libFuzzer
 
-Plan: add a fast test path for local development and PR checks.
+Ivan, 2026-09-30: the same fuzz setup as ketch and rtok (ketch plan R4, rtok plan T314). Docs only here. Already in progress. Branch `test/cargo-fuzz` (worktree `_worktrees/runa-fuzz`) has uncommitted work and is not yet pushed to `pyrlyn/runa`; no PR exists yet. Link the PR here when it opens.
 
-Machine check: TBD.
+Plan:
+1. `fuzz/`: a standalone cargo-fuzz workspace, not a member of the root workspace (`cargo-fuzz = true`, `libfuzzer-sys` 0.4, `arbitrary`), so `moon`, `cargo test --workspace` and CI never compile it. Targets that only need `runa-core`, `runa-fit` and `runa-cloud` depend on those crates directly. The targets that need the `runa` binary crate (argv, config, server body, daemon protocol) or `runa-engine` (tool-call parsing) pull in llama.cpp, so put them behind a fuzz-crate feature and the fast targets build without a C++ toolchain. An alternative is to move the pure tool-call parser out of `runa-engine` into a crate that does not link llama.cpp.
+2. Entry points: the `runa` package is a library plus a thin binary (P17.7). Fuzz surfaces live in `fuzz_hooks` (`#[cfg(fuzzing)]`) and the fuzz bins call `runa::fuzz_hooks::run`. In-process and side-effect-free: no model load, network, process spawn or file writes. Crate-private parsers in library crates (for example `runa-engine`'s `structured.rs` tool-call parser) get the same `#[cfg(fuzzing)]` pub shims.
+3. Targets:
+   - `cli-argv`: `Cli::try_parse_from` over arbitrary argv, plus the help/error rendering.
+   - `cli-config`: `runa.toml` / `config.toml` text through the `*_from_toml` readers in `crates/runa/src/config.rs` (threads, max load, `on_unfit`, think, memory, audio route, LoRA lists) and the alias table.
+   - `chat-template` / `tool-calls`: the Rust side of chat templates and tool calling: `structured.rs` (`parse` of model output into text plus `ToolCall`s, `tool_call_from_json`, grammar-trigger post-processing in `from_template`), including Harmony output. llama.cpp's own Jinja template renderer is C++. Fuzzing it through `llama-cpp-2` needs a full llama.cpp build and does not instrument the C++ code, so it is optional and gets its own target if kept.
+   - `gguf-header`: `runa_fit::gguf::Reader` over arbitrary bytes. It must never panic, allocate from an untrusted count without a bound, or loop forever. Add a truncated-file and huge-count corpus.
+   - `reasoning-stream`: `runa_core::reason::parse_stream` over arbitrary chunk splits for every `ReasonFamily`.
+   - `cloud-responses`: `runa_cloud::anthropic::{parse_message, parse_sse}` and the OpenAI message/tool-call readers.
+   - `model-refs`: `hf:<repo>:<file-or-quant>`, path and alias references (`pull.rs`).
+   - `serve-body` and `daemon-proto`: the OpenAI-compatible request bodies in `serve.rs` and the `daemon_proto.rs` frames.
+4. Verify: `cargo +nightly fuzz build` for every target, then a short run of each (`cargo +nightly fuzz run <target> -- -max_total_time=60`). Every crash becomes a minimized regression test with its fix in its own PR.
+5. Git LFS: large model fixtures are, or are about to be, in Git LFS (open PR #20, `test/smaller-fixtures`). Create worktrees and clones for this task with `GIT_LFS_SKIP_SMUDGE=1`, and build seed corpora from small synthetic files or truncated GGUF headers, never from full model files.
+6. Optional: a non-required nightly CI job (fast targets only, build plus a short run) on Linux.
+7. Deliver as a PR; do not merge it.
 
-### P14.4. Add web dashboard
+Dependencies and tooling: a nightly toolchain (`rustup toolchain install nightly`); `rust-toolchain.toml` / `mise.toml` keep stable 1.98 as the build toolchain. `cargo-fuzz` via `cargo install cargo-fuzz` or a `cargo:cargo-fuzz` pin in `mise.toml`, recorded in `docs/versions.md`. libFuzzer runs on macOS and Linux only. The llama.cpp-backed targets also need the usual C/C++ toolchain and CMake. No dependency on other open tasks.
 
-Plan: add a web dashboard showing, in real time, with graphs:
+Machine check: `cargo +nightly fuzz build` succeeds for every target; each target runs 60 s with no crash (or the crash is filed with a repro test); `moon run :test` and `cargo test --workspace` on stable do not compile `fuzz/`; `python3 scripts/lint-tasks.py` passes.
 
-- token speed;
-- the in-flight request/response pairs;
-- the system load attributable to this app;
-- latency percentiles (p50, p95, p99);
-- errors: a counter and the most recent failures with tracebacks;
-- quotas and limits (tokens per minute, requests per second), showing whether
-  the app is hitting the ceiling;
-- warm daemon status: alive or not;
-- loaded models: how many and how much memory they use;
-- active MCP tools;
-- the request queue while the server is up;
-- reasoning budget: current spend.
+## Audit 2026-10-19
 
-Frontend: React, TanStack, Tailwind. Real-time updates via WebSockets.
+Three review passes over `main` at 525b1bb (pass 1: module walk; pass 2: entry points and threats; pass 3: docs vs code and tests). Fixed in the same PR and recorded in `done.md` as P21.0: the `/review` workflow gate, cross-site websocket and DNS-rebinding reads, the daemon socket mode, and the snapshot pre-download size check. Overlap with the 2026-10-01 audit (#26, closed by #44): its HF token, daemon socket unlink, temp-file and `image_url` items are fixed and not repeated here. Line numbers are as of 525b1bb.
 
-Machine check: TBD.
+### P21.1. main does not build: llama-cpp-2/llama-cpp-sys-2 0.1.159 break `runa-engine`
+
+Found by pass 3 (tests/build). Renovate PRs #107 and #108 moved `crates/runa-engine/Cargo.toml` from `=0.1.133` to `=0.1.159`. That release removed or renamed the APIs `runa-engine` uses: `llama_cpp_2::model::AddBos` (`src/embed.rs:9`, `src/generate.rs:21`, `src/infill.rs:14`), `LlamaModel::str_to_token` (`src/embed.rs:42`), `ChatTemplateResult`/`GrammarTrigger`/`GrammarTriggerType` and `llama_cpp_2::openai` (`src/structured.rs:14-15`), 26 errors in total (`cargo test -p runa --lib`, 2026-10-19). The `ci` run on `main` at 525b1bb is red, and `revert-on-failure` did not revert the renovate merges. `Cargo.lock` is also out of sync: a plain build rewrites `rubato` 5.0.0 to 5.0.1, so `--locked` builds fail.
+
+What: either pin both crates back to `=0.1.133` (a version change, needs Ivan's approval) or port `runa-engine` to the 0.1.159 API, then commit the regenerated `Cargo.lock`. Add `llama-cpp-2`/`llama-cpp-sys-2` to a renovate group that needs the full CI (or `automerge: false`) so an API break cannot land again.
+
+Why: nothing on `main` builds, so no fix (including the P21.0 commits) can be tested. Done: `cargo build --workspace --locked` and `cargo test --workspace --lib` pass on `main`.
+
+### P21.2. `./runa.toml` in the working directory can spawn MCP servers
+
+Found by passes 1 and 2. `config_paths()` (`crates/runa/src/cli/config.rs:86`) reads `./runa.toml` after the user config, and `load_mcp_servers()` (`:719`) takes `[mcp.servers.*]` from it. `mcp::start` (`crates/runa/src/mcp.rs:248`) then spawns each `command` with its `args`/`env` on `runa run`/`chat`. Running runa inside a cloned, untrusted repository runs whatever command that repository's `runa.toml` names.
+
+What: read `[mcp.servers]` only from `~/.config/runa/config.toml` (and `--mcp`), or require a trust step for the project file (for example a `runa trust` list keyed by the file's canonical path and hash). Document the rule in `docs/config.md` with `docs/ru/` and `docs/uk/`. Test: a project `runa.toml` with `[mcp.servers.x]` is ignored (or refused) until trusted.
+
+Why: a config file a repository ships is untrusted input (workspace trust-boundary rule).
+
+### P21.3. Whisper and media decode block the async runtime in `serve`
+
+Found by pass 1. `audio_transcriptions` (`crates/runa/src/serve/mod.rs`) calls `runa_media::transcribe_file` directly inside the async handler, and `content_text` → `decode_input_audio`/`image_data_to_temp` decode base64 and audio on the request task. Whisper runs for seconds to minutes and stalls that tokio worker: `/health`, the dashboard websocket and other requests on the worker wait.
+
+What: run `transcribe_file` and `decode_audio` inside `tokio::task::spawn_blocking` (the pool already does this for generation), keeping the temp file alive until the blocking task returns. Test: a handler test with a slow fake transcriber shows `/health` answering while a transcription runs.
+
+Why: one upload must not freeze the server.
+
+### P21.4. `serve --api-key` is only accepted on the command line
+
+Found by passes 1 and 2. `Serve { api_key }` (`crates/runa/src/cli/mod.rs:186-188`) has no `env =` source, and `docs/guide.md:288` shows `--api-key "$SERVE_KEY"`. The key then shows in `ps` output and shell history for every local user.
+
+What: enable clap's `env` feature in the workspace `clap` dependency and add `env = "RUNA_SERVE_API_KEY"` to the argument (flag still wins). Update `docs/guide.md` and `docs/config.md` plus `docs/ru/` and `docs/uk/`. Test: `Cli::try_parse_from` with the variable set yields the key.
+
+### P21.5. `/dashboard/snapshot` stays open under `--api-key` and carries error traces
+
+Found by passes 2 and 3. `protect_v1` (`crates/runa/src/serve/mod.rs`) gates only `/v1/`. `/dashboard/snapshot` and `/dashboard/ws` stay open on a non-loopback bind (documented in `docs/dashboard.md:17-18`) and return in-flight routes and models, `errors.recent` with panic text from `catch_panic` and every `deny()` message.
+
+What: when `--api-key` is set on a non-loopback bind, require the key for `/dashboard/snapshot` and `/dashboard/ws` too (a `?key=` or cookie set by the page after a prompt), or drop traces from the snapshot when the bind is not loopback. Test: with a key set, an unauthenticated snapshot request is 401.
+
+### P21.6. `serve` on loopback has no `Host` check (DNS rebinding reaches `/v1`)
+
+Found by pass 2. P21.0 added `is_local_host_header` and applies it to `runa web`. `runa serve` on its default `127.0.0.1` bind without `--api-key` still answers any `Host`, so a DNS-rebinding page can drive `/v1/chat/completions` through the victim's browser.
+
+What: when the bind is loopback and no key is set, wrap the router in the same `Host` check as `stats_web::require_local_host`. Mention it in `docs/guide.md` (with translations). Test: a request with `Host: evil.example` is 403, `Host: 127.0.0.1:8080` is 200.
+
+### P21.7. Daemon NDJSON reader has no line-length cap
+
+Found by pass 1. `daemon_proto::read_line` (`crates/runa/src/daemon/proto.rs:404`) uses `AsyncBufReadExt::read_line` with no limit, so a client that never sends `\n` grows the daemon's memory without bound.
+
+What: read through `take(MAX_LINE + 1)` (for example 16 MiB, enough for an image-bearing request) and answer `bad request: line too long`. Test: an over-long line returns that error and the daemon keeps serving.
+
+### P21.8. Video helpers: predictable temp dir and unbounded frame buffer
+
+Found by pass 1. `ffmpeg_audio_wav` (`crates/runa-media/src/video.rs`) writes to `temp_dir()/runa-vid-<pid>/track.wav` with `create_dir_all` and ffmpeg `-y`. On Linux `/tmp` is shared, so another user can pre-create that directory or a symlink and have the file written where they choose. `ffmpeg_raw_frames` reads all frames of a video into one `Vec` with no cap.
+
+What: use `tempfile::tempdir()` for the WAV, and cap the frame count (or stream frames) by duration × fps. Test: two calls get different private directories; a long input stops at the cap.
+
+### P21.9. Workflow actions pinned by tag, shared workflows by `@main`
+
+Found by pass 2. `review.yml`, `release-variants.yml`, `perf.yml` and `release.yml` use `actions/checkout@v4/v6`, `jdx/mise-action@v2`, `Swatinem/rust-cache@v2`, `Jimver/cuda-toolkit@v0.2.36` and `actions/*-artifact@v7/v8` by tag. `ci.yml:306` runs `pyrlyn/ci/.github/actions/revert-on-failure@main` with `contents: write`, and `pipeline.yml`, `coderabbit-issues.yml`, `release-ci-alert.yml` call `pyrlyn/ci` workflows at `@main`. A moved tag or a bad push to `pyrlyn/ci` runs with these permissions.
+
+What: pin every third-party `uses:` to a full SHA with a `# vX` comment (as `ci.yml:34` already does) and let renovate bump the SHAs; refresh `.github/jactionlint-baseline.json`. Do not pin `pyrlyn/ci` yet: its `no-pinned-ci.yml` check fails pull requests that pin it, while the org docs require SHA pins. pyrlyn/.github T7 (pyrlyn/.github#12) settles that rule first.
+
+### P21.10. Usage journal grows without bound
+
+Found by pass 1. `usage_log::append` (`crates/runa/src/usage_log.rs:100-115`) appends to `usage.jsonl` forever, and `runa web` re-reads the whole file on every change.
+
+What: rotate at a size cap (for example 16 MiB, keep one `.1`), or compact old days into the summary. Test: appending past the cap rotates and `runa stats` still reads both files.
+
+### P21.11. Docs index and translations are out of step
+
+Found by pass 3. `README.md`'s Docs table misses `docs/baselines.md`, `kernels.md`, `perf-nightly.md`, `profiles.md`, `release.md`, `release-1.0.md` and `site.md` although `docs/README.md` lists them (CLAUDE.md §10 wants both). `docs/ru/` and `docs/uk/` have no `development.md`, `perf-nightly.md`, `release.md`, `release-1.0.md` or `tasks.md` (§13), unless these are maintainer-only like `sonarcloud-setup.md`, which `docs/README.md` does not index. Also `todo.md` was empty while `plan.md` had P14.2 and K7 (synced in this change).
+
+What: add the missing README rows, and either translate those pages or mark them maintainer-only in CLAUDE.md §13.
+
+### P21.12. Runtime environment variables missing from the docs
+
+Found by pass 3. `RUNA_MEMORY_CEILING_MIB` (`crates/runa/src/cli/mod.rs:812`), `RUNA_PROMPT_CACHE` (`:1119`), `RUNA_NO_PROMPT_CACHE` (`:1144`, `:1171`) and `RUNA_TASK_REGISTRY` (`:1800`) change behaviour but appear in no `docs/` page (§10: document what the tree ships).
+
+What: add them to the environment table in `docs/config.md` with `docs/ru/` and `docs/uk/`.
+
+### P21.13. GGUF pulls with no reported size are not capped while downloading
+
+Found by pass 1. P21.0 added a pre-download size check, but when the Hub HEAD reports no `x-linked-size`, `hf-hub` downloads the whole file and `verify_downloaded` (`crates/runa/src/pull.rs`) rejects it only afterwards, so an oversized file still lands on disk first.
+
+What: refuse a pull with no reported size unless `RUNA_MAX_MODEL_BYTES` is set, or download through the capped `Fetcher` stream instead of `hf-hub`. Test: a mocked HEAD without size is refused.
 
 ## Reference
 
@@ -65,7 +188,7 @@ or through the OpenAI and Anthropic APIs, with:
 
 Rust owns orchestration; the compute core is C (ggml); own kernels in `runa-kernels` are Zig where Zig is better, otherwise C/`.S`, and only where a benchmark proves a win.
 
-Companion documents: `research.md` (analysis, analogs, formulas, fact-check ledger, in English) and `report.html`. Agent coordination lives in `AGENTS.md` with the claim registry in `docs/tasks.md`; project overview in `README.md`; memory/task public-method docs in `docs/memory.md`.
+Companion documents: `research.md` (analysis, analogs, formulas, fact-check ledger, in English) and `report.html` (the same research as a page; tracked on purpose, not a build output). Agent coordination lives in `AGENTS.md` with the claim registry in `docs/tasks.md`; project overview in `README.md`; memory/task public-method docs in `docs/memory.md`.
 
 ---
 
@@ -80,7 +203,7 @@ Companion documents: `research.md` (analysis, analogs, formulas, fact-check ledg
 | D5 | **Fit checker is a standalone library** (`runa-fit`) with no engine dependency: GGUF header parser (local file or HTTP range request), hardware probe, analytic estimator with an explicit uncertainty band. When the model file is local and the engine is compiled in, an **exact mode** asks the engine allocator for real numbers. | Pre-download checks need the analytic path; post-download checks deserve exact numbers. Nobody in the analog set does the first one from the CLI. |
 | D6 | **Speed prediction = bandwidth model + calibration.** `decode tok/s = eff(device, quant) × BW / bytes_per_token`. `eff` starts from a default table and is updated from measured runs stored in a local SQLite calibration DB. Predictions are always printed as a range. | Decode is memory-bound; the "speed of light" model is accurate to a constant factor that depends on device and kernel quality. Measuring that factor once per device beats any formula. |
 | D7 | **Thinking primitive.** One `ThinkConfig { Off \| On \| Budget{tokens, grace} \| Effort(Low\|Medium\|High\|Max) }`. Local: budget forcing in our own sampling loop (count reasoning tokens after the model's think-open token, inject the think-close token at the budget, soft logit bias before it). Cloud: OpenAI `reasoning.effort`; Anthropic `thinking: {type: "adaptive"}` + `output_config.effort`. Output always carries `Event::Reasoning` and `Event::Text` separately. | Same semantics as llama.cpp's `--reasoning-budget`, `--reasoning-budget-grace-tokens`, `--reasoning-budget-soft-ratio`, `--reasoning-budget-message` (common/reasoning-budget.cpp, PR #25961) and vLLM's reasoning budget (PR #37112), but usable from a library and mapped onto both cloud APIs. |
-| D8 | **Media pipeline in Rust, encoders in C.** Decode with `symphonia`/`hound` → f32 mono 16 kHz (`rubato`); video via `ffmpeg-sidecar` (binary, not linked) → sampled frames + audio track. Three routes: **native** (audio/vision mmproj through mtmd), **asr** (whisper.cpp via `whisper-rs`, or sherpa-onnx Parakeet behind a feature) → text, **cloud** (OpenAI `input_audio` / images; Anthropic images + transcript). Video = ≤ `max_frames` frames at `fps` with scene-change keyframes, plus the audio route. | Neither cloud API takes video natively; Anthropic takes no audio. Frame sampling + transcript is what every VLM pipeline does internally (~1 fps, ≤ 32–64 frames). |
+| D8 | **Media pipeline in Rust, encoders in C.** Decode with `symphonia`/`hound` → f32 mono 16 kHz (`rubato`); video via the ffmpeg binary on `PATH` or `FFMPEG_PATH` (mise pin, not downloaded, not linked) → sampled frames + audio track. Three routes: **native** (audio/vision mmproj through mtmd), **asr** (whisper.cpp via `whisper-rs`, or sherpa-onnx Parakeet behind a feature) → text, **cloud** (OpenAI `input_audio` / images; Anthropic images + transcript). Video = ≤ `max_frames` frames at `fps` with scene-change keyframes, plus the audio route. | Neither cloud API takes video natively; Anthropic takes no audio. Frame sampling + transcript is what every VLM pipeline does internally (~1 fps, ≤ 32–64 frames). |
 | D9 | **Cloud clients.** One `Backend` trait for local and cloud. OpenAI through `async-openai` (Responses API, streaming, `base_url` override for compatible providers). Anthropic through a thin `reqwest` + SSE client of our own (no official Rust SDK). | Two thin adapters, one interface, mock-tested. |
 | D10 | **CLI and config.** `clap` subcommands: `run`, `chat`, `fit`, `pull`, `serve`, `doctor`, `bench`, `models`, `config`. Config layering with `figment`: built-in defaults < `~/.config/runa/config.toml` < `./runa.toml` < env `RUNA_*` < flags. Named profiles. | Standard, predictable, testable. |
 | D11 | **Server.** `axum`; OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/embeddings`, `/v1/audio/transcriptions`; reasoning in `reasoning_content`; request fields `reasoning_effort` and `reasoning_budget_tokens` (the same names llama-server uses, so clients written for it keep working). Anthropic-compatible `/v1/messages` in P6. | Lets existing SDKs and tools use `runa` unchanged. |
@@ -115,6 +238,7 @@ runa/
 │   ├── runa/                  # binary: clap CLI, figment config, output, server (axum)
 │   ├── runa-core/             # Backend trait, Request/Event types, ThinkConfig, Mode, errors
 │   ├── runa-engine/           # llama-cpp-2 wrapper: load, placement, sampling loop, mtmd, state save
+│   ├── runa-pool/             # engine dispatch + model pool, embeddable without the binary
 │   ├── runa-fit/              # gguf header (local/remote), hw probe, estimator, planner, calibration db
 │   ├── runa-media/            # audio/video decode, resample, frame sampling, ASR bridge (whisper-rs)
 │   ├── runa-cloud/            # openai (async-openai) + anthropic (reqwest+SSE) adapters, price table
@@ -396,9 +520,10 @@ Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo
 
 #### Crates today
 
-- `crates/runa` — CLI binary: clap surface in `main.rs`, plus `serve.rs`, `daemon.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `pool.rs`.
+- `crates/runa` — library plus thin binary: clap types in `cli/`, one module per command in `cmd/`, chat in `session/`, plus `serve/`, `daemon/`, `placement.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `tui.rs`, `placer.rs`.
 - `crates/runa-core` — `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors (no engine dependency).
 - `crates/runa-engine` — `llama-cpp-2` wrapper: load, placement, sampling, mtmd, state save; features such as `rpc`.
+- `crates/runa-pool` — `LocalEngine` backend dispatch and `ModelPool` behind serve/daemon; a library so another program can embed local inference (P16.2).
 - `crates/runa-fit` — GGUF header (local/HTTP range), hardware probe, estimator, planner, calibration DB (must not depend on the engine, D5).
 - `crates/runa-cloud` — OpenAI + Anthropic adapters, price table (`docs/prices.toml`).
 - `crates/runa-media` — audio/video decode, resample, frames, whisper-rs ASR.
@@ -407,7 +532,7 @@ Findings from the 2026-09-20 features-only audit (English). Local tree: `listepo
 
 #### Commands today
 
-From `crates/runa/src/main.rs` `Commands`: `run` / `chat`, `fit`, `pull` / `models`, `bench`, `serve`, `daemon`, `doctor`, `media`, `tasks`.
+From `crates/runa/src/cli/mod.rs` `Commands`: `run` / `chat`, `fit`, `pull` / `models`, `bench`, `serve`, `daemon`, `doctor`, `media`, `tasks`.
 
 #### Gaps vs llama.cpp / Ollama
 
@@ -428,7 +553,7 @@ From `crates/runa/src/main.rs` `Commands`: `run` / `chat`, `fit`, `pull` / `mode
 #### Architecture
 
 - **Good split:** `runa-core` Backend trait; `runa-fit` isolated from the engine; cloud adapters in their own crate.
-- **Coupling:** most product surface concentrates in fat `crates/runa/src/main.rs` — hard to reuse serve/daemon without the binary.
+- **Coupling:** serve and the daemon link through the `runa` library (P17.7) and the CLI is split per command (P21.1); the auto placement policy still lives in the `runa` crate and reaches the pool through a `String`-typed `Placer`.
 - **Dual-backend drift risk:** GGUF (`llama-cpp-2`) + optional mistral.rs; pins live in `docs/versions.md`.
 - **`runa-memory` mixes** runtime adaptive memory with the plan-file claim registry (different lifetimes/audiences).
 
@@ -440,7 +565,7 @@ Findings from the 2026-09-20 documentation audit (English).
 
 - Indexed in `docs/README.md`: `getting-started.md`, `guide.md`, `config.md`, `fit.md`, `thinking.md`, `media.md`, `structured.md`, `profiles.md`, `versions.md`, `baselines.md`, `perf-nightly.md`, `kernels.md`, `release.md`, `release-1.0.md`, `memory.md`, `tasks.md`, man pages `runa.1` / `runa-run.1`, ADRs under `docs/adr/`.
 - GitHub Pages was removed; `docs/` is the documentation source (no `site/` tree, repo homepage unset).
-- Research companions: `research.md`, `report.html`.
+- Research companions: `research.md`, `report.html` (tracked on purpose; not a build output).
 
 #### Gaps
 
@@ -526,13 +651,3 @@ Findings from the 2026-09-20 tests-only audit (English).
 - **trycmd vs assert_cmd split** is intentional (`trycmd.rs` docs) but leaves most CLI error strings without golden files.
 - **Ignored network tests** can rot silently (`remote.rs` `#[ignore]`).
 - **Windows untested at runtime** — regressions in path/quoting/daemon will only show on contributor machines.
-
-### P16.2. Library target for in-process local inference
-
-runa is bin-only (`serve`, `pool` and `mcp` are `pub(crate)`). Expose a
-library crate (for example `runa-serve`) so another program, aulo's
-daemon `aulod` (its task T1.20), can embed local inference without a
-second process.
-
-Machine check: a test outside the runa binary calls the pool through the
-library.

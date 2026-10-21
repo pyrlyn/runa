@@ -1,8 +1,16 @@
 # Configuration: `runa.toml` and environment keys
 
 Search order (later files win): `~/.config/runa/config.toml`, then `./runa.toml`.
-CLI flags beat `RUNA_*` env vars, which beat the files. Inline API keys in TOML
-are rejected (P3.8).
+Home is `$HOME`, or `$USERPROFILE` on Windows when `HOME` is unset. CLI flags
+beat `RUNA_*` env vars, which beat the files. Inline API keys in TOML are
+rejected (P3.8). The scan and the OS keychain read (`service = runa`) go
+through the shared `keychain-secret` crate. A non-empty `RUNA_NO_KEYRING`
+skips the keychain. The scanner also rejects `password`, `refresh_token`,
+and `client_secret`, and runa still rejects `openai_key` and `anthropic_key`.
+Later `[memory]` files overlay only the keys they set; earlier
+keys stay. Cloud prices follow the same later-wins overlay:
+`docs/prices.toml` (when the process cwd is the repo), then
+`~/.config/runa/prices.toml`.
 
 ## Top level
 
@@ -29,6 +37,31 @@ Defaults for whichever model is being run (P8.5).
 [model]
 lora = ["adapter.gguf:0.5", "other.gguf"]
 ```
+
+## `[store]`
+
+Where model files live (P18.1). A later file overrides only the keys it sets.
+Paths must be absolute or start with `~/`; a relative path or an unknown key
+stops every command at startup with exit code 2.
+
+| Key | Values | Env |
+|-----|--------|-----|
+| `dirs` | Array of extra folders searched, recursively, for a bare model file name after the download store; `runa models` lists them too | |
+| `cache_dir` | Download store used by `runa pull` (default `<data dir>/models`: `$XDG_DATA_HOME/runa/models`, else `%LOCALAPPDATA%\runa\models` on Windows, else `~/.local/share/runa/models`) | |
+| `max_bytes` | Largest fresh `runa pull` download in bytes, at least 1 (default 3 GiB) | `RUNA_MAX_MODEL_BYTES` |
+
+```toml
+[store]
+dirs = ["~/models", "/mnt/shared/gguf"]
+max_bytes = 8589934592
+```
+
+A model file found there, or given as a path, must be what its bytes say
+(GGUF, safetensors or Wasm, with a sane header); pickle checkpoints (`.bin`,
+`.pt`, `.pth`, `.ckpt`, `.pkl`) are refused, and a symlink that points out of
+its folder is ignored (P18.2).
+
+The JSON Schema of this table is `crates/runa-models/store.schema.json`.
 
 ## `[defaults]`
 
@@ -103,6 +136,9 @@ See `docs/media.md`.
 
 ## `[memory]`
 
+Later files overlay only the keys they set (a project `floor_mib` does not
+reset `idle_timeout_s` from the user file).
+
 | Key | Values | Env |
 |-----|--------|-----|
 | `idle_timeout_s` | seconds before idle shrink | `RUNA_MEMORY_IDLE_TIMEOUT_S` |
@@ -110,6 +146,25 @@ See `docs/media.md`.
 | `max_growth_mib` | cap on `grow_for` | `RUNA_MEMORY_MAX_GROWTH_MIB` |
 
 See `docs/memory.md`.
+
+## Serve
+
+`runa serve` binds `127.0.0.1` by default. `--host` must be a loopback
+address (`127.0.0.0/8` or `::1`) unless `--api-key KEY` is set. With a
+key, every `/v1` route requires `Authorization: Bearer <key>`; `/health`
+stays open. There is no `runa.toml` key for this token (inline API keys
+in TOML are rejected).
+
+## Usage journal
+
+`run`, `chat`, and `serve` append one JSON line per finished generation.
+`runa stats` and `runa web` read it. There is no `runa.toml` key.
+
+| Env | Use |
+|-----|-----|
+| `RUNA_USAGE_LOG` | Journal path. Default: `$XDG_CACHE_HOME/runa/usage.jsonl` or `~/.cache/runa/usage.jsonl` |
+
+See [`stats.md`](stats.md).
 
 ## Cloud env (not TOML)
 

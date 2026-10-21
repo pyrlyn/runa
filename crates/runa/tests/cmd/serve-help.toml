@@ -16,6 +16,7 @@ Options:
       --max-loaded <MAX_LOADED>  Max models kept loaded (LRU unloads the rest)
       --host <HOST>              Bind address (D11: 127.0.0.1 by default) [default: 127.0.0.1]
       --port <PORT>              Bind port. `0` picks an ephemeral port [default: 8080]
+      --api-key <KEY>            Bearer token required on `/v1`. Required when `--host` is not a loopback address (`127.0.0.0/8` or `::1`)
       --mode <MODE>              Compute mode: cpu | gpu | hybrid | auto [default: cpu]
       --ctx <CTX>                Context length [default: 4096]
       --lora <PATH[:SCALE]>      LoRA adapter GGUF (`path[:scale]`). Repeatable; applies to every served model (P8.5)

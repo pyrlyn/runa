@@ -39,6 +39,7 @@ fn request(prompt: &str, max_tokens: u32) -> GenerateRequest {
         grammar: None,
         tools: None,
         tool_choice: None,
+        infill: None,
     }
 }
 

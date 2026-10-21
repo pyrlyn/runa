@@ -54,6 +54,8 @@ Homebrew formula below work from the first release. Until then, build from sourc
   socket for snappy `run` / `chat`; compute modes `cpu` / `gpu` / `hybrid` plus `auto` placement.
 - **Adaptive memory.** Shrinks toward a floor when idle, with a bounded pre-grow when a task is
   heavy.
+- **Usage, live.** `runa stats` prints the local journal; `runa web` follows new generations
+  on loopback.
 
 ## Install
 
@@ -91,6 +93,8 @@ Run, chat, or serve an OpenAI-compatible HTTP API:
 runa run qwen "explain KV-cache quantization in one paragraph"
 runa chat qwen --tui
 runa serve --port 8080
+runa stats
+runa web
 ```
 
 Calibrate speed predictions with a measured run:

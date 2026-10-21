@@ -388,10 +388,11 @@ mod tests {
     }
 
     /// P10.11: Harmony (gpt-oss) tool format through the REAL template.
-    /// Needs the 20B fixture (11 GiB — dev machines only, skips in CI,
-    /// like the Qwen3-8B think test). Renders a required tool call, then
-    /// parses a canned Harmony reply: analysis channel + `to=functions`
-    /// recipient (both header orders per `common_chat_parse_gpt_oss`).
+    /// Needs `tests/fixtures/gpt-oss-20b-MXFP4.gguf` (tiny custom loadable
+    /// gpt-oss with the real Harmony chat_template; soft-skips if missing).
+    /// Renders a required tool call, then parses a canned Harmony reply:
+    /// analysis channel + `to=functions` recipient (both header orders per
+    /// `common_chat_parse_gpt_oss`).
     #[test]
     fn harmony_tool_reply_parses() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

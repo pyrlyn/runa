@@ -11,6 +11,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # P14.1: CI runs on push/merge to main and on ready (non-draft) PRs to main.
 # Draft PRs are skipped; `review` runs only via the `/review` comment workflow.
 # Releases go through `bump.yml` (Actions -> Bump and release: a version PR this CI gates).
@@ -19,6 +22,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which runner the macOS jobs use: pyrlyn/ci's macos-runner action reads the MACOS_RUNNER
+  # variable (unset or `hosted` = the hosted label, `xcode-27-local` = the dedicated Mac).
+  macos-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.r.outputs.value }}
+    steps:
+      - id: r
+        uses: pyrlyn/ci/.github/actions/macos-runner@4b5b5470544893cd515b88c751e92728341c6daa # main
+        with:
+          runner: ${{ vars.MACOS_RUNNER }}
+          value: '["macos-14"]'
+
   # infra's config action on .github/infra.yml: `docs-only` is "true" when every changed file
   # is documentation (fails open: "false" when unsure, e.g. a .github/ change). A failed
   # `config` runs everything.
@@ -30,18 +47,19 @@ jobs:
       docs-only: ${{ steps.config.outputs.docs-only }}
     steps:
       - id: config
-        uses: pyrlyn/ci/.github/actions/config@f880dee803f157cd4268a503418b4ecaf4da7078 # main
+        uses: pyrlyn/ci/.github/actions/config@main
 
   ci:
     name: ${{ matrix.os }} (${{ matrix.target }})
-    needs: config
+    needs: [config, macos-runner]
     # Skip draft PRs (push/workflow_dispatch have no pull_request object). Never skipped for a
     # docs-only change: a matrix job skipped at job level reports one check under its raw name
     # and the required `<os> (<target>)` checks would wait, so every step is a no-op instead.
     if: >-
       !cancelled()
       && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    runs-on: ${{ matrix.os }}
+    # MACOS_RUNNER (pyrlyn/ci macos-runner): unset/hosted = the hosted label, xcode-27-local = the dedicated Mac (fork PRs keep the hosted label)
+    runs-on: ${{ vars.MACOS_CI_DISABLED == 'true' && (startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'xcode')) && 'ubuntu-22.04' || startsWith(matrix.os, 'macos') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON(needs.macos-runner.outputs.value)[0] || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +80,7 @@ jobs:
     # restore/save (~2.5 min on ubuntu/macos). Test semantics are unchanged;
     # failure backtraces keep symbols but lose line numbers.
     env:
-      RUN: ${{ needs.config.outputs.docs-only != 'true' }}
+      RUN: ${{ needs.config.outputs.docs-only != 'true' && !(vars.MACOS_CI_DISABLED == 'true' && (startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'xcode'))) }}
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
 
@@ -149,6 +167,9 @@ jobs:
         # `llama-cpp-2`/`encoding_rs` wiring still in progress) are not
         # compiled as part of the test step — they are exercised separately
         # via `cargo build --workspace` and the P0.4 spike.
+        # P14.3: this step is the library half of the local fast path
+        # `moon run root:test-fast`. Fixture download and serve e2e below
+        # stay required; that command does not replace them.
         run: cargo test --workspace --lib
 
       - name: fetch qwen2 fixture (P0.7, git-ignored weights)
@@ -256,20 +277,13 @@ jobs:
         uses: jdx/mise-action@v2
         with:
           install: true
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # v1: drop caches with whisper's ggml built GGML_NATIVE=ON (SIGILL)
-          prefix-key: v1-rust
-          shared-key: moon
       - name: moon projects (graph check, K1)
         run: moon projects
-      - name: moon ci --affected (K5, parallel cached)
-        # On a docs-only change, affected set is (almost) nothing — the check
-        # is that `moon ci` correctly skips. Direct-cargo jobs above remain the
-        # reference; moon is the cached parallel path.
-        run: >-
-          moon ci --affected --remote=false || moon run :test --affected --remote=false || echo "moon ci: no affected projects (docs-only), ok"
       - name: registry lint (K-aware)
+        # P17.1: do not `|| echo`. `moon run` diffs against `main`, which a
+        # shallow PR checkout does not have. Full `moon ci` exceeded the
+        # 5 min P11.9 budget (cancelled at 5m17s). Direct-cargo jobs above
+        # remain the test gate.
         run: python3 scripts/lint-tasks.py docs/tasks.md
 
   # Separate job so the branch protection rule can require a single `ci` check
@@ -289,6 +303,6 @@ jobs:
     steps:
       # The shared action skips new branches, bot and earlier auto-revert commits and pushes
       # touching .github/ (GITHUB_TOKEN cannot push workflow files). No re-apply PR, as before.
-      - uses: pyrlyn/ci/.github/actions/revert-on-failure@0603d0ae610af9f792c5caf925041292a857e480
+      - uses: pyrlyn/ci/.github/actions/revert-on-failure@main
         with:
           reapply-pr: "false"

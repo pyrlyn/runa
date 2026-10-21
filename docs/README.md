@@ -2,7 +2,8 @@
 
 Everything a reader needs beyond the root [`README.md`](../README.md): user
 guides, reference pages, engineering notes, and the task-claim registry.
-All prose in this repository is English (see [`../CONTRIBUTING.md`](../CONTRIBUTING.md)).
+All prose in this repository is English, except the translations in `docs/ru/` and
+`docs/uk/` (see [`../CONTRIBUTING.md`](../CONTRIBUTING.md)).
 
 | Audience | Start with |
 |----------|------------|
@@ -27,10 +28,13 @@ All prose in this repository is English (see [`../CONTRIBUTING.md`](../CONTRIBUT
 | [`thinking.md`](thinking.md) | `ThinkConfig` modes, budget and effort levels, show/hide, the cloud mapping |
 | [`media.md`](media.md) | The three audio/vision routes (`native`, `asr`, cloud), video sampling, `mtmd` limits |
 | [`structured.md`](structured.md) | JSON Schema and GBNF grammars, `serve` `response_format`, tool calling, MCP tool loop |
+| [`dashboard.md`](dashboard.md) | Live `/dashboard` for `runa serve`: snapshot schema, websocket, quotas |
+| [`stats.md`](stats.md) | `runa stats` and `runa web`: usage journal, snapshot, websocket |
 | [`profiles.md`](profiles.md) | Profiling results and the polyglot escape-hatch evaluation (K3, K4, P5.1); figure in `profiles-p49.svg` |
 | [`prices.toml`](prices.toml) | User-editable cloud price table, USD per 1M tokens |
 | [`versions.md`](versions.md) | What each pin maps to upstream (D16), cargo feature flags, release artifacts and install variants, and the root `ketch.toml` package manifest |
 | [`runa.1`](runa.1), [`runa-run.1`](runa-run.1) | Man pages (`man ./docs/runa.1`) |
+| [`development.md`](development.md) | Repository layout, local gates, CI, releases, the `license` field |
 | [`site.md`](site.md) | Product card for the project site: tagline, features, install, usage examples, links |
 
 ## Engineering
@@ -62,10 +66,11 @@ All prose in this repository is English (see [`../CONTRIBUTING.md`](../CONTRIBUT
 
 ## Adding or changing docs
 
-1. English prose. Document what the tree actually ships — no invented APIs,
+1. English prose; update the matching `docs/ru/` and `docs/uk/` translations in the
+   same change. Document what the tree actually ships — no invented APIs,
    flags, or config keys.
-2. One topic per file, with a one-line purpose in the H1 (the existing files
-   follow the `# <file> — <purpose>` pattern).
+2. One topic per file, with a short H1 title — no `docs/<file> —` prefix and
+   no plan codes; the H1 is the page title on the project site.
 3. Add the new file to this index **and** to the Docs table in
    [`../README.md`](../README.md) in the same change.
 4. A new or changed public method also needs a [`memory.md`](memory.md) entry

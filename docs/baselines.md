@@ -1,4 +1,4 @@
-# docs/baselines.md — llama-bench reference (P0.6)
+# llama-bench baselines
 
 Measured 2026-09-08 on Apple M3 Max (Metal, 48GB unified, macOS 15) via
 `crates/runa-engine/examples/gen.rs` (`llama-cpp-2 =0.1.133 → llama.cpp b7709`).

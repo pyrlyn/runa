@@ -104,6 +104,25 @@ the same split on non-streaming chat completions:
 Chat `/usage` appends `(reasoning N)` when N > 0. Mistral/cloud
 backends report 0 (no reasoning split there).
 
+## Usage journal (`runa stats`, `runa web`)
+
+**What.** Each finished `run`, `chat`, and `serve` generation appends
+one line to `~/.cache/runa/usage.jsonl` (`RUNA_USAGE_LOG` overrides).
+`runa stats` prints totals, models, and the newest rows. `runa web`
+serves the same snapshot on `127.0.0.1:3939` and pushes updates over
+a websocket.
+
+```sh
+runa stats --since 7d
+runa stats --json
+runa web
+```
+
+**Why / limits.** The serve `/dashboard` is the current process only.
+The journal is what is left after the process exits. Daemon turns
+record tokens with a decode rate of 0, so they do not move the
+average. See [`stats.md`](stats.md).
+
 ## Idle shrink in `serve` / `daemon` (M11)
 
 **What.** After `idle_timeout_s` (default 300, `[memory]`,
@@ -144,13 +163,16 @@ with no network — now counting KV cache (linear in `--ctx`,
 compute buffer (linear in ubatch), not just weights:
 
 ```sh
-runa fit --recommend --offline --top 5
+RUNA_FAKE_VRAM=12288 runa fit --recommend --offline --top 5
 # runa fit --recommend · VRAM 12 GiB (RUNA_FAKE_VRAM) · RAM 16 GiB · ctx 8192 · kv f16 · offline: sizes only
 #  1. gpt-oss 20B                tier 4    ~11 tok/s  FITS CPU
 #     runa pull hf:ggml-org/gpt-oss-20b-GGUF:gpt-oss-20b-MXFP4.gguf
 #  2. Qwen2.5 VL 7B Instruct     tier 3    ~98 tok/s  FITS GPU
 #     ...
 ```
+
+`RUNA_FAKE_VRAM` is a test hook that takes MiB: the sample pretends to have a 12 GiB GPU. Without it runa
+reads your machine, so your numbers will differ.
 
 A long context on a big model no longer "fits" offline while
 failing online. `~` marks size-based estimates.
@@ -243,3 +265,66 @@ ambient RAM pressure, and `--threads` CPU share. Out-of-range
 values fail before any load. The flag opts `run` out of the daemon
 (the daemon knows no per-request cap) and is rejected on
 `--backend mistral` (never warned there).
+
+## Serve bind and `--api-key`
+
+**What.** `runa serve` binds `127.0.0.1` by default. A non-loopback
+`--host` (`0.0.0.0`, `::`, a LAN address, a hostname) is refused
+unless `--api-key` is set. Loopback is `127.0.0.0/8` and `::1`
+(including `[::1]` and IPv4-mapped `::ffff:127.0.0.1`).
+
+**Why.** `/v1` serves completions, embeddings and transcriptions.
+Binding every interface without a key exposes that API on the
+network. `/health` stays open so a probe can still see whether the
+process is up.
+
+**How.** With a key, every `/v1` route requires
+`Authorization: Bearer <key>`. A missing or wrong token is HTTP 401
+`invalid api key`. The same flag also locks a loopback bind. There
+is no `runa.toml` key for this token.
+
+```sh
+runa serve model.gguf --port 8080
+runa serve model.gguf --host 0.0.0.0 --api-key "$SERVE_KEY"
+curl -H "Authorization: Bearer $SERVE_KEY" http://127.0.0.1:8080/v1/models
+```
+
+## Fill-in-the-middle completion (`/v1/infill`)
+
+**What.** `POST /v1/infill` completes code at a cursor: it takes the text
+before and after it and returns the middle. It is meant for editors (Kerf's
+inline completion); chat and agents keep using `/v1/chat/completions`.
+The request and reply use llama-server's `/infill` field names, so a client
+written for llama-server needs only the path.
+
+| Request field | Meaning |
+| --- | --- |
+| `input_prefix`, `input_suffix` | Text before and after the cursor; at least one is non-empty |
+| `n_predict` | Tokens to generate, 1–4096, default 128 |
+| `temperature` | 0–2, default 0 (greedy, so the same context gives the same middle) |
+| `stop` | Up to 16 stop strings |
+| `model` | Model id; the default model when absent |
+
+The reply has `content`, `model`, `stop_type` (`eos`, `limit` or `word`),
+`stopping_word`, `tokens_evaluated` and `tokens_predicted`. Other
+llama-server fields such as `input_extra` are ignored.
+
+**Why.** Inline completion needs the model's own fill-in-the-middle tokens.
+Sending code through a chat template only imitates infill, so a model
+without FIM tokens gets HTTP 400 `infill_unsupported` instead.
+
+**How.** The prompt is `<pre> prefix <suf> suffix <mid>` with the model's
+markers, taken from the GGUF `tokenizer.ggml.fim_*_token_id` keys or from
+the spellings llama.cpp recognises (`<|fim_prefix|>`, `<fim_prefix>`,
+`<｜fim▁begin｜>`, `<PRE>`, …). Marker text inside the editor's file stays
+plain text. A long prefix keeps the lines nearest the cursor, and the
+suffix keeps at least a quarter of the room left after `n_predict`.
+Generation ends on any end-of-generation token. Use a model trained for
+FIM (a coder model); a chat model has the tokens but answers poorly.
+`--api-key` protects the route like the rest of `/v1`; the mistral backend
+refuses it.
+
+```sh
+curl http://127.0.0.1:8080/v1/infill \
+  -d '{"input_prefix":"def add(a, b):\n    return ","input_suffix":"\n","n_predict":32}'
+```

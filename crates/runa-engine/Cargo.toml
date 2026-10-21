@@ -43,8 +43,8 @@ native = []
 rpc = []
 
 [dependencies]
-llama-cpp-2 = { version = "=0.1.133" }
-llama-cpp-sys-2 = { version = "=0.1.133" }
+llama-cpp-2 = { version = "=0.1.159" }
+llama-cpp-sys-2 = { version = "=0.1.159" }
 # P9.2: second backend (safetensors dirs). Exact pin like the other engine
 # crates; `default-features = false` keeps GPU accel opt-in (D13) — the
 # high-level builder auto-maps devices. The blocking API owns its runtime,
@@ -68,7 +68,7 @@ cc = "1"
 # (`hw.perflevel0.logicalcpu`) on macOS only; other targets use
 # `available_parallelism` and need no FFI.
 [target.'cfg(target_os = "macos")'.dependencies]
-libc = "=0.2.189"
+libc = "=0.2.190"
 
 [dev-dependencies]
 # P2.1 memory check: engine tensor bytes vs P1 descriptor estimate.

@@ -35,47 +35,28 @@
       exit 1
     fi
 
-# P14.2: align the MSVC CRT between the two vendored ggml builds on the
-# release profile. dist links the final binary /MD (dynamic CRT), and
-# llama-cpp-sys-2 builds dynamic too (LLAMA_STATIC_CRT unset → static_crt
-# (false)). whisper-rs-sys 0.15 never calls cmake's `.static_crt()`
-# (default None → cc-rs static /MT), so the Release/Windows link died with
-# LNK2038 (MT vs MD). The whisper half of the fix lives in
-# `.cargo/config.toml` [env] (CMAKE_MSVC_RUNTIME_LIBRARY, always on);
-# LLAMA_STATIC_CRT=0 below pins the llama half (its default is dynamic).
-#
-
-# How it travels: `.cargo/config.toml` [env] sets CMAKE_MSVC_RUNTIME_LIBRARY
-# for every cargo invocation in this repo (CI, local, dist). whisper-rs-sys
-# forwards every CMAKE_* env var as a `-D` define, so the value reaches its
-# cmake configure step before the first `project()` call — the only ordering
-# MSVC generators honor. LLAMA_STATIC_CRT=0 pins the llama side explicitly
-# (its build.rs default is already dynamic); GITHUB_ENV persists it to the
-# later build step (build.rs env must exist at compile time, unlike
-# [env] which cargo sets for build scripts too — belt and braces).
+# P14.2: align the MSVC CRT on the static runtime the dist link already
+# uses. The last v0.1.0 Windows job (run 35478902349) died LNK2038:
+# llama's cc-rs wrappers were MT_StaticRelease and whisper's cmake objects
+# were MD_DynamicRelease, then the dynamic objects left `__imp_*`
+# unresolved. CMAKE_*_FLAGS=/MD forced whisper to the dynamic CRT and did
+# not move the wrappers. cmake-rs already injects /MT when the Rust link
+# is crt-static; do not override it. LLAMA_STATIC_CRT=1 pins llama's
+# cmake to that same static CRT (unset means static_crt false / dynamic).
 - name: Align MSVC CRT for release C++ builds (P14.2, Windows only)
   if: runner.os == 'Windows'
   shell: bash
   run: |
-    {
-      echo "CMAKE_C_FLAGS=/MD"
-      echo "CMAKE_CXX_FLAGS=/MD"
-      echo "CMAKE_C_FLAGS_RELEASE=/MD"
-      echo "CMAKE_CXX_FLAGS_RELEASE=/MD"
-      echo "LLAMA_STATIC_CRT=0"
-    } >> "$GITHUB_ENV"
+    echo "LLAMA_STATIC_CRT=1" >> "$GITHUB_ENV"
 
 - name: Cache Cargo build
   uses: Swatinem/rust-cache@v2
   with:
     shared-key: release-dist
-    # P14.2: v1 of this cache stored llama objects built with the static CRT
-    # (MT_StaticRelease) while rustc links /MD — every later run restored the
-    # poisoned objects and died with LNK2038. v2/v3/v4 tried the wrong knob
-    # (CMAKE_MSVC_RUNTIME_LIBRARY, then _RELEASE-only flags; whisper-rs drops
-    # both and cmake-rs also injects the base CMAKE_C/CXX_FLAGS=.../MT).
-    # v5 = base + per-config /MD via the wrappers, clean slate. Bump on any
-    # CRT-affecting change.
-    prefix-key: v5-crt-md-flags
+    # P14.2: v1–v4 stored a CRT mix. v5 stored whisper objects built /MD
+    # (CMAKE_*_FLAGS=/MD) against MT wrappers and died LNK2038 on run
+    # 35478902349. v6 drops that cache; the Windows step now sets only
+    # LLAMA_STATIC_CRT=1. Bump on any CRT-affecting change.
+    prefix-key: v6-crt-mt
     # Release builds are rare; always save so the next cut is warm.
     cache-on-failure: true

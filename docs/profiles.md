@@ -1,4 +1,4 @@
-# docs/profiles.md — profiling and polyglot evaluation (K3, K4, P5.1)
+# Profiling and polyglot evaluation
 
 ## K3 — Polyglot escape-hatch evaluation (D19, gate D1)
 

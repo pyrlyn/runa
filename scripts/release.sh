@@ -18,6 +18,11 @@
 # commit to `release/bump-vX.Y.Z`, opens a pull request, rebase-merges it once
 # every required check is green, tags the commit that landed on main, creates a
 # draft release and dispatches release.yml and release-variants.yml on the tag.
+#
+# It stays in this repo. With no flag it only starts pyrlyn/ci bump.yml.
+# --local / --dry-run edit this tree (Cargo.toml, Cargo.lock, CHANGELOG.md),
+# and bump.yml is what runs --local. Moving that body into pyrlyn/ci would
+# be a change to another repository.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

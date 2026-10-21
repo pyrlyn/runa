@@ -8,20 +8,17 @@ rust-version.workspace = true
 
 [features]
 default = []
-parakeet = []
 
 [dependencies]
 # P4.1 audio decode.
 symphonia = { version = "=0.6.1", features = ["mp3", "aac", "flac", "ogg", "pcm", "wav", "isomp4"] }
 hound = "=3.5.1"
-rubato = "=5.0.0"
+rubato = "=5.0.1"
 sha2 = "=0.11.0"
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
 whisper-rs = "=0.16.0"
 reqwest = { version = "=0.13.5", default-features = false, features = ["blocking", "rustls"] }
-# P4.5: system ffmpeg or auto-download.
-ffmpeg-sidecar = "2"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }

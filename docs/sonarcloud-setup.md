@@ -95,8 +95,10 @@ SonarCloud's C-family analyzer needs a compilation database (`compile_commands.j
 or build-wrapper output. This repository does not produce one in CI yet, so C, C++ and
 Objective-C analysis is turned off in `sonar-project.properties` via
 `sonar.c.file.suffixes=-`, `sonar.cpp.file.suffixes=-` and `sonar.objc.file.suffixes=-`.
-Follow-up: generate `compile_commands.json` for the first-party kernels in `crates/runa-kernels/c/`, set
-`sonar.cfamily.compile-commands`, and remove those three lines.
+Follow-up: `runa-kernels` links a Zig archive and has no first-party C sources.
+C-family analysis stays off until this tree has C or C++ of its own to compile.
+Then generate `compile_commands.json`, set `sonar.cfamily.compile-commands`, and
+remove those three lines. Vendored ggml under `crates/runa-engine/` stays out of scope.
 
 ## 8. Local dry run (optional)
 

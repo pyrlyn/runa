@@ -9,7 +9,7 @@ use std::ffi::OsString;
 
 use clap::Parser;
 
-use crate::{Cli, Commands, ToolArgs};
+use crate::cli::{Cli, Commands, ToolArgs};
 
 pub(crate) fn run(data: &[u8]) {
     match env!("CARGO_BIN_NAME") {
@@ -44,7 +44,11 @@ fn cli_argv(data: &[u8]) {
                 a.rpc.as_deref(),
                 &a.lora,
             );
-            let _ = crate::resolve_kv(a.kv.as_deref(), a.kv_k.as_deref(), a.kv_v.as_deref());
+            let _ = crate::cli::input::resolve_kv(
+                a.kv.as_deref(),
+                a.kv_k.as_deref(),
+                a.kv_v.as_deref(),
+            );
             if let Some(s) = a.tensor_split.as_deref() {
                 let _ = runa_engine::parse_tensor_split(s);
             }
@@ -87,7 +91,7 @@ fn cli_argv(data: &[u8]) {
             ..
         } => {
             flags("auto", &mode, device.as_deref(), None, &[]);
-            let _ = crate::resolve_kv(kv.as_deref(), kv_k.as_deref(), kv_v.as_deref());
+            let _ = crate::cli::input::resolve_kv(kv.as_deref(), kv_k.as_deref(), kv_v.as_deref());
             if let Some(s) = tensor_split.as_deref() {
                 let _ = runa_engine::parse_tensor_split(s);
             }

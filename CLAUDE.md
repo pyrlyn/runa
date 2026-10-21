@@ -73,10 +73,12 @@ files, and keep §1–§7 numbered as they are: `scripts/lint-tasks.py` matches 
 
 | Path | Responsibility |
 |------|----------------|
-| `crates/runa` | The CLI: `main.rs` (the clap surface), `config.rs`, `tui.rs`, `serve.rs`, `daemon.rs`, `daemon_proto.rs`, `mcp.rs`, `pull.rs`, `bench.rs`, `fit.rs`, `pool.rs`, `cloud.rs` |
+| `crates/runa` | Library plus CLI. `main.rs` calls `run` (`cmd/mod.rs`: config bootstrap, dispatch, exit code from `CmdError`). Modules: `cli/` (clap types, `input.rs` flag/stdin input, `config.rs`), `cmd/` (one module per command: `run`, `media`, `models`, `tasks`, `stats`, `doctor`), `session/` (`history`/`format` print nothing; `stream`, `repl`, `screen` for the TUI loop), `daemon/` (`mod.rs`, `proto.rs`, `client.rs`), `serve/`, `placement` (model resolution and the auto placement policy), plus `tui`, `mcp`, `pull`, `bench`, `fit`, `placer`, `cloud`. The engine wrapper is `runa_pool::engine` |
 | `crates/runa-core` | `Backend` trait, `Request`/`Event`, `ThinkConfig`, `Mode`, errors. No engine dependency |
 | `crates/runa-engine` | `llama-cpp-2` wrapper: load, placement, sampling loop, mtmd, state save; vendored patches behind features (`rpc`, `hexagon`/`openvino` stubs) |
+| `crates/runa-pool` | `LocalEngine` (backend dispatch) and `ModelPool` behind serve/daemon, as a library: another program embeds local inference through it (P16.2). Placement is injected (`Placer`), so it needs no config or fit code |
 | `crates/runa-fit` | GGUF header (local file / HTTP range), hardware probe, estimator, placement planner, calibration DB. Must not depend on the engine (D5) |
+| `crates/runa-models` | Model store: `[store]` config (`dirs`, `cache_dir`, `max_bytes`), folder lookup and listing; grows into local/URL/Wasm loading (P18). No engine dependency |
 | `crates/runa-memory` | `MemoryManager` (D17) + `TaskRegistry` (D18) |
 | `crates/runa-media` | Audio/video decode, resample, frame sampling, ASR bridge (`whisper-rs`) |
 | `crates/runa-cloud` | OpenAI + Anthropic adapters, price table (`docs/prices.toml`) |
@@ -101,6 +103,7 @@ Run these before requesting a merge or closing a task. They mirror
 | Format | `cargo fmt --all -- --check` |
 | Lint | `cargo clippy --workspace -- -D warnings` |
 | Build | `cargo build --workspace` |
+| Fast tests | `moon run root:test-fast` (library tests plus weight-free integration tests; no GGUF download, no engine e2e) |
 | Tests | `cargo test --workspace --lib`, then `moon run :test` for the full set |
 | Registry lint | `moon run root:lint-tasks` (or `python3 scripts/lint-tasks.py docs/tasks.md`) |
 | Memory crate | `cargo test -p runa-memory` (claim/release/double-claim, P7.4) |
@@ -108,19 +111,22 @@ Run these before requesting a merge or closing a task. They mirror
 | Perf gate self-test | `python3 scripts/perf-regress.py --self-test` |
 | Feature builds | `cargo check -p runa-engine --features hexagon,openvino` and `cargo test -p runa-engine -p runa --features runa/rpc --lib --test rpc --test doctor --test trycmd` |
 | Full pass + cleanup | `moon run root:test-with-cleanup` (drops downloaded weights, compacts `target/` with swarfr) |
+| Workflow lint | `mise x -- jactionlint` (`.github/jactionlint.yaml`, baseline `.github/jactionlint-baseline.json`; refresh it with `mise x -- jactionlint --baseline-write` after fixing findings) |
+| Pre-push hook | `mise x -- hk install --mise` once per clone: `hk.pkl` runs jactionlint before every push |
 
 Job time budgets stay under 5 minutes (P11.8/P11.9); when a step grows, report
 it instead of loosening the gate.
 
 ## 10. Documentation rules
 
-- Prose is English (repository rule, `CONTRIBUTING.md`).
+- Prose is English (repository rule, `CONTRIBUTING.md`), except the `docs/ru/` and
+  `docs/uk/` translations (§13).
 - Document only what the tree ships. Never invent a flag, key, or public method
   to fill a table — if the docs promise it, the code must have it.
 - `docs/README.md` is the index: a new doc is added there **and** to the Docs
   table in `README.md` in the same change.
-- One topic per file, with the `# <file> — <purpose>` H1 that every file in
-  `docs/` already uses.
+- One topic per file, with a short H1 title (no `docs/<file> —` prefix and no
+  plan codes): the H1 is the page title on the project site.
 - Public API: every new public method gets an entry in `docs/memory.md` (§5,
   P7.5); the docs update is part of the task, not a follow-up.
 - Decisions are recorded as ADRs in `docs/adr/` (`d01`–`d18`, `d23`; D19–D22
@@ -160,6 +166,16 @@ A task is done when all of these hold:
    `docs/tasks.md`. An empty registry table is the normal end state.
 5. No claim is left behind on a task you are not actively working: stop and
    done both clear it (§2).
+
+## 13. Documentation translations
+
+English docs in `docs/` are the source of truth. Russian and Ukrainian translations live in
+`docs/ru/` and `docs/uk/` under the same relative path and file name (front matter adds
+`lang: ru` / `lang: uk`). Any change to an English doc must update the matching `docs/ru/` and
+`docs/uk/` translations in the same change, without waiting for a separate request. New English
+docs get translations too, and removing an English doc removes its translations. These two
+directories are the only place non-English prose is allowed.
+Maintainer-only docs (for example `docs/sonarcloud-setup.md`) stay English-only.
 
 ## Host agents
 
