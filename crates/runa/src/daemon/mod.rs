@@ -11,6 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
+pub(crate) mod client;
 pub(crate) mod proto;
 #[cfg(unix)]
 use std::sync::atomic::AtomicU32;
