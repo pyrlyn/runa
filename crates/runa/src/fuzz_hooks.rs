@@ -44,7 +44,11 @@ fn cli_argv(data: &[u8]) {
                 a.rpc.as_deref(),
                 &a.lora,
             );
-            let _ = crate::cli::resolve_kv(a.kv.as_deref(), a.kv_k.as_deref(), a.kv_v.as_deref());
+            let _ = crate::cli::input::resolve_kv(
+                a.kv.as_deref(),
+                a.kv_k.as_deref(),
+                a.kv_v.as_deref(),
+            );
             if let Some(s) = a.tensor_split.as_deref() {
                 let _ = runa_engine::parse_tensor_split(s);
             }
@@ -87,7 +91,7 @@ fn cli_argv(data: &[u8]) {
             ..
         } => {
             flags("auto", &mode, device.as_deref(), None, &[]);
-            let _ = crate::cli::resolve_kv(kv.as_deref(), kv_k.as_deref(), kv_v.as_deref());
+            let _ = crate::cli::input::resolve_kv(kv.as_deref(), kv_k.as_deref(), kv_v.as_deref());
             if let Some(s) = tensor_split.as_deref() {
                 let _ = runa_engine::parse_tensor_split(s);
             }
@@ -131,7 +135,7 @@ fn cli_argv(data: &[u8]) {
 
 fn flags(backend: &str, mode: &str, device: Option<&str>, rpc: Option<&str>, lora: &[String]) {
     let _ = runa_core::BackendKind::parse(backend);
-    let _ = crate::cli::parse_mode_choice(mode);
+    let _ = crate::parse_mode_choice(mode);
     if let Some(s) = device {
         let _ = runa_engine::parse_device_list(s);
     }
