@@ -138,6 +138,15 @@ fn check_size_limit(size: u64, repo: &str, file: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuse before downloading when the Hub already reports a size over the
+/// limit; the post-download check alone lets the bytes land on disk first.
+fn precheck_remote_size(meta: &runa_fit::FileMeta, repo: &str, file: &str) -> Result<(), String> {
+    match meta.size {
+        Some(size) => check_size_limit(size, repo, file),
+        None => Ok(()),
+    }
+}
+
 /// A pulled (or already-present) model file.
 #[derive(Debug, Clone)]
 pub struct PulledModel {
@@ -294,9 +303,7 @@ pub fn pull(model_ref: &str) -> Result<PulledModel, String> {
         &file,
     );
     let meta = fetcher.head_metadata(&url).map_err(|e| e.to_string())?;
-    if let Some(size) = meta.size {
-        check_size_limit(size, &repo, &file)?;
-    }
+    precheck_remote_size(&meta, &repo, &file)?;
 
     let dest = repo_dir(&repo).join(&file);
     if let Some(hit) = cached_if_verified(&dest, &meta, &repo, &file) {
@@ -424,6 +431,7 @@ fn pull_safetensors(repo: &str) -> Result<PulledModel, String> {
             file,
         );
         let meta = fetcher.head_metadata(&url).map_err(|e| e.to_string())?;
+        precheck_remote_size(&meta, repo, file)?;
         let dest = dir.join(file);
         if let Some(hit) = cached_if_verified(&dest, &meta, repo, file) {
             total += hit.size;
@@ -813,6 +821,25 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("org/repo/big.gguf"), "{err}");
         assert!(err.contains("RUNA_MAX_MODEL_BYTES"), "{err}");
+    }
+
+    #[test]
+    fn oversized_hub_size_is_refused_before_download() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var("RUNA_MAX_MODEL_BYTES");
+        }
+        let big = FileMeta {
+            size: Some(runa_models::DEFAULT_MAX_BYTES + 1),
+            sha256: None,
+        };
+        let err = precheck_remote_size(&big, "o/n", "model.safetensors").unwrap_err();
+        assert!(err.contains("o/n/model.safetensors"), "{err}");
+        let unknown = FileMeta {
+            size: None,
+            sha256: None,
+        };
+        precheck_remote_size(&unknown, "o/n", "model.safetensors").unwrap();
     }
 
     #[test]

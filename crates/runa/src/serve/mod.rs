@@ -122,6 +122,44 @@ pub(crate) fn is_loopback_host(host: &str) -> bool {
     }
 }
 
+/// A browser opens a websocket to any address with no CORS check, so a page
+/// on another site could read the dashboard stream. Only a browser sends
+/// `Origin`; it must name the same `scheme://host:port` the client dialled.
+pub(crate) fn ws_origin_allowed(headers: &axum::http::HeaderMap) -> bool {
+    let Some(origin) = headers.get(axum::http::header::ORIGIN) else {
+        return true;
+    };
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok());
+    let (Ok(origin), Some(host)) = (origin.to_str(), host) else {
+        return false;
+    };
+    origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+        .is_some_and(|authority| authority.eq_ignore_ascii_case(host.trim()))
+}
+
+/// A loopback-only server must still check `Host`: a DNS-rebinding page
+/// reaches 127.0.0.1 under its own name. Accepts `localhost`, `*.localhost`
+/// and numeric loopback, with or without a port.
+pub(crate) fn is_local_host_header(host: &str) -> bool {
+    let host = host.trim();
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split_once(']').is_some_and(|(ip, port)| {
+            (port.is_empty() || port.starts_with(':')) && is_loopback_host(ip)
+        });
+    }
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => name,
+        _ => host,
+    };
+    let name = name.trim_end_matches('.').to_ascii_lowercase();
+    !name.contains(':')
+        && (name == "localhost" || name.ends_with(".localhost") || is_loopback_host(&name))
+}
+
 /// Refuse a non-loopback bind that would expose `/v1` with no key.
 /// An empty `--api-key` is an error. The returned key is the one to enforce.
 pub(crate) fn require_bind_auth(
@@ -486,9 +524,17 @@ async fn dashboard_snapshot(State(st): State<AppState>) -> Json<Value> {
     Json(st.metrics.to_json(&loaded, st.models.len()))
 }
 
-async fn dashboard_ws(ws: WebSocketUpgrade, State(st): State<AppState>) -> impl IntoResponse {
+async fn dashboard_ws(
+    headers: axum::http::HeaderMap,
+    ws: WebSocketUpgrade,
+    State(st): State<AppState>,
+) -> Response {
+    if !ws_origin_allowed(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let rx = st.snap.clone();
     ws.on_upgrade(move |socket| crate::dashboard::push_snapshots(socket, rx))
+        .into_response()
 }
 
 async fn chat_completions(
@@ -1986,6 +2032,65 @@ mod tests {
         assert_eq!(v["choices"][0]["finish_reason"], "length");
         let v = anthropic_message_body("m", &truncated);
         assert_eq!(v["stop_reason"], "max_tokens");
+    }
+
+    fn origin_headers(origin: Option<&str>, host: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(axum::http::header::HOST, host.parse().unwrap());
+        if let Some(o) = origin {
+            h.insert(axum::http::header::ORIGIN, o.parse().unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn ws_origin_must_match_host_when_present() {
+        assert!(ws_origin_allowed(&origin_headers(None, "127.0.0.1:8080")));
+        assert!(ws_origin_allowed(&origin_headers(
+            Some("http://127.0.0.1:8080"),
+            "127.0.0.1:8080"
+        )));
+        assert!(ws_origin_allowed(&origin_headers(
+            Some("https://Box.lan:8443"),
+            "box.lan:8443"
+        )));
+        for bad in [
+            "https://evil.example",
+            "http://127.0.0.1:9999",
+            "null",
+            "file://",
+        ] {
+            assert!(
+                !ws_origin_allowed(&origin_headers(Some(bad), "127.0.0.1:8080")),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_host_header_rejects_rebinding_names() {
+        for ok in [
+            "localhost",
+            "localhost:8080",
+            "LOCALHOST.",
+            "app.localhost:1",
+            "127.0.0.1:5",
+        ] {
+            assert!(is_local_host_header(ok), "{ok}");
+        }
+        for ok in ["[::1]", "[::1]:8080"] {
+            assert!(is_local_host_header(ok), "{ok}");
+        }
+        for bad in [
+            "evil.example",
+            "evil.example:8080",
+            "localhost.evil.example",
+            "",
+            "[::2]:1",
+        ] {
+            assert!(!is_local_host_header(bad), "{bad}");
+        }
+        assert!(!is_local_host_header("192.168.1.2:80"));
     }
 
     #[test]

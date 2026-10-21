@@ -1693,45 +1693,87 @@ Check (evidence): `cargo test -p runa-engine --lib infill` 7 passed;
 `origin/main` stores as Git LFS pointers ("wrong magic bytes"), and fail the same
 way without this change.
 
+### P21.1. Split the `runa` CLI and chat-session modules (GitHub issue #30)
+
+`crates/runa/src/main.rs` is already a thin entry (P17.7), but its code now sits in two fat files: `cli/mod.rs` (2124 lines: clap types, dispatch, placement policy, flag input, `run`, daemon client, small commands) and `session/mod.rs` (1249 lines: history, REPL, TUI loop). The CLI exit code is picked by `strip_prefix("unfit: ")`.
+
+Plan:
+1. `cli/mod.rs` keeps the clap types only; flag/stdin input moves to `cli/input.rs`; hardware and placement policy to a top-level `placement.rs`.
+2. `cmd/mod.rs` holds `run()` (bootstrap, dispatch, exit code); one module per command: `cmd/run.rs`, `cmd/media.rs`, `cmd/tasks.rs`, `cmd/stats.rs`, `cmd/models.rs`, `cmd/doctor.rs`.
+3. Daemon client (`daemon_generate`, `drain_daemon`, the socket probe) moves to `daemon/client.rs`.
+4. `session/` splits into `history.rs` and `format.rs` (no printing, unit tests), `stream.rs` (printing drain), `repl.rs`, `screen.rs` (TUI loop); `mod.rs` keeps the session state.
+5. Exit codes come from a `CmdError` enum (`Config`/`Unfit` → 2, else 1).
+6. CLAUDE.md §8 lists the new modules; pure moves otherwise, CLI output byte-identical.
+
+Machine check: no file in `crates/runa/src` above ~1000 lines except `serve/mod.rs` and `cli/config.rs`; `cargo test --workspace` (trycmd, e2e, docs lint) green; `cargo clippy --workspace -- -D warnings`; `python3 scripts/lint-tasks.py docs/tasks.md`.
+
+Completed 2026-10-21.
+
+Check (evidence), run on this Mac (arm64) with `llama-cpp-2`/`llama-cpp-sys-2`
+pinned back to `=0.1.133` locally only, because `origin/main` at 525b1bb does
+not compile against the `=0.1.159` pins from #107/#108 (26 errors in
+`runa-engine`, before and after this change):
+`cargo fmt --all -- --check` clean; `cargo clippy --workspace -- -D warnings`
+and `cargo clippy -p runa --all-targets -- -D warnings` clean;
+`cargo test -p runa --lib` 147 passed; `cargo test -p runa-memory` green;
+`python3 scripts/lint-tasks.py docs/tasks.md` 0 errors;
+`cargo test --workspace --no-fail-fast`: 547 passed, 43 failed, 2 ignored. Every
+failure reads a fixture this checkout lacks: 41 need
+`tests/fixtures/qwen2-0_5b-instruct-q4_0.gguf` (git-ignored, not downloaded in
+this session) and 2 read `synthetic-*.gguf`, which are Git LFS pointers here
+("wrong magic bytes"). `trycmd`, `doctor`, `security`, `secrets`, `cloud`,
+`media` and the 7 weight-free `e2e` tests pass. The model-backed `e2e` tests
+still need a run with the qwen2 fixture.
+Line counts after the split: largest new file `cmd/run.rs` 572;
+`cli/mod.rs` 493, `session/mod.rs` 122; only `serve/mod.rs` (2348) and
+`cli/config.rs` (1491) stay above 1000, as the issue allows.
+### P21.0. Audit 2026-10-19: safe fixes
+
+Completed 2026-10-19.
+
+Three review passes (module walk, entry points and threats, docs vs code and tests). The findings that are safe to fix in code are fixed here; the rest are P21.1–P21.13 in `plan.md`.
+
+- `.github/workflows/review.yml`: `/review` needs a comment from an OWNER, MEMBER or COLLABORATOR. The job that runs PR code gets `contents: read` and `persist-credentials: false`. Before, any GitHub user could run a PR's build scripts with a `pull-requests: write` token in `.git/config` (high, pass 2).
+- `serve`'s `/dashboard/ws` and `runa web`'s `/ws` answer 403 when a browser `Origin` does not match `Host`; `runa web` also refuses a non-local `Host` (DNS rebinding). Before, any page could read the dashboard stream and the usage journal (medium, pass 2).
+- The daemon socket is chmod 0600 after bind (low, pass 1).
+- `pull` checks the Hub-reported size against the limit before each snapshot file download, not only after (low, pass 1).
+
+Check (evidence): `actionlint` on `review.yml` clean; `rustfmt --edition 2024 --check` clean on the changed files; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors. New tests `ws_origin_must_match_host_when_present`, `local_host_header_rejects_rebinding_names`, `daemon_socket_is_owner_only`, `oversized_hub_size_is_refused_before_download` are not run: `main` does not compile against llama-cpp-2 0.1.159 (P21.1), so they need CI on a fixed `main`.
+
 ## GitHub issues
 
 ### Issue #31. Remove module cycles in crates/runa
 
-Modules in `crates/runa/src` called back into the crate root (the items `lib.rs`
-re-exported from `cli`), and `config` and `mcp` used each other, so no module
-could move to its own crate. Done when no module names a root item, `config`
-does not reference `mcp`, and a script keeps the module graph acyclic.
+Completed 2026-10-21. Redone on top of the P21.1 split (#123): the first
+version moved code out of the old fat `cli/mod.rs`, which no longer exists.
 
-Plan (as executed):
-1. `hw.rs` (new, leaf): `vram_bytes`, `ram_bytes`, `memory_ceiling_mib`, and
-   `machine_config` from `fit.rs` (it had to leave `fit`, or
-   `placer → fit → bench → placer` stays a cycle).
-2. `placer.rs`: `parse_mode`, `ModeChoice`, `parse_mode_choice`,
-   `preflight_grow`, `AutoPlacement`, `auto_placement` and the NPU note helpers
-   with their tests.
-3. `pull.rs`: `resolve_model`, next to `find_local`. It cannot go into `config`
-   because `pull` already imports `config`.
-4. `json.rs` (new, leaf): `escape`, the old `json_escape`, unchanged, plus a
-   round-trip test.
-5. `config`: the `McpServer` struct (config data) and `cli_think`; `mcp` keeps
+Modules in `crates/runa/src` called back into the crate root (the placement
+items `lib.rs` re-exported from `placement`, and `session::json_escape`),
+`config` and `mcp` used each other, and `daemon::client` reached back into
+its parent `daemon` and into `session`, which imported it. Done when no module
+names a root item, the graph has no cycle, and a script keeps it that way.
+
+What changed:
+1. `hw.rs` (new, leaf): `vram_bytes`, `ram_bytes`, `memory_ceiling_mib` from
+   `placement.rs`, and `machine_config` from `fit.rs` (otherwise
+   `placement → fit → bench → placement` stays a cycle).
+2. `pull.rs`: `resolve_model`, next to `find_local`; `placement` re-exports it.
+3. `json.rs` (new, leaf): `escape`, the old `session::json_escape`, plus a
+   round-trip test; `cloud` and `session::format` use it.
+4. `config`: the `McpServer` struct (config data); `mcp` keeps
    `McpServer::from_flag` and imports the type.
-6. `session`: `ToolArgs`, `attach_prompt_cache(_local)`, `daemon_generate`,
-   `drain_daemon`, which `session` used to import from `cli`.
-7. `lib.rs` re-exports only `cli::run` and the `config` / `daemon_proto` module
-   aliases.
-8. `scripts/check-module-cycles.py` (with `--self-test`) and the
-   `root:lint-modules` moon task; listed in CLAUDE.md §8/§9 and CONTRIBUTING.md.
+5. `daemon/client.rs` removed: `daemon_generate` and `daemon_available` live in
+   `daemon/mod.rs`, `drain_daemon` moves to `session/stream.rs` next to
+   `drain_local`.
+6. `lib.rs` re-exports only `cmd::run` and the `config` / `daemon_proto`
+   module aliases; callers name `crate::placement::*`, `crate::hw::*`,
+   `crate::pull::resolve_model`.
+7. `scripts/check-module-cycles.py` (with `--self-test`) and the
+   `root:lint-modules` moon task; listed in CLAUDE.md and CONTRIBUTING.md.
 
 Check (evidence): `python3 scripts/check-module-cycles.py` reports
-"20 modules, no cycles" (on `origin/main` it reported two cycles: `config ↔ mcp`
-and an 11-module cycle through the root); `--self-test` 5/5 ok;
-`rg 'crate::[a-z_]+\(' crates/runa/src --glob '!main.rs'` finds nothing.
-`origin/main` does not build: Renovate #107/#108 bumped `llama-cpp-2` and
-`llama-cpp-sys-2` to 0.1.159, and `runa-engine` has 26 compile errors against
-that API. So the checks below ran with both pins set back to 0.1.133 locally;
-that pin change is not committed. `cargo test -p runa --lib` 142 passed;
-`cargo test -p runa --test trycmd --test doctor --test cloud --test security
---test secrets --test media` all passed; `cargo clippy -p runa --all-targets --
--D warnings` and `cargo fmt --all -- --check` clean. Not run: the full
-`moon run :test`, because the disk kept running out and the git-ignored qwen2
-fixture was missing (`--test bench` failed on "no such model file").
+"23 modules, no cycles" (on `origin/main` at ec5189f it reported `config ↔ mcp`
+and a 14-module cycle through the root); `--self-test` ok. `cargo clippy -p runa
+--lib --tests -- -D warnings` clean, run with `llama-cpp-2`/`llama-cpp-sys-2`
+pinned back to 0.1.133 locally only, because `main` does not compile against
+the 0.1.159 pins (#107/#108); that pin is not committed. Tests are left to CI.

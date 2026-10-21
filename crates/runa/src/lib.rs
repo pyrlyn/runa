@@ -17,6 +17,7 @@
 mod bench;
 pub(crate) mod cli;
 mod cloud;
+mod cmd;
 pub mod daemon;
 mod dashboard;
 mod fit;
@@ -25,6 +26,7 @@ pub mod fuzz_hooks;
 mod hw;
 mod json;
 mod mcp;
+mod placement;
 pub mod placer;
 mod pull;
 pub mod serve;
@@ -34,5 +36,5 @@ mod tui;
 mod usage_log;
 
 pub(crate) use cli::config;
-pub use cli::run;
+pub use cmd::run;
 pub(crate) use daemon::proto as daemon_proto;

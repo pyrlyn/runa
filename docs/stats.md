@@ -61,6 +61,11 @@ The page is the built React app in `web/` (Vite, TanStack Query). It
 loads `/api/snapshot` once, then applies each websocket frame on top of
 that cache. Colours follow the runa brand: warm ash, charcoal, ember.
 
+Every route answers 403 unless `Host` is `localhost`, `*.localhost` or a
+loopback address, and `/ws` also refuses a browser `Origin` that does not
+match `Host`. A page on another site, DNS rebinding included, cannot read
+the journal through the browser.
+
 `runa serve` still has its own live process dashboard at `/dashboard`
 ([`dashboard.md`](dashboard.md)). That page is the server's in-memory
 rings. `runa web` is the journal across `run`, `chat`, and `serve`.

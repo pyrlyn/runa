@@ -480,31 +480,6 @@ pub(crate) fn resolve_think(cli: ThinkOverrides) -> Result<ThinkConfig, String> 
     cfg.apply(&cli)
 }
 
-pub(crate) fn cli_think(
-    think: Option<&str>,
-    think_budget: Option<u32>,
-    effort: Option<&str>,
-    show_reasoning: bool,
-    no_show_reasoning: bool,
-) -> Result<ThinkConfig, String> {
-    let mut o = ThinkOverrides::default();
-    if let Some(s) = think {
-        o.think = Some(ThinkOverrides::parse_think(s)?);
-    }
-    if let Some(n) = think_budget {
-        o.budget = Some(parse_budget(&n.to_string())?);
-    }
-    if let Some(s) = effort {
-        o.effort = Some(runa_core::Effort::parse(s)?);
-    }
-    if no_show_reasoning {
-        o.show = Some(false);
-    } else if show_reasoning {
-        o.show = Some(true);
-    }
-    resolve_think(o)
-}
-
 fn think_from_env() -> Result<ThinkOverrides, String> {
     let mut o = ThinkOverrides::default();
     if let Ok(s) = std::env::var("RUNA_THINK")
