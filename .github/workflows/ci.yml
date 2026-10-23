@@ -31,7 +31,7 @@ jobs:
       value: ${{ steps.r.outputs.value }}
     steps:
       - id: r
-        uses: pyrlyn/ci/.github/actions/macos-runner@4b5b5470544893cd515b88c751e92728341c6daa # main
+        uses: pyrlyn/ci/.github/actions/macos-runner@main
         with:
           runner: ${{ vars.MACOS_RUNNER }}
           value: '["macos-14"]'
