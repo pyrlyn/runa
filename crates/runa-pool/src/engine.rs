@@ -143,6 +143,19 @@ impl LocalEngine {
     }
 }
 
+impl runa_core::Backend for LocalEngine {
+    fn generate(
+        &mut self,
+        req: &runa_core::Request,
+    ) -> Result<runa_core::EventStream<'_>, runa_core::BackendError> {
+        match self {
+            LocalEngine::Gguf(loaded) => runa_core::Backend::generate(loaded, req),
+            #[cfg(feature = "mistralrs")]
+            LocalEngine::Mistral(model) => runa_core::Backend::generate(model, req),
+        }
+    }
+}
+
 /// Resolve an already-parsed `--backend` value against `path`: `Auto`
 /// detects, an explicit kind is checked, and a backend the binary lacks
 /// fails here with the rebuild pointer.

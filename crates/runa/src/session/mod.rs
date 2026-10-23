@@ -120,3 +120,91 @@ fn store_chat_usage(session: &mut Session, usage: Option<Usage>) -> Option<Usage
     }
     usage
 }
+
+#[cfg(test)]
+mod backend_tests {
+    use super::*;
+    use crate::daemon::client::drain_daemon;
+    use crate::daemon_proto;
+    use runa_core::{Backend, Request, ScriptedBackend};
+    use runa_engine::{GenEvent, StopReason, ToolCall};
+
+    #[test]
+    fn tool_loop_runs_on_a_scripted_backend_without_a_model() {
+        let weather = ToolCall {
+            id: "t1".into(),
+            name: "weather".into(),
+            arguments: "{}".into(),
+        };
+        let mut backend = ScriptedBackend::new([
+            vec![
+                GenEvent::ToolCalls(vec![weather.clone()]),
+                GenEvent::Done(StopReason::Eos),
+            ],
+            vec![
+                GenEvent::Text("sunny".into()),
+                GenEvent::Usage(Usage {
+                    prompt_tokens: 9,
+                    generated_tokens: 1,
+                    ..Usage::default()
+                }),
+                GenEvent::Done(StopReason::Eos),
+            ],
+        ]);
+        let mut req = Request {
+            messages: vec![ChatMessage::user("weather?")],
+            ..Request::default()
+        };
+        let mut answer = String::new();
+        let mut usage = None;
+        mcp::tool_loop(
+            4,
+            |c| format!("{}: sunny", c.name),
+            |results| {
+                push_tool_results(&mut req.messages, results);
+                let stream = backend.generate(&req).map_err(|e| e.to_string())?;
+                let turn = drain_local(stream, false)?;
+                if turn.usage.is_some() {
+                    usage = turn.usage.clone();
+                }
+                answer = turn.text.clone();
+                Ok(push_tool_calls(&mut req.messages, &turn, false))
+            },
+        )
+        .unwrap();
+        assert_eq!(answer, "sunny");
+        assert_eq!(usage.unwrap().prompt_tokens, 9);
+        let roles: Vec<&str> = req.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["user", "assistant", "tool"]);
+        assert_eq!(req.messages[1].tool_calls, vec![weather]);
+        assert_eq!(req.messages[2].tool_call_id.as_deref(), Some("t1"));
+        assert_eq!(req.messages[2].content, "weather: sunny");
+        // The second round sent the tool answer back to the backend.
+        assert_eq!(backend.requests.len(), 2);
+        assert_eq!(backend.requests[1].messages, req.messages);
+    }
+
+    #[test]
+    fn daemon_events_drain_through_the_core_event_path() {
+        use daemon_proto::DaemonEvent;
+        let events = [
+            DaemonEvent::Text { text: "hi".into() },
+            DaemonEvent::Usage {
+                prompt_tokens: 2,
+                generated_tokens: 1,
+                reasoning_tokens: 0,
+            },
+            DaemonEvent::Done {
+                stop: "max_tokens".into(),
+            },
+        ];
+        let turn = drain_daemon(&events, false).unwrap();
+        assert_eq!(turn.text, "hi");
+        assert_eq!(turn.reason, StopReason::MaxTokens);
+        assert_eq!(turn.usage.unwrap().generated_tokens, 1);
+        let failed = [DaemonEvent::Error {
+            message: "boom".into(),
+        }];
+        assert_eq!(drain_daemon(&failed, false).err().as_deref(), Some("boom"));
+    }
+}

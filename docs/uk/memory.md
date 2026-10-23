@@ -870,3 +870,42 @@ count_history_tokens(messages)` токенізує вміст кожного п�
   `ContextExceeded`, якщо в `n_ctx` не лишається місця після `max_tokens`.
 - Використовується: `POST /v1/infill` (`serve/infill.rs`), який відповідає на
   обидві помилки HTTP 400.
+
+## P21.1 — контракт `runa-core`
+
+### `trait runa_core::Backend { fn generate(&mut self, req: &Request) -> Result<EventStream<'_>, BackendError> }`
+
+- Одна генерація: на вході `Request` (повідомлення, `max_tokens`,
+  стоп-рядки, think, JSON Schema, інструменти, `tool_choice`), на виході
+  `Event` (`Text`, `Reasoning`, `ToolCalls`, `Usage`, `Done(StopReason)`).
+  Потік закінчується `Done`; `Usage`, якщо токени пораховано, іде одразу
+  перед ним. `Reasoning` не видається, якщо `think.show` хибне.
+- `ChatMessage`, `Usage`, `StopReason` і `Mode` живуть у `runa-core`;
+  `runa-engine` їх реекспортує, а його `GenEvent` — це `runa_core::Event`.
+- Реалізують: `runa_engine::LoadedModel`, `runa_engine::MistralModel`
+  (фіча `mistralrs`), `runa_pool::engine::LocalEngine`,
+  `runa_cloud::OpenAiBackend`, `runa_cloud::AnthropicBackend`.
+
+### `struct runa_core::ScriptedBackend`
+
+- `ScriptedBackend::new(turns)` програє по одному `Vec<Event>` на кожен
+  виклик `generate` і записує кожен запит у `requests`; виклик після
+  останнього ходу — помилка. Для тестів без моделі та без мережі.
+
+### `fn OpenAiBackend::new(client, model)` / `fn AnthropicBackend::new(client, model)`
+
+- Кожен володіє однопотоковим рантаймом tokio: викликайте `generate` зі
+  звичайного потоку або `spawn_blocking`, не з асинхронної задачі. Один
+  непотоковий запит на виклик.
+- Помилки: стоп-рядки й `tool_choice` відхиляються, а не відкидаються.
+  Anthropic переносить повідомлення `system` у `system`, повідомлення
+  `tool` — у блоки `tool_result`, а JSON Schema — у примусовий інструмент
+  `answer` (міркування вимикається); повтор викликів інструментів
+  асистента з увімкненим міркуванням відхиляється, бо переносне
+  повідомлення не несе підписів міркування.
+
+### `fn runa_cloud::answer_tool(schema: Value) -> (Vec<Value>, Value)`
+
+- `tools` і примусовий `tool_choice` для структурованого виводу Anthropic
+  (`ANSWER_TOOL` = `"answer"`). Використовується в `runa run` і
+  `AnthropicBackend`.

@@ -38,3 +38,16 @@ item stays under the 500-line task limit and ships with tests.
   `oci-client`, blobs verified by digest.
 - **P18.10. ModelScope and Hugging Face mirrors.** ModelScope downloads with its SDK
   token; a configurable Hub endpoint for mirrors.
+
+## P21. `runa-core` as the real contract (GitHub issue #32)
+
+Approved by the creator (issue #32). P21.1 is done (`done.md`): the contract types, the
+`Backend` trait, and engine, pool and cloud impls.
+
+- **P21.2. One `Box<dyn Backend>` in the binary.** `run` and `chat` pick a backend once
+  (local, daemon, cloud); `ChatEngine` and the separate `cloud.rs` branch go away. Needs
+  `Request` to grow sampling and media fields, and a way to carry Anthropic thinking
+  signatures across tool rounds.
+- **P21.3. Serve and daemon on `runa_core::Event`.** `daemon_proto` carries the core event
+  directly, `serve` drives a `Backend`, the `GenEvent` alias is dropped, and replay tests
+  drive `serve` through `ScriptedBackend`.

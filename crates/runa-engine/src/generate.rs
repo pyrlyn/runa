@@ -27,31 +27,9 @@ use llama_cpp_2::token::data_array::LlamaTokenDataArray;
 use crate::load::{EngineError, LoadedModel};
 use crate::sampling::SamplingConfig;
 
-/// One chat message.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ChatMessage {
-    /// `system` / `user` / `assistant` / `tool` (passed through to the template).
-    pub role: String,
-    /// Message text.
-    pub content: String,
-    /// Tool calls an `assistant` turn made (P8.2).
-    pub tool_calls: Vec<ToolCall>,
-    /// The call a `tool` message answers (P8.2).
-    pub tool_call_id: Option<String>,
-}
-
-impl ChatMessage {
-    /// Shorthand for a user message.
-    pub fn user(content: &str) -> ChatMessage {
-        ChatMessage {
-            role: "user".to_owned(),
-            content: content.to_owned(),
-            ..ChatMessage::default()
-        }
-    }
-}
-
-pub use runa_core::ToolCall;
+/// The engine's name for [`runa_core::Event`]; the type is the core one.
+pub use runa_core::Event as GenEvent;
+pub use runa_core::{ChatMessage, StopReason, ToolCall, Usage};
 
 /// What to generate.
 #[derive(Debug, Clone)]
@@ -108,49 +86,30 @@ impl Default for GenerateRequest {
     }
 }
 
-/// Token/speed counters for one generation.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Usage {
-    /// Prompt tokens decoded.
-    pub prompt_tokens: u32,
-    /// Tokens generated (excluding the stop token).
-    pub generated_tokens: u32,
-    /// Reasoning-body tokens among the generated ones (P10.4, M6
-    /// follow-up): counted by the same transition rule as
-    /// `BudgetClock` (token observed while the think block is open,
-    /// open tag excluded, ±1 at block edges from piece batching).
-    /// 0 when thinking is off or the backend does not split
-    /// reasoning (mistral, cloud, daemon<VERSION without the field>).
-    pub reasoning_tokens: u32,
-    /// Prompt-processing speed (tok/s).
-    pub pp_toks_per_s: f64,
-    /// Decode speed (tok/s).
-    pub tg_toks_per_s: f64,
+impl From<&runa_core::Request> for GenerateRequest {
+    /// The portable fields; engine-only knobs keep their defaults.
+    fn from(req: &runa_core::Request) -> Self {
+        GenerateRequest {
+            messages: req.messages.clone(),
+            max_tokens: req.max_tokens,
+            stop: req.stop.clone(),
+            think: req.think,
+            json_schema: req.json_schema.clone(),
+            tools: req.tools.clone(),
+            tool_choice: req.tool_choice.clone(),
+            ..GenerateRequest::default()
+        }
+    }
 }
 
-/// Why generation stopped.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StopReason {
-    /// Model emitted EOS.
-    Eos,
-    /// Hit `max_tokens`.
-    MaxTokens,
-    /// A stop string matched (the match itself is not emitted).
-    StopString(String),
-}
-
-/// Stream items. `Text` carries decoded pieces (already stop-filtered);
-/// `Usage` + `Done` close the stream, in that order.
-#[derive(Debug, Clone, PartialEq)]
-pub enum GenEvent {
-    Text(String),
-    /// Thinking / chain-of-thought (P3.2). Omitted when `think.show` is false.
-    Reasoning(String),
-    /// Calls parsed from the reply of a request with `tools` (P8.2). Such a
-    /// request sends its text as one `Text` at the end, markup stripped.
-    ToolCalls(Vec<ToolCall>),
-    Usage(Usage),
-    Done(StopReason),
+impl runa_core::Backend for LoadedModel {
+    fn generate(
+        &mut self,
+        req: &runa_core::Request,
+    ) -> Result<runa_core::EventStream<'_>, runa_core::BackendError> {
+        let generation = LoadedModel::generate(self, GenerateRequest::from(req))?;
+        Ok(Box::new(generation.map(|ev| ev.map_err(Into::into))))
+    }
 }
 
 impl LoadedModel {

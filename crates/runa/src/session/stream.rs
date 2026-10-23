@@ -18,10 +18,10 @@ pub(crate) struct LocalTurn {
 }
 
 /// Drain a generation; with `print`, answer text streams to stdout and
-/// reasoning to stderr. Generic over both backends: ggml `Generation` and
-/// `MistralGeneration` both yield `Result<GenEvent, EngineError>`.
-pub(crate) fn drain_local(
-    stream: impl Iterator<Item = Result<GenEvent, runa_engine::EngineError>>,
+/// reasoning to stderr. Generic over every event source: the ggml and
+/// mistral streams, any `runa_core::Backend`, and the daemon wire.
+pub(crate) fn drain_local<E: std::fmt::Display>(
+    stream: impl Iterator<Item = Result<GenEvent, E>>,
     print: bool,
 ) -> Result<LocalTurn, String> {
     let mut turn = LocalTurn {

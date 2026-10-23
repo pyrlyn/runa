@@ -9,17 +9,8 @@
 //! `--n-cpu-moe N` pins the first N layers' MoE expert tensors to CPU
 //! (llama.cpp `LLM_FFN_EXPS_REGEX`). `auto` is resolved by the planner (P2.5).
 
-/// Compute mode requested by the user.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    /// All layers on CPU (`n_gpu_layers = 0`).
-    Cpu,
-    /// All layers on GPU (`n_gpu_layers = all`).
-    Gpu,
-    /// All layers on GPU except MoE expert tensors, which stay on CPU
-    /// (`ffn_*_exps` overrides — the P2.6 pattern).
-    Hybrid,
-}
+pub use runa_core::Mode;
+
 /// llama.cpp b7709 `LLM_FFN_EXPS_REGEX`: routed expert tensors only
 /// (`ffn_*_exps`, including DeepSeek `ffn_*_chexps`). Fused `gate_up` landed
 /// after this pin (llama.cpp #20416) and is intentionally omitted.
@@ -96,18 +87,6 @@ pub fn parse_tensor_split(s: &str) -> Result<Vec<f32>, String> {
         return Err("--tensor-split: all zeros".into());
     }
     Ok(out)
-}
-
-impl Mode {
-    /// Parse a `--mode` flag value.
-    pub fn parse(s: &str) -> Option<Mode> {
-        match s {
-            "cpu" => Some(Mode::Cpu),
-            "gpu" => Some(Mode::Gpu),
-            "hybrid" => Some(Mode::Hybrid),
-            _ => None,
-        }
-    }
 }
 
 /// Where tensors live. `n_gpu_layers = 0` is pure CPU; `u32::MAX` means
