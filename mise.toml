@@ -11,7 +11,7 @@ mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with 
 # mise only reads its components when the pin itself comes from that file, so
 # the components are mirrored here (CI runs under RUSTUP_TOOLCHAIN, which
 # overrides rust-toolchain.toml; without this, cargo fmt/clippy are missing).
-rust = { version = "1.99", components = "rustfmt,clippy" }
+rust = { version = "1.99.1", components = "rustfmt,clippy" }
 # moon monorepo runner (plan D22, task K1). Pin ↔ `.moon/workspace.yml`
 # versionConstraint ↔ `docs/versions.md`. Installed via the aqua backend
 # (no core mise plugin for moon as of 2026-09-08).

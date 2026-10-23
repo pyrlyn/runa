@@ -1,7 +1,7 @@
 # CI matrix: macos-14 (arm64, metal), ubuntu-22.04 (x86_64; CPU tests, CUDA build-only), windows-2022 (build-only).
 # Task P0.2 — `cargo clippy -D warnings`, `cargo fmt --check` must be green on all three.
-# Source of truth for toolchain: rust-toolchain.toml (channel 1.98). The `dtolnay/rust-toolchain`
-# action respects that file; we also request clippy + rustfmt components.
+# Source of truth for toolchain: mise.toml (rust 1.99.1, clippy + rustfmt), installed by
+# jdx/mise-action; rust-toolchain.toml mirrors the same pin for direct rustup runs.
 name: ci
 on:
   push:
@@ -93,8 +93,8 @@ jobs:
         uses: jdx/mise-action@v2
         with:
           install: true
-          # also installs rust 1.98, moon 2.5.4, ffmpeg 9.0.1, python 3.13.15, node 24.21.0, cargo-dist 0.33.0 (aqua), cargo-cache 0.8.3
-          # rust-toolchain.toml stays the rustup source of truth; mise mirrors the pin
+          # also installs rust 1.99.1, moon 2.5.4, ffmpeg 9.0.1, python 3.13.15, node 24.21.0, cargo-dist 0.33.0 (aqua), cargo-cache 0.8.3
+          # mise.toml is the source of truth; rust-toolchain.toml mirrors the pin
 
       - if: env.RUN == 'true'
         uses: Swatinem/rust-cache@v2
