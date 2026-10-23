@@ -825,7 +825,12 @@ mod tests {
             pull: false,
             ..AsrOptions::default()
         };
-        let err = AsrEngine::load(&opts).err().expect("missing ggml");
+        // Another test in this process may pull the model between the check above and
+        // this load (the self-hosted macOS runner keeps its data dir), so a successful
+        // load means the model is present and there is nothing to check.
+        let Some(err) = AsrEngine::load(&opts).err() else {
+            return;
+        };
         assert!(matches!(err, AsrError::ModelMissing(_)), "{err:?}");
     }
 
