@@ -16,6 +16,14 @@ tasks:
     inputs:
       - 'docs/tasks.md'
       - 'scripts/lint-tasks.py'
+  lint-modules:
+    description: 'fail on a module cycle inside crates/runa (issue #31)'
+    command: 'python3 scripts/check-module-cycles.py --self-test && python3 scripts/check-module-cycles.py crates/runa/src'
+    options:
+      shell: true
+    inputs:
+      - 'crates/runa/src/**/*.rs'
+      - 'scripts/check-module-cycles.py'
   cache:
     description: 'report $CARGO_HOME sizes (no deletes); cargo-cache via mise'
     command: 'cargo-cache'

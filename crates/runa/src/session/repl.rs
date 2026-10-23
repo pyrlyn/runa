@@ -15,11 +15,12 @@ use runa_pool::engine;
 use super::format::format_usage;
 use super::history::{commit_history, push_tool_results, turn_messages};
 use super::screen::run_tui;
+use super::stream::drain_daemon;
 use super::stream::{drain_local, push_tool_calls};
 use super::{ChatEngine, Session, reload, reload_local, store_chat_usage};
 use crate::cli::ToolArgs;
 use crate::cli::input::{attach_prompt_cache, attach_prompt_cache_local, cli_think};
-use crate::daemon::client::{daemon_available, daemon_generate, drain_daemon};
+use crate::daemon::{daemon_available, daemon_generate};
 use crate::placement::{parse_mode, resolve_model};
 use crate::{config, mcp, tui};
 

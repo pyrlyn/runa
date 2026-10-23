@@ -10,12 +10,13 @@ use std::io::Write;
 use runa_fit::calibration::CalibrationDb;
 use runa_fit::recommend::{self, CatalogEntry, Pick};
 use runa_fit::{
-    Descriptor, Fetcher, FitConfig, FitReport, HwSpec, ModelSource, PlannerConfig, Reader, Verdict,
-    apply_efficiency, check_fit, format_report, parse_model_ref,
+    Descriptor, Fetcher, FitReport, ModelSource, Reader, Verdict, apply_efficiency, check_fit,
+    format_report, parse_model_ref,
 };
 use serde_json::{Value, json};
 
 use crate::config::AliasTable;
+use crate::hw::machine_config;
 
 #[derive(Debug, clap::Args)]
 pub(crate) struct FitArgs {
@@ -53,37 +54,6 @@ pub(crate) struct FitArgs {
     /// this fit may assume, percent 1..=100 (default: 80, `[system]`).
     #[arg(long, value_name = "N")]
     max_load_percent: Option<u8>,
-}
-
-/// This machine as the fit checker sees it.
-pub(crate) fn machine_config(
-    ctx: u32,
-    kv_type: &str,
-    mmproj_bytes: u64,
-) -> Result<(FitConfig, &'static str), String> {
-    let (vram, vram_src) = crate::vram_bytes()?;
-    let gpu_hw = (vram > 0).then(|| {
-        if cfg!(target_os = "macos") {
-            HwSpec::metal()
-        } else {
-            HwSpec::cuda()
-        }
-    });
-    let config = FitConfig {
-        planner: PlannerConfig {
-            vram_bytes: vram,
-            ram_bytes: crate::ram_bytes(),
-            ctx_len: u64::from(ctx),
-            kv_type: kv_type.to_owned(),
-            mmproj_bytes,
-            ..PlannerConfig::default()
-        },
-        gpu_hw,
-        cpu_hw: HwSpec::cpu(),
-        has_mmproj: false,
-        media: runa_fit::MediaFit::default(),
-    };
-    Ok((config, vram_src))
 }
 
 pub(crate) fn cmd_fit(args: &FitArgs) -> Result<(), String> {

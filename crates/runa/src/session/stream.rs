@@ -66,3 +66,54 @@ pub(crate) fn push_tool_calls(
     history::push_tool_calls(messages, &turn.text, &turn.calls);
     turn.calls.clone()
 }
+
+/// Drain daemon events like [`drain_local`]: answer text to stdout,
+/// reasoning to stderr. A daemon-side `error` fails the request.
+pub(crate) fn drain_daemon(
+    events: &[crate::daemon_proto::DaemonEvent],
+    print: bool,
+) -> Result<LocalTurn, String> {
+    use crate::daemon_proto::DaemonEvent;
+    let mut turn = LocalTurn {
+        text: String::new(),
+        calls: Vec::new(),
+        usage: None,
+        reason: StopReason::MaxTokens,
+    };
+    for ev in events {
+        match ev {
+            DaemonEvent::Text { text } => {
+                if print {
+                    print!("{text}");
+                    io::stdout().flush().map_err(|e| format!("stdout: {e}"))?;
+                }
+                turn.text.push_str(text);
+            }
+            DaemonEvent::Reasoning { text } => {
+                if print {
+                    eprint!("{text}");
+                    io::stderr().flush().map_err(|e| format!("stderr: {e}"))?;
+                }
+            }
+            DaemonEvent::ToolCalls { calls } => {
+                turn.calls = calls.iter().cloned().map(ToolCall::from).collect();
+            }
+            DaemonEvent::Usage {
+                prompt_tokens,
+                generated_tokens,
+                reasoning_tokens,
+            } => {
+                turn.usage = Some(Usage {
+                    prompt_tokens: *prompt_tokens,
+                    generated_tokens: *generated_tokens,
+                    reasoning_tokens: *reasoning_tokens,
+                    pp_toks_per_s: 0.0,
+                    tg_toks_per_s: 0.0,
+                });
+            }
+            DaemonEvent::Done { stop } => turn.reason = crate::daemon_proto::parse_stop(stop),
+            DaemonEvent::Error { message } => return Err(message.clone()),
+        }
+    }
+    Ok(turn)
+}

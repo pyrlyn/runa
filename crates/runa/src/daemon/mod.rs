@@ -11,7 +11,6 @@
 
 use std::path::{Path, PathBuf};
 
-pub(crate) mod client;
 pub(crate) mod proto;
 #[cfg(unix)]
 use std::sync::atomic::AtomicU32;
@@ -141,7 +140,7 @@ async fn serve(
     let warm = Arc::new(Warmup::new(default_id, Arc::clone(&progress)));
     let mm = Arc::new(MemoryManager::new(
         policy,
-        crate::memory_ceiling_mib(),
+        crate::hw::memory_ceiling_mib(),
         Box::new(SysinfoBackend::new()),
     ));
     if let Some(parent) = socket.parent() {
@@ -548,6 +547,34 @@ pub(crate) fn daemon_argv(
         argv.push(n.to_string());
     }
     argv
+}
+
+// Client side for `run` and `chat`: one request, one cheap probe.
+
+/// Send one request to the daemon; transport errors mean "no daemon".
+pub(crate) fn daemon_generate(
+    model: &str,
+    req: &runa_engine::GenerateRequest,
+) -> Result<Vec<crate::daemon_proto::DaemonEvent>, String> {
+    let dreq = crate::daemon_proto::DaemonRequest::new(model.to_owned(), req);
+    crate::daemon_proto::request_sync(
+        &crate::daemon_proto::default_socket_path(),
+        &dreq,
+        REQUEST_TIMEOUT,
+    )
+}
+
+/// One cheap probe: is a daemon listening? The probe connection is
+/// dropped immediately; real turns dial per request.
+pub(crate) fn daemon_available() -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::net::UnixStream::connect(crate::daemon_proto::default_socket_path()).is_ok()
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 #[cfg(test)]

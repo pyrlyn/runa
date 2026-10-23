@@ -6,6 +6,8 @@
 
 use runa_engine::{StopReason, Usage};
 
+use crate::json::escape as json_escape;
+
 /// One-line usage for `/usage` (REPL + TUI): reasoning appears only when
 /// the turn actually thought (P10.4).
 pub(super) fn format_usage(u: &Usage) -> String {
@@ -35,23 +37,6 @@ pub(crate) fn run_json(text: &str, usage: &Usage, reason: &StopReason) -> String
         usage.pp_toks_per_s,
         usage.tg_toks_per_s,
     )
-}
-
-/// Minimal JSON string escaping (no serde in the binary crate).
-pub(crate) fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

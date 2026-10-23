@@ -5,7 +5,7 @@
 //! Model resolution, compute-mode parsing and the hardware placement
 //! policy behind `--mode auto` (run, chat, bench, serve, daemon).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use runa_engine::{LoraSpec, Mode, Placement};
 use runa_fit::{
@@ -16,8 +16,8 @@ use runa_memory::{MemoryManager, SysinfoBackend};
 
 use crate::cloud;
 use crate::config;
-use crate::fit;
-use crate::pull;
+use crate::hw::{self, memory_ceiling_mib};
+pub(crate) use crate::pull::resolve_model;
 
 /// Marks a no-fit error. Text, not a type: it crosses `runa-pool`'s
 /// `String`-typed `Placer`, serve answers it with 503 and the CLI exits 2.
@@ -25,13 +25,6 @@ pub(crate) const UNFIT_PREFIX: &str = "unfit: ";
 
 pub(crate) fn unfit(msg: impl std::fmt::Display) -> String {
     format!("{UNFIT_PREFIX}{msg}")
-}
-
-/// Resolve a model reference: local path → alias → pull store (P2.4).
-/// Never downloads (that is `pull`'s job — plan D12, no silent fetches).
-pub(crate) fn resolve_model(model_ref: &str) -> Result<PathBuf, String> {
-    let aliases = config::load_aliases()?;
-    pull::find_local(model_ref, &aliases)
 }
 
 pub(crate) fn parse_mode(mode: &str) -> Result<Mode, String> {
@@ -50,53 +43,6 @@ pub(crate) fn parse_mode_choice(mode: &str) -> Result<ModeChoice, String> {
     Mode::parse(mode)
         .map(ModeChoice::Fixed)
         .ok_or_else(|| format!("{mode}: --mode must be cpu | gpu | hybrid | auto"))
-}
-
-pub(crate) fn vram_bytes() -> Result<(u64, &'static str), String> {
-    if let Ok(s) = std::env::var("RUNA_FAKE_VRAM") {
-        let mib: u64 = s
-            .parse()
-            .map_err(|_| format!("RUNA_FAKE_VRAM={s}: expected integer MiB"))?;
-        return Ok((mib.saturating_mul(1024 * 1024), "RUNA_FAKE_VRAM"));
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let mut sys = sysinfo::System::new();
-        sys.refresh_memory();
-        // Unified memory stand-in until the P1.6 wired_limit probe is wired here.
-        let assumed = sys.total_memory().saturating_mul(3) / 4;
-        Ok((assumed, "macos-unified-75pct"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok((0, "unknown"))
-    }
-}
-
-pub(crate) fn ram_bytes() -> u64 {
-    // Test hook like RUNA_FAKE_VRAM: forces a CPU NO FIT on big hosts.
-    if let Some(mib) = std::env::var("RUNA_FAKE_RAM")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        return mib.saturating_mul(1024 * 1024);
-    }
-    let mut sys = sysinfo::System::new();
-    sys.refresh_memory();
-    sys.total_memory()
-}
-
-fn bytes_to_mib(bytes: u64) -> u64 {
-    bytes.div_ceil(1024 * 1024)
-}
-
-pub(crate) fn memory_ceiling_mib() -> u64 {
-    if let Ok(s) = std::env::var("RUNA_MEMORY_CEILING_MIB")
-        && let Ok(n) = s.parse::<u64>()
-    {
-        return n;
-    }
-    ram_bytes() / (1024 * 1024)
 }
 
 /// P7.3: refuse a run whose KV+compute demand exceeds the fit ceiling
@@ -120,7 +66,7 @@ pub(crate) fn preflight_grow(
         .saturating_add(compute.compute_bytes)
         .saturating_add(extra_bytes);
     config::warn_if_demand_over_limit(demand_bytes, max_load_percent)?;
-    let demand = bytes_to_mib(demand_bytes);
+    let demand = demand_bytes.div_ceil(1024 * 1024);
     if demand == 0 {
         return Ok(());
     }
@@ -245,7 +191,7 @@ pub(crate) fn auto_placement(
         .map(|s| runa_fit::mmproj_file_bytes(&s.path))
         .sum();
     let (mut config, vram_src) =
-        fit::machine_config(ctx, kv_type, mmproj_bytes.saturating_add(draft_bytes))?;
+        hw::machine_config(ctx, kv_type, mmproj_bytes.saturating_add(draft_bytes))?;
     config.planner.lora_bytes = lora_bytes;
     let report = check_fit(&desc, &config);
     // P9.4: NPU is opt-in only (`RUNA_NPU`) and stub-only (no ggml backend):
