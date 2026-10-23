@@ -1,12 +1,11 @@
 # Pinned Rust toolchain (plan D16, task P0.3).
 # Source of truth for rustup: any cargo/rustc run inside this repo uses this
 # toolchain unless RUSTUP_TOOLCHAIN is set in the environment.
-# Channel "1.98" resolves to the latest 1.98.x patch release
-# (1.98.1, built 2026-08-05, as of 2026-09-08). See docs/versions.md.
+# Mirrors the rust pin in mise.toml (1.99.1); keep both in sync. See docs/versions.md.
 # NOTE: moon's rust plugin must NOT sync this file (syncToolchainConfig off
-# in .moon/toolchains.yml) — it rewrites the channel as "~1.98" (invalid
+# in .moon/toolchains.yml) — it rewrites the channel as "~1.99" (invalid
 # for rustup) and strips these comments.
 [toolchain]
-channel = "1.98"
+channel = "1.99.1"
 profile = "minimal"
 components = ["rustfmt", "clippy"]
