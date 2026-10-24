@@ -3,7 +3,7 @@
 # version; this file exists so `mise install` bootstraps a matching toolchain
 # for contributors who manage tools with mise. Keep the two files in sync.
 [tools]
-uv = "0.13.0" # installs the pipx: ptools tool
+uv = "0.13.5" # installs the pipx: ptools tool
 "pipx:git+https://github.com/pyrlyn/tools.git" = "d6eb6452cbb7ec4b350de87194548915c2648c27" # `mise run sweep`, `just cache`, `just swarfr` (ptools, Python; pyrlyn/tools#8, repin to a tag once merged)
 "cargo:cargo-sweep" = "0.8.0" # `mise run sweep`: drops build artifacts unused for 1 day (ptools sweep)
 mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with `cargo --config .cargo/mold.toml`
@@ -21,8 +21,8 @@ ffmpeg = "9.0.1"
 # fixtures & SDK smoke tests (P0.7, P3.9, P6.2)
 # 3.11.9 lacks GitHub artifact attestations (fatal on mise >= 2026.9.6,
 # CI run 34778192909); 3.13.x verifies clean.
-python = "3.15.0"
-node = "24.21.0"
+python = "3.15.1"
+node = "26.12.1"
 "npm:agent-browser" = "0.39.2" # browser automation CLI for agents: Drive the runa web dashboard.
 # packaging (P6.3) — prebuilt binary via aqua (same 0.33.0 release.yml was
 # generated with). The `cargo:` backend compiled from source and raced
