@@ -23,6 +23,7 @@ ffmpeg = "9.0.1"
 # CI run 34778192909); 3.13.x verifies clean.
 python = "3.15.0"
 node = "24.21.0"
+"npm:agent-device" = "0.21.31" # lets agents drive the runa dashboard
 # packaging (P6.3) — prebuilt binary via aqua (same 0.33.0 release.yml was
 # generated with). The `cargo:` backend compiled from source and raced
 # rustup component downloads against the second `cargo:` install
