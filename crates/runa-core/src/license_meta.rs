@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
 
-//! The workspace `license` field stays `GPL-3.0-or-later`. The royalty-free
-//! and commercial choices have no SPDX identifier, and crates.io rejects
+//! The workspace `license` field stays `GPL-3.0-or-later`. The commercial
+//! choice has no SPDX identifier, and crates.io rejects
 //! `LicenseRef` names.
 
 use std::fs;
@@ -45,12 +45,12 @@ fn workspace_package_license(cargo: &str) -> String {
 }
 
 #[test]
-fn cargo_license_is_spdx_gpl_and_readme_explains_the_other_two() {
+fn cargo_license_is_spdx_gpl_and_readme_explains_the_commercial_choice() {
     let cargo = read("Cargo.toml");
     assert_eq!(
         workspace_package_license(&cargo),
         "GPL-3.0-or-later",
-        "crates.io cannot name the royalty-free or commercial terms"
+        "crates.io cannot name the commercial terms"
     );
     let package = cargo
         .split_once("[workspace.package]")
@@ -59,12 +59,12 @@ fn cargo_license_is_spdx_gpl_and_readme_explains_the_other_two() {
     let package = package.split("\n[").next().expect("package body");
     assert!(
         package.contains("SPDX License List") && package.contains("LicenseRef"),
-        "Cargo.toml must say why the other two licences are absent"
+        "Cargo.toml must say why the commercial licence is absent"
     );
 
     let readme = read("README.md");
     assert!(readme.contains("GNU GPLv3"), "{readme}");
-    assert!(readme.contains("Royalty-free License"), "{readme}");
+    assert!(!readme.contains("Royalty-free License"), "{readme}");
     assert!(readme.contains("[Commercial license]"), "{readme}");
     assert!(
         readme.contains("SPDX License List") && readme.contains("LicenseRef-*"),

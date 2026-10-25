@@ -120,6 +120,5 @@ runa media transcribe --model base --lang auto clip.wav
 - Начало работы: <https://github.com/pyrlyn/runa/blob/main/docs/getting-started.md>
 - Справочник по конфигурации: <https://github.com/pyrlyn/runa/blob/main/docs/config.md>
 - Релизы: <https://github.com/pyrlyn/runa/releases>
-- Лицензия: на ваш выбор GNU GPLv3, бесплатная (royalty-free) лицензия для проприетарных настольных,
-  мобильных и веб-приложений (с указанием авторства) или коммерческая лицензия
+- Лицензия: на ваш выбор GNU GPLv3 или коммерческая лицензия
   (см. <https://github.com/pyrlyn/runa#license>)

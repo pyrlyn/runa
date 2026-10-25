@@ -151,5 +151,5 @@ route = "auto"
 | [memory.md](memory.md) | API адаптивной памяти и реестра задач |
 | [README.md](README.md) | Полный указатель документации |
 
-Лицензия: на ваш выбор GPL-3.0-or-later, royalty-free или коммерческая (см. README). Поле `license` в Cargo называет только `GPL-3.0-or-later` — единственный из трёх вариантов с идентификатором SPDX; crates.io отклоняет имена `LicenseRef`.
+Лицензия: на ваш выбор GPL-3.0-or-later или коммерческая лицензия (см. README). Поле `license` в Cargo называет только `GPL-3.0-or-later` — единственный из двух вариантов с идентификатором SPDX; crates.io отклоняет имена `LicenseRef`.
 Никакой телеметрии.

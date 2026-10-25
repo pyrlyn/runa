@@ -145,5 +145,5 @@ route = "auto"
 | [memory.md](memory.md) | Adaptive memory and task registry API |
 | [README.md](README.md) | Full docs index |
 
-License: your choice of GPL-3.0-or-later, the royalty-free license, or a commercial license (see the README). Cargo metadata names only `GPL-3.0-or-later`, the only one of the three with an SPDX identifier; crates.io rejects custom `LicenseRef` names.
+License: your choice of GPL-3.0-or-later or a commercial license (see the README). Cargo metadata names only `GPL-3.0-or-later`, the only one of the two with an SPDX identifier; crates.io rejects custom `LicenseRef` names.
 No telemetry.
