@@ -58,7 +58,7 @@ glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
 `the package manager install pyrlyn/runa`.
 
 Machine check: `gh release view v0.1.0` lists 3 portable archives +
-ketch install runa works.
+The package manager install runa works.
 
 ### K7. Fuzz testing with cargo-fuzz / libFuzzer
 
