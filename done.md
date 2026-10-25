@@ -1020,7 +1020,7 @@ recorded in `docs/perf-nightly.md`. Commits `84763a4`, `57d1058`.
 
 ### P11.10. Keep synthetic GGUF fixtures out of Git LFS
 
-The repo-wide `*.gguf` LFS rule in `.gitattributes` also covers `tests/fixtures/synthetic-*.gguf`, but those few-hundred-byte headers are committed as plain blobs so CI reads them without LFS. The LFS clean filter turns each one into a pointer, so every fresh checkout or worktree shows all seven as modified, `git rebase` refuses to run, and `the token CLI worktree remove` refuses the worktree as dirty. Done means: the synthetic files are exempt from the LFS filter, stay plain blobs, and a fresh worktree is clean.
+The repo-wide `*.gguf` LFS rule in `.gitattributes` also covers `tests/fixtures/synthetic-*.gguf`, but those few-hundred-byte headers are committed as plain blobs so CI reads them without LFS. The LFS clean filter turns each one into a pointer, so every fresh checkout or worktree shows all seven as modified, `git rebase` refuses to run, and `rtok worktree remove` refuses the worktree as dirty. Done means: the synthetic files are exempt from the LFS filter, stay plain blobs, and a fresh worktree is clean.
 
 Execution plan:
 
@@ -1134,20 +1134,20 @@ a link check over `README.md`, `docs/README.md`, `CLAUDE.md`,
 `CONTRIBUTING.md`, `plan.md`, `docs/tasks.md` → 0 missing relative links;
 every command and flag documented was read from `crates/runa/src/main.rs`
 and `fit.rs` (no invented surfaces).
-### P13.2. `the package manager.toml` — runa as a package manager package
+### P13.2. `ketch.toml` — runa as a ketch package
 
-Completed 2026-09-18 (Cline). Creator request: a package manager manifest in the
-project root, following the sibling convention (`apps/tokcli/ketch.toml`,
-`apps/pkgmgr/ketch.toml`).
+Completed 2026-09-18 (Cline). Creator request: a ketch manifest in the
+project root, following the sibling convention (`apps/rtok/ketch.toml`,
+`apps/ketch/ketch.toml`).
 
-- New root `the package manager.toml`: `name` / `source = "github:pyrlyn/runa"` /
+- New root `ketch.toml`: `name` / `source = "github:pyrlyn/runa"` /
   `description` / `homepage`, `bin = [{ name = "runa" }]`, and an
   `[asset]` block — `include = ["*.tar.xz", "*windows-msvc.zip"]` plus
   `exclude` for the GPU variants (`-metal` / `-vulkan` / `-cuda`), the
   shell / powershell / homebrew installers, `*.json`, `*.sha256` and the
   source tarball. No `trust` block: `release.yml` publishes no signature
   sidecars, so a trust policy would fail every install.
-- `docs/versions.md`: new *the package manager package (`the package manager.toml`)* subsection under
+- `docs/versions.md`: new *ketch package (`ketch.toml`)* subsection under
   *Native vs portable* — what the manifest is for, the field table, why the
   GPU archives need the `exclude` list (they carry the same target triples),
   and the validation command. Also corrected the stale `cargo-dist 0.28`
@@ -1157,13 +1157,13 @@ project root, following the sibling convention (`apps/tokcli/ketch.toml`,
 Check (run on the committed file):
 
 ```sh
-TMP=$(mktemp -d); mkdir -p "$TMP/runa"; cp the package manager.toml "$TMP/runa/"
-The package manager registry validate "$TMP"     # validated 1 package  (exit 0)
-The package manager registry validate "$TMP" --json
+TMP=$(mktemp -d); mkdir -p "$TMP/runa"; cp ketch.toml "$TMP/runa/"
+ketch registry validate "$TMP"     # validated 1 package  (exit 0)
+ketch registry validate "$TMP" --json
 # {"errors": [], "packages": 1, "status": "ok"}
 ```
 
-Asset patterns checked against the real release asset names with the package manager's
+Asset patterns checked against the real release asset names with ketch's
 `model::glob_match` semantics (full match, `*`/`?`, case-insensitive): the
 three portable CPU archives are selectable, and the three GPU variants plus
 `runa-installer.sh`, `runa-installer.ps1`, `runa.rb`, `dist-manifest.json`,
@@ -1171,17 +1171,17 @@ three portable CPU archives are selectable, and the three GPU variants plus
 
 Limit: asset *scoring* cannot be exercised end to end yet — `gh release view`
 answers `release not found`, so no release exists to install from. The
-registry copy landed after this entry was written: `pyrlyn/pkgmgr-registry`
+registry copy landed after this entry was written: `pyrlyn/ketch-registry`
 PR #7 `add runa` (merged 2026-09-19 as `cb7b0f3`) carries `runa/ketch.toml`
 (the CLI `runa*` bin glob, portable CPU archives, GPU variants excluded); the
 CI assertion step was dropped from that PR before merge because the registry
 itself removed its only workflow in #8 — follow-up drift watch: its README
 now asks for the single `<name>/ketch.toml` file only.
 
-### P13.3. Local release flow like the token CLI, no new GitHub workflows
+### P13.3. Local release flow like rtok, no new GitHub workflows
 
 Completed 2026-09-19 (Cline). Creator order 2026-09-18, then narrowed: runa
-runs no workflow except dist's tag-triggered `release.yml`, so the token CLI
+runs no workflow except dist's tag-triggered `release.yml`, so the rtok
 workflow chain (`bump.yml`, `release-plz.yml`, `verify.yml`,
 `dispatch-releases`) does not land — ports only the local half.
 
@@ -1226,7 +1226,7 @@ Check (evidence): `cargo fmt --check` OK; `python3 scripts/lint-tasks.py docs/ta
 
 ### P14.3. Clean up target dirs with dunnage after tests
 
-`scripts/test-with-fixture-cleanup.sh` (`moon run root:test-with-cleanup`) now runs `dunnage run target` after a green pass, before the fixture cleanup: lossless compression and dedupe of `./target` that never deletes and keeps mtimes, so nothing rebuilds. Exit code 2 (a build held the lock) counts as success; without dunnage the step prints an install hint, without `target/` it is skipped, and a failed test run still exits before it. dunnage is installed with `the package manager install dunnage`; `toolchain.md` lists the package manager and dunnage and gains a package manager package table; `AGENTS.md` and `README.md` describe the task.
+`scripts/test-with-fixture-cleanup.sh` (`moon run root:test-with-cleanup`) now runs `dunnage run target` after a green pass, before the fixture cleanup: lossless compression and dedupe of `./target` that never deletes and keeps mtimes, so nothing rebuilds. Exit code 2 (a build held the lock) counts as success; without dunnage the step prints an install hint, without `target/` it is skipped, and a failed test run still exits before it. dunnage is installed with `ketch install dunnage`; `toolchain.md` lists ketch and dunnage and gains a `ketch` package table; `AGENTS.md` and `README.md` describe the task.
 
 Check (evidence): `bash -n scripts/test-with-fixture-cleanup.sh` OK; the dunnage step run on its own exits 0 without `target/`, and `dunnage run --dry-run target` plans work on a real target.
 
@@ -1354,7 +1354,7 @@ Completed 2026-10-15 (Cursor Grok 4.7).
 
 The shared scanner also rejects `password`, `refresh_token`, and `client_secret`. `openai_key` and `anthropic_key` stay rejected in this crate; the shared list dropped them.
 
-`llm-wire`, `llm-wire-openai`, `llm-wire-anthropic`, `llm-http`, and `llm-catalog` live in the same repository and are not on crates.io. They implement `llm_wire::Provider` for agent loops. The coding agent still ships `agent-provider-openai` and `agent-provider-anthropic` and does not depend on those crates. runa's clients keep audio, images, PDF, `ThinkConfig`, and `docs/prices.toml`, so they were not replaced.
+`llm-wire`, `llm-wire-openai`, `llm-wire-anthropic`, `llm-http`, and `llm-catalog` live in the same repository and are not on crates.io. They implement `llm_wire::Provider` for agent loops. cox still ships `cox-provider-openai` and `cox-provider-anthropic` and does not depend on those crates. runa's clients keep audio, images, PDF, `ThinkConfig`, and `docs/prices.toml`, so they were not replaced.
 
 Check (evidence): `cargo test -p runa-cloud --lib` — 40 passed. `cargo test -p runa --test secrets` — 2 passed. `cargo clippy -p runa-cloud --all-targets -- -D warnings` finished clean. `python3 scripts/lint-tasks.py docs/tasks.md` 0 error(s) while the claim was held (K7 stale-claim warning only).
 
@@ -1648,7 +1648,7 @@ pushes a new one over `/ws` when the journal grows. `run`, `chat`, and
 `serve` append one JSON line per finished generation
 (`$XDG_CACHE_HOME/runa/usage.jsonl`, `RUNA_USAGE_LOG` overrides).
 
-The shape follows the token CLI (`stats` + `web`, Vite + React + TanStack Query,
+The shape follows rtok (`stats` + `web`, Vite + React + TanStack Query,
 dist embedded in the binary). The page uses the runa brand (warm ash,
 charcoal, ember).
 
@@ -1666,7 +1666,7 @@ Check (evidence): `cargo test -p runa --bin runa` 129 passed;
 
 Completed 2026-10-19.
 
-Requested by Kerf (pyrlyn/kerf task T14, local code completion): the editor sends the text before and after the cursor and gets back the middle. Chat and agents stay on `/v1/chat/completions` and `the coding agent acp`; this is the inline-completion path only.
+Requested by Kerf (pyrlyn/kerf task T14, local code completion): the editor sends the text before and after the cursor and gets back the middle. Chat and agents stay on `/v1/chat/completions` and `cox acp`; this is the inline-completion path only.
 
 `POST /v1/infill` with llama-server's `/infill` field names (`input_prefix`, `input_suffix`, `n_predict`, `temperature`, `stop`, `model`; reply `content`, `stop_type`, `tokens_evaluated`, `tokens_predicted`), so a client written for llama-server needs only the path. Under `/v1/`, so `--api-key` protects it like every other generation route.
 

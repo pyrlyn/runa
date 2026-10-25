@@ -21,17 +21,17 @@ indent_size = 2
 [*.md]
 trim_trailing_whitespace = false
 
-# swift-format's default configuration (2 spaces, 100 columns), which the coding agent uses.
+# swift-format's default configuration (2 spaces, 100 columns), which cox uses.
 [*.swift]
 indent_size = 2
 max_line_length = 100
 
-# The package manager's desktop/macos/.swift-format: 4 spaces, 120 columns.
+# ketch's desktop/macos/.swift-format: 4 spaces, 120 columns.
 [desktop/macos/Ketch*/**.swift]
 indent_size = 4
 max_line_length = 120
 
-# The token CLI formats these with oxfmt, which reads this file; they are at 4 spaces.
+# rtok formats these with oxfmt, which reads this file; they are at 4 spaces.
 [{web/**.{tsx,mjs},tools/npm/**.mjs,tests/node/**.mjs,vitest.config.mjs}]
 indent_size = 4
 

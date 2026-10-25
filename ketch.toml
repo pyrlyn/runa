@@ -1,8 +1,8 @@
-# runa as a package manager package.
+# runa as a ketch package.
 #
 # Inference from github:pyrlyn/runa already works; this file is what
-# `the package manager registry push` sends to the registry (pyrlyn/pkgmgr-registry, folder
-# `runa/`) and what docs / `the package manager info` show.
+# `ketch registry push` sends to the registry (pyrlyn/ketch-registry, folder
+# `runa/`) and what docs / `ketch info` show.
 # Schema: pyrlyn/ketch docs/MANIFESTS.md.
 
 name = "runa"

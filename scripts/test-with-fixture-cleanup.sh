@@ -11,7 +11,7 @@
 # files: synthetic-*.gguf, audio/, video/, api/). Set RUNA_KEEP_FIXTURES=1
 # (or KEEP=1) to skip cleanup locally and avoid re-downloading weights.
 #
-# A pass also runs swarfr (`cargo install --git https://github.com/pyrlyn/swarfr`) over ./target: lossless
+# A pass also runs swarfr (`ketch install swarfr`) over ./target: lossless
 # compression and dedupe, never deletes; skipped when swarfr is missing.
 set -euo pipefail
 

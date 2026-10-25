@@ -25,7 +25,7 @@ and this pack inherits it instead of copying it.
 Shared tokens, fonts, UI icons, components or the role list: in pyrlyn/brand `base/` first, then bump the
 tag in `package.json`, run `npm install` and `node build.mjs` here.
 
-**Origin.** New pack, built the same way as the token CLI, the package manager and the coding agent packs (same `build.mjs`). The values come from
+**Origin.** New pack, built the same way as the rtok, ketch and cox packs (same `build.mjs`). The values come from
 `docs/brand/DESIGN.md` and `docs/brand/tokens.css` at `947399f`; pyrlyn/brand never had a `brands/runa`.
 
 ## Use

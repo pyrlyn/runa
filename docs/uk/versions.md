@@ -36,7 +36,7 @@ P0.1); цей файл фіксує, **чому відповідає кожен 
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 декодування аудіо |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 читання/запис WAV |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 ресемплінг до 16 kHz |
-| git-cliff | `2.13.1` (`mise.toml`) | git-cliff `2.13.1` | 2026-03-01 | P13.3 генерація `CHANGELOG.md` із заголовків комітів (`cliff.toml`); той самий pin, що й у the token CLI, тож нотатки релізного коміту відтворювані |
+| git-cliff | `2.13.1` (`mise.toml`) | git-cliff `2.13.1` | 2026-03-01 | P13.3 генерація `CHANGELOG.md` із заголовків комітів (`cliff.toml`); той самий pin, що й у rtok, тож нотатки релізного коміту відтворювані |
 
 Використовуйте оператор точного закріплення `=` для трьох крейтів рушіїв/API у
 `Cargo.toml`; `llama-cpp-2` явно не дотримується semver, а `whisper-rs`
@@ -273,11 +273,11 @@ SIGILL на старішому CPU.
 GitHub Release; `brew install pyrlyn/runa/runa` потребує tap-репозиторію
 `listepo/homebrew-runa`. Локально: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
 
-### Пакет the package manager (`the package manager.toml`)
+### Пакет ketch (`ketch.toml`)
 
-Кореневий `the package manager.toml` — це маніфест [the package manager](https://github.com/listepo/ketch)
-для цього репозиторію: файл, який `the package manager registry push` пропонує до
-`listepo/pkgmgr-registry` як `runa/ketch.toml`, і те, що показує `the package manager info runa`,
+Кореневий `ketch.toml` — це маніфест [ketch](https://github.com/listepo/ketch)
+для цього репозиторію: файл, який `ketch registry push` пропонує до
+`listepo/ketch-registry` як `runa/ketch.toml`, і те, що показує `ketch info runa`,
 щойно він там з'явиться. Виведення з `github:pyrlyn/runa` працює й без
 нього; маніфест якраз закріплює вибір асету.
 
@@ -299,8 +299,8 @@ GPU-архіви тут важливі: `release-variants.yml` завантаж�
 `<package>/ketch.toml`):
 
 ```sh
-TMP=$(mktemp -d); mkdir -p "$TMP/runa"; cp the package manager.toml "$TMP/runa/"
-The package manager registry validate "$TMP"    # validated 1 package
+TMP=$(mktemp -d); mkdir -p "$TMP/runa"; cp ketch.toml "$TMP/runa/"
+ketch registry validate "$TMP"    # validated 1 package
 ```
 
 ### Процес релізу
