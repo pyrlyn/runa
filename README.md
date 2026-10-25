@@ -112,22 +112,21 @@ Metal / Vulkan / CUDA builds are extra artifacts. No telemetry.
 
 ## License
 
-You can use this project under **any** of the following licenses, at your choice:
+You can use this project under **either** of the following licenses, at your choice:
 
 1. [GNU GPLv3](LICENSE): free for open source applications on any platform, including embedded systems.
-2. [Royalty-free License](LICENSE-ROYALTY-FREE.md): free for proprietary desktop, mobile, and web applications, as long as you disclose that your application uses this project. Embedded systems are not covered.
-3. [Commercial license](PRICING.md): for proprietary applications, including embedded systems, without the attribution requirement.
+2. [Commercial license](PRICING.md): for proprietary applications, including embedded systems.
 
 <!-- license-sync:start -->
-Commercial use not covered by the GPLv3 or the Royalty-free License requires a separate paid
+Commercial use not covered by the GPLv3 requires a separate paid
 license — see [PRICING.md](PRICING.md).
 <!-- license-sync:end -->
 
 The `license` field in `Cargo.toml` (`[workspace.package]`) stays
-`GPL-3.0-or-later`. Of the three choices above, only the GPL has an identifier
+`GPL-3.0-or-later`. Of the two choices above, only the GPL has an identifier
 on the SPDX License List. crates.io accepts only those identifiers in `license`
-and rejects `LicenseRef-*` custom names, so the royalty-free and commercial
-terms cannot be written there. `license` and `license-file` cannot be set
+and rejects `LicenseRef-*` custom names, so the commercial terms cannot be
+written there. `license` and `license-file` cannot be set
 together; replacing the SPDX identifier with `license-file` would hide the GPL
 from license scanners. The field is the open-source choice. This section is
-the choice among all three.
+the choice between both.
