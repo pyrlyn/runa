@@ -4,10 +4,10 @@
 
 **runa** is a local+cloud AI CLI (GGUF / llama.cpp + APIs). Metaphor: rune / local fire / compute — a geometric stave with an ember at the base. Warm charcoal surfaces and ember coral accents; deliberately not purple AI gradient.
 
-Identity: ember coral + warm charcoal. Distinct hue family from copper bindsmith, forest cox, and indigo stator.
+Identity: ember coral + warm charcoal. Distinct hue family from copper the bindings generator, forest the coding agent, and indigo the TypeScript compiler.
 
 
-**Shared visual lock (Listepo landing v1):** **nerd + ai + glass + flat** — same family as ketch brand v1. IBM Plex Mono eyebrows/labels/chips, hairline borders, mono CLI cards; subtle agent/compute cues (soft accent glow, gradient hairline, status chips) using **ember only** (no purple AI gradients); translucent glass panels with `backdrop-filter` plus opaque `@media (prefers-reduced-transparency: reduce)` fallbacks; flat CTAs, 4/8pt spacing, surface ladder, radii 8–12.
+**Shared visual lock (Listepo landing v1):** **nerd + ai + glass + flat** — same family as the package manager brand v1. IBM Plex Mono eyebrows/labels/chips, hairline borders, mono CLI cards; subtle agent/compute cues (soft accent glow, gradient hairline, status chips) using **ember only** (no purple AI gradients); translucent glass panels with `backdrop-filter` plus opaque `@media (prefers-reduced-transparency: reduce)` fallbacks; flat CTAs, 4/8pt spacing, surface ladder, radii 8–12.
 
 ## Colors
 

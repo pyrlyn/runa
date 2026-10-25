@@ -292,7 +292,7 @@ curl -H "Authorization: Bearer $SERVE_KEY" http://127.0.0.1:8080/v1/models
 ## Fill-in-the-middle completion (`/v1/infill`)
 
 **What.** `POST /v1/infill` completes code at a cursor: it takes the text
-before and after it and returns the middle. It is meant for editors (Kerf's
+before and after it and returns the middle. It is meant for editors (the IDE's
 inline completion); chat and agents keep using `/v1/chat/completions`.
 The request and reply use llama-server's `/infill` field names, so a client
 written for llama-server needs only the path.

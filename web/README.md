@@ -7,7 +7,7 @@ The first paint loads `GET /api/snapshot`.
 The journal never leaves this machine. There is no telemetry.
 
 Colours are the runa brand (warm ash, charcoal, ember). The stack matches
-the rtok admin page: a Vite build embedded in the binary, a websocket for
+the token-reduction CLI admin page: a Vite build embedded in the binary, a websocket for
 the live snapshot.
 
 ## Build

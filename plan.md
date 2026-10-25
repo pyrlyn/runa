@@ -62,7 +62,7 @@ ketch install runa works.
 
 ### K7. Fuzz testing with cargo-fuzz / libFuzzer
 
-Ivan, 2026-09-30: the same fuzz setup as ketch and rtok (ketch plan R4, rtok plan T314). Docs only here. Already in progress. Branch `test/cargo-fuzz` (worktree `_worktrees/runa-fuzz`) has uncommitted work and is not yet pushed to `pyrlyn/runa`; no PR exists yet. Link the PR here when it opens.
+Ivan, 2026-09-30: the same fuzz setup as the package manager and the token-reduction CLI (the package manager plan R4, the token-reduction CLI plan T314). Docs only here. Already in progress. Branch `test/cargo-fuzz` (worktree `_worktrees/runa-fuzz`) has uncommitted work and is not yet pushed to `pyrlyn/runa`; no PR exists yet. Link the PR here when it opens.
 
 Plan:
 1. `fuzz/`: a standalone cargo-fuzz workspace, not a member of the root workspace (`cargo-fuzz = true`, `libfuzzer-sys` 0.4, `arbitrary`), so `moon`, `cargo test --workspace` and CI never compile it. Targets that only need `runa-core`, `runa-fit` and `runa-cloud` depend on those crates directly. The targets that need the `runa` binary crate (argv, config, server body, daemon protocol) or `runa-engine` (tool-call parsing) pull in llama.cpp, so put them behind a fuzz-crate feature and the fast targets build without a C++ toolchain. An alternative is to move the pure tool-call parser out of `runa-engine` into a crate that does not link llama.cpp.
@@ -600,7 +600,7 @@ Evaluation of `README.md`, `docs/`, `plan.md`, and `AGENTS.md` (2026-09-20, Engl
 
 - **Troubleshooting** — no `docs/troubleshooting.md` (release/install failures, GPU flags, daemon on Windows, MCP quoting, HF pull errors).
 - **API reference as one page** — no `docs/api.md` / OpenAPI-style HTTP reference for `runa serve`; behavior is split across `structured.md`, man pages, and clap help.
-- **Command cheat-sheet** — no single COMMANDS.md listing every subcommand + flags (contrast with ketch’s `docs/COMMANDS.md`); users rely on `--help` and the guide.
+- **Command cheat-sheet** — no single COMMANDS.md listing every subcommand + flags (contrast with the package manager’s `docs/COMMANDS.md`); users rely on `--help` and the guide.
 - **FAQ** — cloud keys, `on_unfit=cloud:`, calibration DB location, `--max-load-percent` not gathered in one place.
 - **Examples gallery** — examples live inside `guide.md`, not a dedicated `docs/examples/` set of copy-paste scripts.
 

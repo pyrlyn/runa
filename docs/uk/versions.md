@@ -36,7 +36,7 @@ P0.1); цей файл фіксує, **чому відповідає кожен 
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 декодування аудіо |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 читання/запис WAV |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 ресемплінг до 16 kHz |
-| git-cliff | `2.13.1` (`mise.toml`) | git-cliff `2.13.1` | 2026-03-01 | P13.3 генерація `CHANGELOG.md` із заголовків комітів (`cliff.toml`); той самий pin, що й у rtok, тож нотатки релізного коміту відтворювані |
+| git-cliff | `2.13.1` (`mise.toml`) | git-cliff `2.13.1` | 2026-03-01 | P13.3 генерація `CHANGELOG.md` із заголовків комітів (`cliff.toml`); той самий pin, що й у CLI для економії токенів, тож нотатки релізного коміту відтворювані |
 
 Використовуйте оператор точного закріплення `=` для трьох крейтів рушіїв/API у
 `Cargo.toml`; `llama-cpp-2` явно не дотримується semver, а `whisper-rs`
@@ -273,9 +273,9 @@ SIGILL на старішому CPU.
 GitHub Release; `brew install pyrlyn/runa/runa` потребує tap-репозиторію
 `listepo/homebrew-runa`. Локально: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
 
-### Пакет ketch (`ketch.toml`)
+### Пакет менеджера пакетів (`ketch.toml`)
 
-Кореневий `ketch.toml` — це маніфест [ketch](https://github.com/listepo/ketch)
+Кореневий `ketch.toml` — це маніфест [менеджера пакетів](https://github.com/listepo/ketch)
 для цього репозиторію: файл, який `ketch registry push` пропонує до
 `listepo/ketch-registry` як `runa/ketch.toml`, і те, що показує `ketch info runa`,
 щойно він там з'явиться. Виведення з `github:pyrlyn/runa` працює й без

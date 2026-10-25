@@ -11,8 +11,8 @@ Project programs and direct packages from manifests.
 | rustc | mise (pin rust) | Rust compiler | https://github.com/rust-lang/rust |
 | cargo | mise (pin rust) | Rust build and dependencies | https://github.com/rust-lang/cargo |
 | moon | mise | Monorepo tasks | https://github.com/moonrepo/moon |
-| ketch | see its README | Installs swarfr | https://github.com/pyrlyn/ketch |
-| swarfr | ketch | `root:test-with-cleanup` compacts `target/` after a green pass | https://github.com/listepo/swarfr |
+| The package manager | see its README | Installs the build-cache cleaner | https://github.com/pyrlyn/ketch |
+| The build-cache cleaner | The package manager | `root:test-with-cleanup` compacts `target/` after a green pass | https://github.com/listepo/swarfr |
 | ffmpeg | mise | Audio/video fixtures | https://github.com/FFmpeg/FFmpeg |
 | python | mise | Scripts | https://github.com/python/cpython |
 | node | mise | JS runtime | https://github.com/nodejs/node |
@@ -23,11 +23,11 @@ Project programs and direct packages from manifests.
 | hk | mise (`mise.toml` pins 2.5.0) | Runs jactionlint as a pre-push hook (`hk.pkl`) | https://github.com/jdx/hk |
 | shellcheck | mise (`mise.toml` pins 0.11.0) | Checks `run:` scripts inside jactionlint | https://github.com/koalaman/shellcheck |
 
-## ketch
+## The package manager
 
 | Package | Where | Source | Why here |
 | --- | --- | --- | --- |
-| swarfr | global | https://github.com/listepo/swarfr | Lossless `target/` cleanup after tests |
+| The build-cache cleaner | global | https://github.com/listepo/swarfr | Lossless `target/` cleanup after tests |
 
 ## cargo
 
