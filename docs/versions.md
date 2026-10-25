@@ -32,7 +32,7 @@ tarballs (`.cargo_vcs_info.json`), upstream submodule pins and tag lists.
 | symphonia | `=0.6.1` (mp3/aac/flac/ogg/pcm/wav/isomp4) | — | 2026-09-15 | P4.1 audio decode |
 | hound | `=3.5.1` | — | 2026-09-08 | P4.1 WAV read/write |
 | rubato | `=5.0.0` | — | 2026-09-15 | P4.1 resample to 16 kHz |
-| git-cliff | `2.13.1` (`mise.toml`) | git-cliff `2.13.1` | 2026-03-01 | P13.3 `CHANGELOG.md` generation from commit subjects (`cliff.toml`); the same pin rtok uses, so a release commit's notes are reproducible |
+| git-cliff | `2.13.1` (`mise.toml`) | git-cliff `2.13.1` | 2026-03-01 | P13.3 `CHANGELOG.md` generation from commit subjects (`cliff.toml`); the same pin the token CLI uses, so a release commit's notes are reproducible |
 
 Use the `=` exact-pin operator for the three engine/API crates in
 `Cargo.toml`; `llama-cpp-2` explicitly does not follow semver, and `whisper-rs`
@@ -270,11 +270,11 @@ variants: `.github/workflows/release-variants.yml`. Homebrew formula is on the
 GitHub Release; `brew install pyrlyn/tap/runa` needs the formula in the shared
 `pyrlyn/homebrew-tap` repo, which does not carry it yet. Local: `bash scripts/cargo-dist.sh generate --mode=ci --check`.
 
-### ketch package (`ketch.toml`)
+### The package manager package (`the package manager.toml`)
 
-The root `ketch.toml` is the [ketch](https://github.com/pyrlyn/ketch) manifest
-for this repo — the file `ketch registry push` offers to
-`pyrlyn/ketch-registry` as `runa/ketch.toml`, and what `ketch info runa` shows
+The root `the package manager.toml` is the package manager manifest
+for this repo — the file `the package manager registry push` offers to
+`pyrlyn/pkgmgr-registry` as `runa/ketch.toml`, and what `the package manager info runa` shows
 once it is there. Inference from `github:pyrlyn/runa` already works without
 it; the manifest is what pins the asset choice.
 
@@ -296,8 +296,8 @@ Check a change before pushing it (a registry tree is `<package>/ketch.toml`
 folders):
 
 ```sh
-TMP=$(mktemp -d); mkdir -p "$TMP/runa"; cp ketch.toml "$TMP/runa/"
-ketch registry validate "$TMP"    # validated 1 package
+TMP=$(mktemp -d); mkdir -p "$TMP/runa"; cp the package manager.toml "$TMP/runa/"
+The package manager registry validate "$TMP"    # validated 1 package
 ```
 
 ### Release flow

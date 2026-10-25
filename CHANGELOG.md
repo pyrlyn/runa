@@ -64,7 +64,7 @@ Unreleased work is listed first; a `v*` tag starts a version section.
 - docs: close P11.1 (main CI green after PR #4 merge) (`6ced7b3`)
 - docs: note testing library candidates (2026-09-17) (`53e627e`)
 - docs: refresh README, add docs index, extend AGENTS protocol (P13.1) (`4cc3301`)
-- docs: add ketch package manifest (P13.2) (`88b8017`)
+- docs: add the package manager package manifest (P13.2) (`88b8017`)
 
 ### Tooling
 - chore: pin cargo-cache 0.8.3 and cache Cargo in CI (`a3ee854`)

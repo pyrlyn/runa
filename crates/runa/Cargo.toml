@@ -61,7 +61,7 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "p
 futures = "0.3.34"
 # P8.3 MCP client (stdio servers) for the run/chat tool loop.
 rmcp = { version = "3.2", default-features = false, features = ["client", "transport-child-process"] }
-# P8.6 full-screen chat (`runa chat --tui`); versions match sibling cox-tui.
+# P8.6 full-screen chat (`runa chat --tui`); versions match sibling agent-tui.
 ratatui = "0.30.2"
 crossterm = "0.29"
 tui-textarea-2 = { version = "0.13", default-features = false, features = ["crossterm"] }
