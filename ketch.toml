@@ -1,4 +1,4 @@
-# runa as a ketch package.
+# runa as a package manager package.
 #
 # Inference from github:pyrlyn/runa already works; this file is what
 # `ketch registry push` sends to the registry (pyrlyn/ketch-registry, folder

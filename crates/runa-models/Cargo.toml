@@ -19,7 +19,7 @@ serde_json = "1.0.151"
 # library build (workspace rust.md, schemars section).
 schemars = "1.2.2"
 # Shared stale-schema check. Not on crates.io yet, so pinned by git rev like
-# aulo's speech-capture.
+# The voice agent's speech-capture.
 config-schema = { git = "https://github.com/pyrlyn/crates-packages", rev = "38bf6ce5a7e9ff0563b5bcb870699de51bd87fb3" }
 tempfile = "3"
 toml = "=1.1.8"
