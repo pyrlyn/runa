@@ -19,10 +19,11 @@ use crate::cli::input::{
     attach_prompt_cache, cli_think, collect_vision_frames, read_json_schema, read_prompt,
     resolve_kv,
 };
-use crate::daemon::client::{daemon_generate, drain_daemon};
+use crate::daemon::daemon_generate;
 use crate::placement::{
     AutoPlacement, ModeChoice, auto_placement, parse_mode_choice, preflight_grow, resolve_model,
 };
+use crate::session::drain_daemon;
 use crate::{cloud, config, mcp, usage_log};
 
 pub(super) fn cmd_run(args: &RunArgs) -> Result<(), String> {

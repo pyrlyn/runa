@@ -55,20 +55,20 @@ pub(crate) fn local_placer(
     overrides: PlacementOverrides,
     max_load_percent: Option<u8>,
 ) -> Result<Placer, String> {
-    let choice = crate::parse_mode_choice(mode)?;
+    let choice = crate::placement::parse_mode_choice(mode)?;
     let base = match choice {
-        crate::ModeChoice::Fixed(m) => Placement::from_mode(m),
-        crate::ModeChoice::Auto => Placement::from_mode(Mode::Cpu),
+        crate::placement::ModeChoice::Fixed(m) => Placement::from_mode(m),
+        crate::placement::ModeChoice::Auto => Placement::from_mode(Mode::Cpu),
     };
-    let auto = matches!(choice, crate::ModeChoice::Auto);
+    let auto = matches!(choice, crate::placement::ModeChoice::Auto);
     Ok(Arc::new(move |path, config| {
         fit_check_no_fit(path, config.n_ctx, lora_bytes(config))?;
         let kv_type = runa_engine::planner_kv_type(config.kv_k, config.kv_v);
         if !auto {
-            crate::preflight_grow(path, config.n_ctx, kv_type, 0, max_load_percent)?;
+            crate::placement::preflight_grow(path, config.n_ctx, kv_type, 0, max_load_percent)?;
             return Ok(overrides.apply(base.clone()));
         }
-        match crate::auto_placement(
+        match crate::placement::auto_placement(
             path,
             config.n_ctx,
             &crate::config::OnUnfit::Error,
@@ -77,8 +77,8 @@ pub(crate) fn local_placer(
             None,
             &config.loras,
         )? {
-            crate::AutoPlacement::Local(p) => Ok(overrides.apply(p)),
-            crate::AutoPlacement::Cloud(_) => Err(crate::placement::unfit(
+            crate::placement::AutoPlacement::Local(p) => Ok(overrides.apply(p)),
+            crate::placement::AutoPlacement::Cloud(_) => Err(crate::placement::unfit(
                 "auto mode chose cloud fallback; serve is local-only",
             )),
         }
@@ -89,10 +89,10 @@ fn fit_check_no_fit(path: &Path, ctx: u32, lora_bytes: u64) -> Result<(), String
     let header = read_local_prefix(path).map_err(|e| e.to_string())?;
     let reader = Reader::parse(&header.bytes).map_err(|e| e.to_string())?;
     let desc = Descriptor::from_reader(&reader).map_err(|e| e.to_string())?;
-    let (vram, _) = crate::vram_bytes()?;
+    let (vram, _) = crate::hw::vram_bytes()?;
     let planner = PlannerConfig {
         vram_bytes: vram,
-        ram_bytes: crate::ram_bytes(),
+        ram_bytes: crate::hw::ram_bytes(),
         ctx_len: u64::from(ctx),
         kv_type: runa_engine::planner_kv_type(None, None).to_owned(),
         lora_bytes,

@@ -714,9 +714,19 @@ fn overrides_from_think_table(
     Ok(o)
 }
 
+/// A stdio MCP server: `--mcp '<command args>'` or `[mcp.servers.<name>]`.
+/// Config data, so it lives here and `mcp` imports it (issue #31).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct McpServer {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
 /// `[mcp.servers.<name>]` from every config file; a later file replaces a
 /// server with the same name (P8.3).
-pub(crate) fn load_mcp_servers() -> Result<Vec<crate::mcp::McpServer>, String> {
+pub(crate) fn load_mcp_servers() -> Result<Vec<McpServer>, String> {
     let mut servers = std::collections::BTreeMap::new();
     for path in config_paths() {
         let Some(text) = read_config_text(&path)? else {
@@ -728,7 +738,7 @@ pub(crate) fn load_mcp_servers() -> Result<Vec<crate::mcp::McpServer>, String> {
 }
 
 fn merge_mcp_toml(
-    servers: &mut std::collections::BTreeMap<String, crate::mcp::McpServer>,
+    servers: &mut std::collections::BTreeMap<String, McpServer>,
     text: &str,
     origin: &str,
 ) -> Result<(), String> {
@@ -768,7 +778,7 @@ fn merge_mcp_toml(
         };
         servers.insert(
             name.clone(),
-            crate::mcp::McpServer {
+            McpServer {
                 name: name.clone(),
                 command: command.to_owned(),
                 args,

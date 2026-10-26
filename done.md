@@ -1739,3 +1739,41 @@ Three review passes (module walk, entry points and threats, docs vs code and tes
 - `pull` checks the Hub-reported size against the limit before each snapshot file download, not only after (low, pass 1).
 
 Check (evidence): `actionlint` on `review.yml` clean; `rustfmt --edition 2024 --check` clean on the changed files; `python3 scripts/lint-tasks.py docs/tasks.md` 0 errors. New tests `ws_origin_must_match_host_when_present`, `local_host_header_rejects_rebinding_names`, `daemon_socket_is_owner_only`, `oversized_hub_size_is_refused_before_download` are not run: `main` does not compile against llama-cpp-2 0.1.159 (P21.1), so they need CI on a fixed `main`.
+
+## GitHub issues
+
+### Issue #31. Remove module cycles in crates/runa
+
+Completed 2026-10-21. Redone on top of the P21.1 split (#123): the first
+version moved code out of the old fat `cli/mod.rs`, which no longer exists.
+
+Modules in `crates/runa/src` called back into the crate root (the placement
+items `lib.rs` re-exported from `placement`, and `session::json_escape`),
+`config` and `mcp` used each other, and `daemon::client` reached back into
+its parent `daemon` and into `session`, which imported it. Done when no module
+names a root item, the graph has no cycle, and a script keeps it that way.
+
+What changed:
+1. `hw.rs` (new, leaf): `vram_bytes`, `ram_bytes`, `memory_ceiling_mib` from
+   `placement.rs`, and `machine_config` from `fit.rs` (otherwise
+   `placement → fit → bench → placement` stays a cycle).
+2. `pull.rs`: `resolve_model`, next to `find_local`; `placement` re-exports it.
+3. `json.rs` (new, leaf): `escape`, the old `session::json_escape`, plus a
+   round-trip test; `cloud` and `session::format` use it.
+4. `config`: the `McpServer` struct (config data); `mcp` keeps
+   `McpServer::from_flag` and imports the type.
+5. `daemon/client.rs` removed: `daemon_generate` and `daemon_available` live in
+   `daemon/mod.rs`, `drain_daemon` moves to `session/stream.rs` next to
+   `drain_local`.
+6. `lib.rs` re-exports only `cmd::run` and the `config` / `daemon_proto`
+   module aliases; callers name `crate::placement::*`, `crate::hw::*`,
+   `crate::pull::resolve_model`.
+7. `scripts/check-module-cycles.py` (with `--self-test`) and the
+   `root:lint-modules` moon task; listed in CLAUDE.md and CONTRIBUTING.md.
+
+Check (evidence): `python3 scripts/check-module-cycles.py` reports
+"23 modules, no cycles" (on `origin/main` at ec5189f it reported `config ↔ mcp`
+and a 14-module cycle through the root); `--self-test` ok. `cargo clippy -p runa
+--lib --tests -- -D warnings` clean, run with `llama-cpp-2`/`llama-cpp-sys-2`
+pinned back to 0.1.133 locally only, because `main` does not compile against
+the 0.1.159 pins (#107/#108); that pin is not committed. Tests are left to CI.

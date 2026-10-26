@@ -20,10 +20,10 @@ use crate::cli::input::{attach_prompt_cache, attach_prompt_cache_local};
 use crate::mcp;
 use crate::usage_log;
 
-pub(crate) use format::{json_escape, run_json};
+pub(crate) use format::run_json;
 pub(crate) use history::push_tool_results;
 pub(crate) use repl::cmd_chat;
-pub(crate) use stream::{LocalTurn, drain_local, push_tool_calls};
+pub(crate) use stream::{LocalTurn, drain_daemon, drain_local, push_tool_calls};
 
 /// REPL session: model path + pending mode + stored think args (P3).
 struct Session {

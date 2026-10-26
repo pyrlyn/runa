@@ -210,8 +210,8 @@ pub fn run_cloud(cloud: &CloudRef, run: &CloudRun<'_>) -> Result<(), String> {
     if json {
         println!(
             "{{\"text\":\"{}\",\"reasoning\":\"{}\",\"usage\":{{\"prompt_tokens\":{},\"completion_tokens\":{}}}}}",
-            crate::json_escape(&text),
-            crate::json_escape(&reasoning),
+            crate::json::escape(&text),
+            crate::json::escape(&reasoning),
             input_tok,
             output_tok
         );

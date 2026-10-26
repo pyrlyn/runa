@@ -19,17 +19,10 @@ use rmcp::transport::TokioChildProcess;
 use runa_core::ToolCall;
 use serde_json::{Value, json};
 
+use crate::config::{self, McpServer};
+
 /// Handshake, `tools/list` and each `tools/call` get this long.
 const TIMEOUT: Duration = Duration::from_secs(120);
-
-/// A stdio MCP server: `--mcp '<command args>'` or `[mcp.servers.<name>]`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct McpServer {
-    pub name: String,
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: BTreeMap<String, String>,
-}
 
 impl McpServer {
     /// `--mcp` value: command and arguments with shell-like quoting
@@ -245,7 +238,7 @@ async fn connect(s: &McpServer) -> Result<(RunningService<RoleClient, ()>, Vec<T
 
 /// Start the servers named on the command line plus those in config.
 pub(crate) fn start(flags: &[String]) -> Result<Option<McpHub>, String> {
-    let mut servers = crate::config::load_mcp_servers()?;
+    let mut servers = config::load_mcp_servers()?;
     for spec in flags {
         servers.push(McpServer::from_flag(spec)?);
     }
