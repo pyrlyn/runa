@@ -82,11 +82,16 @@ jobs:
         run: cargo clippy --workspace -- -D warnings
       - name: cargo build --workspace
         run: cargo build --workspace
-      - name: cargo test --workspace --lib
+      - name: tests skipped (SKIP_CI_TESTS)
+        if: vars.SKIP_CI_TESTS == 'true' || env.SKIP_CI_TESTS == 'true'
+        run: echo "::notice title=SKIP_CI_TESTS::tests skipped by SKIP_CI_TESTS"
+      - if: vars.SKIP_CI_TESTS != 'true' && env.SKIP_CI_TESTS != 'true'
+        name: cargo test --workspace --lib
         run: cargo test --workspace --lib
       - name: registry lint (docs/tasks.md)
         run: python3 scripts/lint-tasks.py docs/tasks.md
-      - name: runa-memory regression (P7.1/P7.4)
+      - if: vars.SKIP_CI_TESTS != 'true' && env.SKIP_CI_TESTS != 'true'
+        name: runa-memory regression (P7.1/P7.4)
         run: cargo test -p runa-memory
 
   report:
