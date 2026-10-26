@@ -50,16 +50,6 @@ Stale review items, closed and not added. The review checked the older roadmap l
 
 ## Tasks
 
-### P14.2. v0.1.0 release red: dist builds miss mise/zig, vulkan variant misses glslc
-
-Plan: fix dist build-setup (mise install incl. zig, like CI) + install
-glslc/shaderc in release-variants linux-vulkan; delete + re-push v0.1.0
-(same commit, CI green), wait for Release + variants, verify
-`ketch install pyrlyn/runa`.
-
-Machine check: `gh release view v0.1.0` lists 3 portable archives +
-ketch install runa works.
-
 ### K7. Fuzz testing with cargo-fuzz / libFuzzer
 
 Ivan, 2026-09-30: the same fuzz setup as the package manager and the token-reduction CLI (the package manager plan R4, the token-reduction CLI plan T314). Docs only here. Already in progress. Branch `test/cargo-fuzz` (worktree `_worktrees/runa-fuzz`) has uncommitted work and is not yet pushed to `pyrlyn/runa`; no PR exists yet. Link the PR here when it opens.

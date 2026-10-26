@@ -145,6 +145,12 @@ impl Default for LoadConfig {
     }
 }
 
+impl From<EngineError> for runa_core::BackendError {
+    fn from(e: EngineError) -> Self {
+        runa_core::BackendError(e.to_string())
+    }
+}
+
 /// Errors from [`load`].
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {

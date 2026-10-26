@@ -13,11 +13,11 @@ use runa_cloud::openai::{
     AudioFormat, AudioInput, ChatMessage, ChatRequest, CloudEvent as OpenAiEvent, OpenAiClient,
 };
 use runa_cloud::{
-    AnthropicClient, AnthropicEvent, AnthropicRequest, ChatTurn, CloudRef, PriceTable, Provider,
-    parse_cloud_ref, resolve_api_key, tools_from_openai,
+    ANSWER_TOOL, AnthropicClient, AnthropicEvent, AnthropicRequest, ChatTurn, CloudRef, PriceTable,
+    Provider, answer_tool, parse_cloud_ref, resolve_api_key, tools_from_openai,
 };
 use runa_core::{ThinkConfig, ThinkMode, ToolCall};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::mcp::{McpHub, call_with, tool_loop};
 
@@ -53,9 +53,6 @@ impl Reply {
         self.text.push_str(s);
     }
 }
-
-/// Name of the forced tool that carries Anthropic structured output.
-const ANSWER_TOOL: &str = "answer";
 
 pub fn run_cloud(cloud: &CloudRef, run: &CloudRun<'_>) -> Result<(), String> {
     let CloudRun {
@@ -136,14 +133,10 @@ pub fn run_cloud(cloud: &CloudRef, run: &CloudRun<'_>) -> Result<(), String> {
             if structured && mcp.is_some() {
                 return Err("--json-schema with --mcp is not supported on anthropic".into());
             }
-            let (tools, tool_choice, think) = match json_schema {
-                Some(schema) => (
-                    vec![json!({
-                        "name": ANSWER_TOOL,
-                        "description": "Reply with the answer in this shape.",
-                        "input_schema": schema,
-                    })],
-                    Some(json!({"type": "tool", "name": ANSWER_TOOL})),
+            let (tools, tool_choice, think) = match json_schema.map(answer_tool) {
+                Some((tools, choice)) => (
+                    tools,
+                    Some(choice),
                     ThinkConfig {
                         mode: ThinkMode::Off,
                         ..think

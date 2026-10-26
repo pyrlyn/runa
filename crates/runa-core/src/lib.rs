@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Licensed under GPL-3.0 or later; see https://www.gnu.org/licenses/gpl-3.0.html
 
-//! runa-core — shared types: [`BackendKind`], [`ThinkConfig`], reasoning
-//! parse, [`ToolCall`]. Local vs cloud generation uses concrete engine
-//! and cloud types, not a `Backend` trait.
+//! runa-core — the contract between the CLI and every generator: the
+//! [`Backend`] trait, [`Request`] / [`ChatMessage`] in, [`Event`] out,
+//! [`Usage`], [`StopReason`], [`Mode`], [`ThinkConfig`], reasoning parse,
+//! [`ToolCall`] and [`BackendKind`]. No I/O and no engine dependency (D5).
 
 mod backend;
+mod chat;
+mod generate;
+mod mode;
 mod reason;
 mod think;
 
 pub use backend::{BackendKind, detect_backend, is_gguf_file, is_mistral_dir, resolve_backend};
+pub use chat::{ChatMessage, Event, Request, StopReason, Usage};
+pub use generate::{Backend, BackendError, EventStream, ScriptedBackend};
+pub use mode::Mode;
 
 pub use reason::{ReasonFamily, ReasonPiece, ReasoningParser, parse_stream};
 pub use think::{
