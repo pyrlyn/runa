@@ -145,6 +145,14 @@ jobs:
           test -n "$first"
           test "$first" = "$second"
 
+      # Integration (PLAN.md, phase 5): the real daemon process, started, loaded, killed and stopped.
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        name: Daemon integration test
+        env:
+          RUNA: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe
+          MODELS: ${{ runner.temp }}/runa/models
+        run: app/integration/daemon.sh "$RUNA" "$MODELS" "$TEST_MODEL"
+
       - if: env.RUN == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
