@@ -1,7 +1,8 @@
 # runa: Kotlin/Native rewrite plan
 
-Status: plan only. No code has been written yet; the previous implementation was removed in the
-same pull request that added this file (see [Repository reset](#12-repository-reset)).
+Status: in progress. Each phase in [section 8](#8-implementation-phases) carries a `Status:` line;
+a phase marked done has landed. The previous implementation was removed in the pull request that
+added this file (see [Repository reset](#12-repository-reset)).
 
 ## Contents
 
@@ -287,6 +288,10 @@ Each phase is one or more pull requests. A phase is done when every acceptance c
 on CI for all enabled targets.
 
 ### Phase 0: toolchain and skeleton
+
+Status: done ([#142](https://github.com/pyrlyn/runa/pull/142)). ktlint, not detekt (detekt 1.23 does
+not support Kotlin 2.4; detekt 2 is alpha). SonarCloud is on; CodeQL Kotlin is off because CodeQL
+only traces Kotlin/JVM compilations. Release binaries: 2.6 MB macosArm64, 11 MB linuxX64.
 
 Steps:
 1. Add the Gradle wrapper, `settings.gradle.kts`, `gradle/libs.versions.toml`, the module list

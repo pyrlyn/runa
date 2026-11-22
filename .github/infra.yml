@@ -1,17 +1,21 @@
 # Configuration for pyrlyn/ci's ci.yml, called from pipeline.yml (docs/config.md in pyrlyn/ci).
-# The repository is being rewritten in Kotlin/Native (PLAN.md). Until the Gradle build lands
-# (phase 0), only workflow and license checks run; CodeQL for Kotlin and SonarCloud are switched
-# back on in phase 0 once there is code to analyse.
+# The Gradle build and tests run in the local ci.yml (its `<os> (<target>)` jobs are the required
+# checks); this file runs the scans, SonarCloud and the license check.
 version: 1
 
+# Docs-only pull requests skip the scans here and turn ci.yml's build steps into no-ops.
 docs-only:
   enabled: true
 
 codeql:
+  # No Kotlin: CodeQL extracts Kotlin only by tracing a Kotlin/JVM compilation, and runa builds
+  # with the Kotlin/Native compiler, so there is nothing for the java-kotlin extractor to see.
   languages: [actions]
 
 sonarcloud:
-  enabled: false
+  # Sonar's Kotlin analyser reads sources without a build (sonar-project.properties). No
+  # coverage: Kover and JaCoCo only instrument JVM code, and Kotlin/Native has no coverage tool.
+  enabled: true
 
 # License files against pyrlyn/ci's canonical ones.
 license:
