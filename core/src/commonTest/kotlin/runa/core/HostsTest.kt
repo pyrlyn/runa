@@ -9,7 +9,7 @@ class HostsTest {
     @Test
     fun loopbackIsThisMachineOnly() {
         for (host in listOf("127.0.0.1", "127.1.2.3", "localhost", "LOCALHOST", "::1")) assertTrue(isLoopbackHost(host), host)
-        for (host in listOf("0.0.0.0", "::", "192.168.1.5", "127.example.com", "localhost.example.com", "")) {
+        for (host in listOf("0.0.0.0", "::", "192.0.2.5", "127.example.com", "localhost.example.com", "")) {
             assertFalse(isLoopbackHost(host), host)
         }
     }
