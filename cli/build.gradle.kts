@@ -1,5 +1,6 @@
 plugins {
     id("runa.library")
+    id("runa.serialization")
 }
 
 kotlin {
@@ -8,9 +9,10 @@ kotlin {
             implementation(projects.client)
             implementation(projects.store)
             implementation(projects.hub)
-            implementation(projects.config)
+            api(projects.config)
             implementation(libs.clikt)
             implementation(libs.mordant)
+            implementation(libs.kotlinx.serialization.json)
         }
     }
 }

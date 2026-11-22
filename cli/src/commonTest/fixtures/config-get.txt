@@ -1,0 +1,12 @@
+KEY             VALUE              SOURCE
+models_dir      /runa-home/models  default
+host            127.0.0.1          default
+port                               default
+backend         runa               default
+log_level       info               default
+server.port     7862               default
+server.bind     127.0.0.1          default
+server.cors     false              default
+context_length                     default
+gpu             max                default
+ttl                                default
