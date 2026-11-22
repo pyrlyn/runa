@@ -14,6 +14,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.mordant.terminal.Terminal
 import runa.cli.commands.ConfigCommand
+import runa.cli.commands.GetCommand
 import runa.cli.commands.ImportCommand
 import runa.cli.commands.LsCommand
 import runa.cli.commands.VersionCommand
@@ -42,6 +43,7 @@ internal class RunaCommand(
         }
         subcommands(
             listOf(
+                GetCommand(),
                 LsCommand(),
                 ImportCommand(),
                 VersionCommand(),

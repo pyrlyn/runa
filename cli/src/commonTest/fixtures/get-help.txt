@@ -1,0 +1,17 @@
+Usage: runa get [<options>] <model>
+
+  Download a GGUF model from Hugging Face
+
+  Without @quantization, the largest quantized variant that fits this machine's
+  memory is taken. Gated and private models need an access token in HF_TOKEN.
+  An interrupted download continues where it stopped when the command is run
+  again.
+
+Options:
+  --select    Choose the variant from a list instead of taking the default
+  --json      Print JSON
+  -h, --help  Show this message and exit
+
+Arguments:
+  <model>  owner/repo, owner/repo@quantization, or a https://huggingface.co/
+           URL

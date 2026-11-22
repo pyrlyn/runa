@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.CoreCliktCommand
 import com.github.ajalt.mordant.rendering.AnsiLevel
 import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.terminal.TerminalRecorder
+import io.ktor.client.engine.HttpClientEngine
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -30,6 +31,9 @@ internal class TestCli(
         extraCommands: List<CoreCliktCommand> = emptyList(),
         /** Lines typed at prompts; giving any makes the terminal interactive. */
         input: List<String> = emptyList(),
+        /** Answers the CLI's HTTP requests; without one, a request reaches the real network. */
+        http: HttpClientEngine? = null,
+        memory: Long? = 16_000_000_000,
     ): CliRun {
         val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = input.isNotEmpty())
         recorder.inputLines = input.toMutableList()
@@ -41,6 +45,8 @@ internal class TestCli(
                 fileSystem = FileSystem.SYSTEM,
                 os = HostOs.LINUX,
                 terminal = Terminal(terminalInterface = recorder),
+                httpEngine = http,
+                physicalMemory = { memory },
             )
         val exitCode = runCli(args.toList(), environment, extraCommands)
         return CliRun(exitCode, recorder.stdout(), recorder.stderr())
