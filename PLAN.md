@@ -539,11 +539,14 @@ Risks:
   phase 0; split `runa __daemon` into its own executable target if needed.
 - **llama.cpp API churn.** Pin a tag, upgrade deliberately, keep `:engine` the only module that
   sees the C API.
-- **CI does not run.** GitHub Actions has started no run in this repository since 2026-10-26 and
-  most workflows are disabled by hand, so no phase has been verified on a runner and linuxX64
-  tests have never run. Until that is fixed, each phase is checked on macOS arm64 and in a Linux
-  arm64 container (`./gradlew linkDebugTestLinuxArm64`, then run each `test.kexe` from its module
-  directory).
+- **CI runs only on Linux.** GitHub Actions runs again (it started no run between 2026-10-26 and
+  phase 3), and `ubuntu-24.04 (linuxX64)` passes for phases 1 to 3. The `macos-14 (macosArm64)` job
+  is cancelled before it starts: GitHub answers "The configuration 'macos-14-arm64-us-default' is
+  not supported", because the macOS 14 images were retired on 2026-11-02
+  ([actions/runner-images#15226](https://github.com/actions/runner-images/issues/15226), read
+  2026-11-22). Until the job gets a runner that exists (the hosted `macos-15` or `macos-26` label,
+  or the dedicated Mac through the `MACOS_RUNNER` variable), macOS arm64 is checked locally with
+  `./gradlew build`.
 - **Linux system dependencies** (found in phases 0 and 1). The binary is dynamically linked to
   glibc and needs `libcrypt.so.1` (Fedora: `libxcrypt-compat`), glibc's gconv modules for Ktor
   (openSUSE minimal images: `glibc-locale-base`) and a system CA bundle for HTTPS (Debian and
