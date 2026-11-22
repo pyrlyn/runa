@@ -1,7 +1,5 @@
 package runa.cli
 
-import com.github.ajalt.clikt.core.BaseCliktCommand
-import com.github.ajalt.clikt.core.CliktCommand
 import okio.FileSystem
 import runa.core.ExitCode
 import kotlin.random.Random
@@ -23,51 +21,13 @@ class CliFuzzTest {
     @AfterTest
     fun cleanUp() = FileSystem.SYSTEM.deleteRecursively(cli.home)
 
-    /** One command of the tree: the words that lead to it and its options, with whether each takes a value. */
-    private class Node(
-        val path: List<String>,
-        val options: List<Pair<String, Boolean>>,
-    )
+    // Help and the version end a command before it does anything; ODD has them.
+    private fun nodes(): List<CommandNode> =
+        cli.commandTree().map { node -> CommandNode(node.path, node.options.filter { (name, _) -> name !in ENDING }, node.hidden) }
 
-    /** Reads the command tree from inside it, so a new command or option is fuzzed without a change here. */
-    private class Probe : CliktCommand(name = PROBE) {
-        val nodes = mutableListOf<Node>()
+    private fun seedWord(word: String) = if (word == MODEL_FILE) modelFile.toString() else word
 
-        override fun run() = collect(currentContext.findRoot().command, emptyList())
-
-        private fun collect(
-            command: BaseCliktCommand<*>,
-            path: List<String>,
-        ) {
-            // Help and the version end a command before it does anything; ODD has them.
-            val options =
-                command
-                    .registeredOptions()
-                    .flatMap { option -> option.names.map { it to (option.nvalues.last > 0) } }
-                    .filter { (name, _) -> name !in ENDING }
-            nodes += Node(path, options)
-            for (child in command.registeredSubcommands()) if (child.commandName != PROBE) collect(child, path + child.commandName)
-        }
-    }
-
-    private fun nodes(): List<Node> {
-        val probe = Probe()
-        cli.run(PROBE, extraCommands = listOf(probe))
-        return probe.nodes.toList()
-    }
-
-    private fun seedCommands(): List<List<String>> =
-        SEED_COMMANDS.map { line ->
-            line.split(' ').map {
-                if (it ==
-                    MODEL_FILE
-                ) {
-                    modelFile.toString()
-                } else {
-                    it
-                }
-            }
-        }
+    private fun seedCommands(): List<List<String>> = SEED_COMMANDS.map { line -> line.split(' ').map(::seedWord) }
 
     // A seed command that the CLI no longer understands would only test the usage message.
     @Test
@@ -82,10 +42,7 @@ class CliFuzzTest {
                         daemon = FakeDaemon(cli.home).apply { start() },
                         daemonProcess = { ExitCode.OK },
                     )
-                "runa ${arguments.joinToString(" ")}: ${run.exitCode}: ${run.stderr}".takeIf {
-                    run.exitCode !in
-                        setOf(ExitCode.OK, ExitCode.BACKEND)
-                }
+                "runa ${arguments.joinToString(" ")}: ${run.exitCode}: ${run.stderr}".takeIf { run.exitCode !in UNDERSTOOD }
             }
         assertEquals(emptyList(), refused)
     }
@@ -128,7 +85,7 @@ class CliFuzzTest {
     }
 
     private fun Random.arguments(
-        nodes: List<Node>,
+        nodes: List<CommandNode>,
         seeds: List<List<String>>,
         values: List<String>,
     ): List<String> {
@@ -139,7 +96,7 @@ class CliFuzzTest {
                 else -> values.random(this)
             }
 
-        fun option(node: Node): List<String> {
+        fun option(node: CommandNode): List<String> {
             val (name, takesValue) = node.options.randomOrNull(this) ?: return emptyList()
             return when {
                 !takesValue -> listOf(name)
@@ -184,9 +141,9 @@ class CliFuzzTest {
 
     private companion object {
         const val CASES = 3_000
-        const val PROBE = "fuzz-probe"
         const val MODEL_FILE = "MODEL_FILE"
         val ENDING = setOf("-h", "--help", "-v", "--version")
+        val UNDERSTOOD = setOf(ExitCode.OK, ExitCode.BACKEND)
 
         // One line for each thing runa does, as somebody would type it.
         val SEED_COMMANDS =
