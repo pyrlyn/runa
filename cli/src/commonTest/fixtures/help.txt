@@ -5,6 +5,9 @@ Usage: runa [<options>] <command> [<args>]...
 Options:
   --json               Print JSON instead of tables and text
   --log-level=<level>  debug, info, warn or error (env: RUNA_LOG_LEVEL)
+  --log-prompts        Write what the models read and write into the daemon's
+                       log file, for a daemon this command starts (env:
+                       RUNA_LOG_PROMPTS)
   --quiet              Print errors only
   --verbose            Print debug detail
   --host=<host>        Daemon host (env: RUNA_HOST)

@@ -14,6 +14,8 @@ public data class DaemonSettings(
     /** The loopback port to listen on; null for any free one. */
     val port: Int?,
     val logLevel: LogLevel,
+    /** Whether what the models read and write goes to the log file too. */
+    val logPrompts: Boolean,
     /** `context_length` of `config.json`; null for the built-in default. */
     val contextLength: Int?,
     val gpu: GpuOffload,

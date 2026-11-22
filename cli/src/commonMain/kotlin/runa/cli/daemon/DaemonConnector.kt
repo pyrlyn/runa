@@ -81,7 +81,8 @@ internal class DaemonConnector(
         log.info { "Starting the runa daemon" }
         environment.fileSystem.createDirectories(checkNotNull(paths.daemonLogFile.parent))
         try {
-            environment.startDaemon(globals.flagArguments(ConfigKey.PORT, ConfigKey.LOG_LEVEL) + DAEMON_COMMAND, paths.daemonLogFile)
+            val flags = globals.flagArguments(ConfigKey.PORT, ConfigKey.LOG_LEVEL, ConfigKey.LOG_PROMPTS)
+            environment.startDaemon(flags + DAEMON_COMMAND, paths.daemonLogFile)
         } catch (e: UnsupportedOperationException) {
             throw BackendError(e.message ?: "The runa daemon cannot run on this system", e)
         }

@@ -6,19 +6,28 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.header
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.utils.io.writeStringUtf8
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.produceIn
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import runa.core.UserInputError
 import runa.core.api.ApiError
+import runa.core.api.ChatStats
+import runa.engine.CompletionBuilder
+import runa.engine.FinishReason
 import runa.engine.GenerationEvent
+import runa.engine.GenerationRequest
 import runa.engine.GenerationStats
+import runa.engine.LoadedModel
 import runa.engine.Sampling
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
+import kotlin.time.DurationUnit
 
 // What the endpoints that generate text have in common, whichever API they belong to.
 
@@ -132,12 +141,57 @@ internal fun tokenLimit(
 
 internal fun JsonElement?.hasItems(): Boolean = this is JsonArray && isNotEmpty()
 
-/** One line in the daemon's log for every generation that finished. */
-internal fun DaemonLog.report(
+/**
+ * The answer of the instance [id] to [request], told to the log on its way: what the model read,
+ * what it wrote, and one line for every generation that finished.
+ */
+internal fun DaemonLog.watch(
     endpoint: String,
-    model: String,
+    id: String,
+    model: LoadedModel,
+    request: GenerationRequest,
+): Flow<GenerationEvent> =
+    flow {
+        val answer = if (wantsModelEvents) CompletionBuilder() else null
+        if (answer != null) {
+            // Showing a prompt must never fail the request: what is wrong with it, the generation says.
+            val prompt =
+                try {
+                    model.render(request.prompt)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            prompt?.let { input(endpoint, id, it) }
+        }
+        model.generate(request).collect { event ->
+            answer?.add(event)
+            if (event is GenerationEvent.Finished) {
+                val speed = (event.stats.tokensPerSecond * 10).roundToInt() / 10.0
+                info(
+                    "$endpoint '$id': ${event.stats.promptTokens} prompt tokens, ${event.stats.completionTokens} generated, $speed tokens/s",
+                )
+                answer?.build()?.let { output(endpoint, id, it, chatStats(it.stats, it.reason)) }
+            }
+            emit(event)
+        }
+    }
+
+/** How a generation went, as the native API and the log say it. */
+internal fun chatStats(
     stats: GenerationStats,
-) {
-    val speed = (stats.tokensPerSecond * 10).roundToInt() / 10.0
-    info("$endpoint '$model': ${stats.promptTokens} prompt tokens, ${stats.completionTokens} generated, $speed tokens/s")
-}
+    reason: FinishReason,
+) = ChatStats(
+    inputTokens = stats.promptTokens,
+    totalOutputTokens = stats.completionTokens,
+    tokensPerSecond = rounded(stats.tokensPerSecond, 100),
+    timeToFirstTokenSeconds = rounded(stats.timeToFirstToken.toDouble(DurationUnit.SECONDS), 1_000),
+    stopReason = reason.id,
+)
+
+/** More digits than this are noise, and fewer keep the JSON readable. */
+private fun rounded(
+    value: Double,
+    steps: Int,
+) = (value * steps).roundToLong() / steps.toDouble()
