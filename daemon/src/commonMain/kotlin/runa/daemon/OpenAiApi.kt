@@ -1,20 +1,12 @@
 package runa.daemon
 
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.response.header
-import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
-import io.ktor.utils.io.writeStringUtf8
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.produceIn
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -32,11 +24,9 @@ import runa.engine.GenerationRequest
 import runa.engine.GenerationStats
 import runa.engine.LoadedModel
 import runa.engine.Prompt
-import runa.engine.Sampling
 import runa.engine.toCompletion
 import runa.store.StoreListing
 import kotlin.io.encoding.Base64
-import kotlin.math.roundToInt
 import kotlin.time.Clock
 
 /**
@@ -112,8 +102,8 @@ internal class OpenAiApi(
             GenerationRequest(
                 prompt = Prompt.Chat(request.messages.map(::chatMessage)),
                 sampling =
-                    sampling(request.temperature, request.topP, request.topK, request.minP, request.repeatPenalty, request.seed),
-                maxTokens = maxTokens(request.maxCompletionTokens ?: request.maxTokens),
+                    samplingOf(request.temperature, request.topP, request.topK, request.minP, request.repeatPenalty, request.seed),
+                maxTokens = tokenLimit(request.maxCompletionTokens ?: request.maxTokens, "max_tokens"),
                 stop = strings(request.stop, "stop"),
             )
         registry.useNamed(request.model) { id, model ->
@@ -133,8 +123,8 @@ internal class OpenAiApi(
             GenerationRequest(
                 prompt = Prompt.Text(prompt),
                 sampling =
-                    sampling(request.temperature, request.topP, request.topK, request.minP, request.repeatPenalty, request.seed),
-                maxTokens = maxTokens(request.maxTokens),
+                    samplingOf(request.temperature, request.topP, request.topK, request.minP, request.repeatPenalty, request.seed),
+                maxTokens = tokenLimit(request.maxTokens, "max_tokens"),
                 stop = strings(request.stop, "stop"),
             )
         registry.useNamed(request.model) { id, model ->
@@ -153,56 +143,10 @@ internal class OpenAiApi(
         if (!stream) {
             val completion = model.generate(generation).toCompletion()
             call.respondText(shape.whole(completion), ContentType.Application.Json)
-            report(shape, completion.stats)
+            log.report(shape.name, shape.model, completion.stats)
             return
         }
-        coroutineScope {
-            // A failure travels as a value: thrown, it would cancel this scope and with it the answer.
-            val events =
-                model
-                    .generate(generation)
-                    .map { Result.success(it) }
-                    .catch { emit(Result.failure(it)) }
-                    .produceIn(this)
-            // Waited for before the answer begins: a prompt the model cannot take is known by now
-            // and still gets a status code of its own.
-            val first = events.receive().getOrThrow()
-            call.response.header(HttpHeaders.CacheControl, "no-cache")
-            // A client that goes away fails the next write, which ends this scope and the generation.
-            call.respondBytesWriter(ContentType.Text.EventStream) {
-                suspend fun send(data: String) {
-                    writeStringUtf8("data: $data\n\n")
-                    flush()
-                }
-
-                suspend fun send(event: GenerationEvent) {
-                    when (event) {
-                        is GenerationEvent.Text -> {
-                            send(shape.text(event.text))
-                        }
-
-                        is GenerationEvent.Finished -> {
-                            send(shape.closing(event.reason))
-                            if (options?.includeUsage == true) send(shape.usage(event.stats))
-                            report(shape, event.stats)
-                        }
-                    }
-                }
-                shape.opening()?.let { send(it) }
-                send(first)
-                for (result in events) {
-                    val event = result.getOrNull()
-                    if (event == null) {
-                        // The status line is long gone, so the failure is the last event, as OpenAI sends it.
-                        val failure = failures.describe(checkNotNull(result.exceptionOrNull())).second
-                        send(DaemonJson.encodeToString(ApiError.serializer(), failure))
-                        return@respondBytesWriter
-                    }
-                    send(event)
-                }
-                send(DONE)
-            }
-        }
+        call.respondEvents(model.generate(generation), Events(shape, options), failures)
     }
 
     private suspend fun embed(
@@ -226,16 +170,6 @@ internal class OpenAiApi(
             call.respondJson(OpenAiJson, EmbeddingList.serializer(), EmbeddingList("list", data, id, EmbeddingUsage(tokens, tokens)))
             log.info("embeddings '$id': ${inputs.size} inputs, $tokens tokens")
         }
-    }
-
-    private fun report(
-        shape: Shape,
-        stats: GenerationStats,
-    ) {
-        val speed = (stats.tokensPerSecond * 10).roundToInt() / 10.0
-        log.info(
-            "${shape.name} '${shape.model}': ${stats.promptTokens} prompt tokens, ${stats.completionTokens} generated, $speed tokens/s",
-        )
     }
 
     private fun chatMessage(message: ChatCompletionRequest.Message): ChatMessage {
@@ -270,38 +204,9 @@ internal class OpenAiApi(
             }
         }
 
-    private fun sampling(
-        temperature: Double?,
-        topP: Double?,
-        topK: Int?,
-        minP: Double?,
-        repeatPenalty: Double?,
-        seed: Long?,
-    ): Sampling {
-        if (temperature != null && temperature < 0) throw UserInputError("temperature must not be negative")
-        return Sampling().let {
-            it.copy(
-                temperature = temperature ?: it.temperature,
-                topP = topP ?: it.topP,
-                topK = topK ?: it.topK,
-                minP = minP ?: it.minP,
-                repeatPenalty = repeatPenalty ?: it.repeatPenalty,
-                seed = seed,
-            )
-        }
-    }
-
-    /** A negative limit is how llama.cpp and LM Studio clients ask for none. */
-    private fun maxTokens(limit: Int?): Int? {
-        if (limit == 0) throw UserInputError("max_tokens must be at least 1")
-        return limit?.takeIf { it > 0 }
-    }
-
     private fun requireOneChoice(n: Int?) {
         if (n != null && n != 1) throw UserInputError("n must be 1")
     }
-
-    private fun JsonElement?.hasItems(): Boolean = this is JsonArray && isNotEmpty()
 
     private fun strings(
         value: JsonElement?,
@@ -327,6 +232,26 @@ internal class OpenAiApi(
             repeat(Float.SIZE_BYTES) { bytes[index * Float.SIZE_BYTES + it] = (bits ushr (it * Byte.SIZE_BITS)).toByte() }
         }
         return JsonPrimitive(Base64.encode(bytes))
+    }
+
+    /** A stream of `data:` events, ended by [DONE] when the generation was. */
+    private inner class Events(
+        private val shape: Shape,
+        private val options: StreamOptions?,
+    ) : EventFormat {
+        override fun opening() = frames(shape.opening())
+
+        override fun text(text: String) = frames(shape.text(text))
+
+        override suspend fun finished(event: GenerationEvent.Finished): List<String> {
+            log.report(shape.name, shape.model, event.stats)
+            return frames(shape.closing(event.reason), shape.usage(event.stats).takeIf { options?.includeUsage == true }, DONE)
+        }
+
+        // As OpenAI sends a failure: the last event, and no [DONE] after it.
+        override fun failed(error: ApiError) = frames(DaemonJson.encodeToString(ApiError.serializer(), error))
+
+        private fun frames(vararg data: String?) = data.filterNotNull().map { sseFrame(it) }
     }
 
     /** How one endpoint writes a generation: as a whole, or as the events of a stream. */

@@ -163,7 +163,7 @@ internal class DaemonApi(
             serializer: SerializationStrategy<T>,
             value: T,
         ) {
-            writeStringUtf8("event: $name\ndata: ${DaemonJson.encodeToString(serializer, value)}\n\n")
+            writeStringUtf8(sseFrame(DaemonJson.encodeToString(serializer, value), name))
             flush()
         }
         // A client that goes away fails the next write, which cancels the load with this scope.
