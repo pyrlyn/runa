@@ -10,16 +10,19 @@ import runa.store.StoredModel
 internal val modelsDir: Path = "/models".toPath()
 
 /** A store entry without a file behind it: the fake engine never opens one. */
-internal fun stored(repo: String): StoredModel =
+internal fun stored(
+    repo: String,
+    variant: String = "Q4_K_M",
+): StoredModel =
     StoredModel(
-        key = ModelKey("acme", repo, "Q4_K_M"),
-        files = listOf(modelsDir / "acme" / repo / "$repo-Q4_K_M.gguf"),
+        key = ModelKey("acme", repo, variant),
+        files = listOf(modelsDir / "acme" / repo / "$repo-$variant.gguf"),
         sizeBytes = 1_000,
         kind = ModelKind.LLM,
         architecture = "llama",
         name = "Tiny $repo",
         parameterCount = 1_000,
-        quantization = "Q4_K_M",
+        quantization = variant,
         contextLength = 2048,
     )
 

@@ -3,7 +3,9 @@ package runa.engine.testing
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import okio.Path
+import runa.core.BackendError
 import runa.core.LoadConfig
+import runa.core.UserInputError
 import runa.engine.Engine
 import runa.engine.EngineInfo
 import runa.engine.FinishReason
@@ -23,6 +25,9 @@ public class FakeEngine : Engine {
     /** Every load so far, in order. */
     public val loads: MutableList<FakeLoad> = mutableListOf()
 
+    /** A word at which generation fails, the way a backend fails halfway through an answer. */
+    public var failOn: String? = null
+
     override val info: EngineInfo = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"))
 
     override fun estimateMemory(
@@ -37,7 +42,7 @@ public class FakeEngine : Engine {
     ): LoadedModel {
         onProgress(0f)
         onProgress(1f)
-        return FakeModel(config.contextLength ?: DEFAULT_CONTEXT).also { loads += FakeLoad(model, config, it) }
+        return FakeModel(config.contextLength ?: DEFAULT_CONTEXT) { failOn }.also { loads += FakeLoad(model, config, it) }
     }
 
     private companion object {
@@ -53,6 +58,7 @@ public class FakeLoad(
 
 public class FakeModel(
     override val contextLength: Int,
+    private val failOn: () -> String? = { null },
 ) : LoadedModel {
     public var closed: Boolean = false
         private set
@@ -72,11 +78,14 @@ public class FakeModel(
                     is Prompt.Chat -> prompt.messages.joinToString(" ") { "${it.role.id}: ${it.content}" }
                 }
             val words = words(prompt)
+            // As a real engine does: there is nothing to continue.
+            if (words.isEmpty()) throw UserInputError("The prompt is empty")
             val limit = minOf(request.maxTokens ?: Int.MAX_VALUE, contextLength)
             var emitted = 0
             var reason = FinishReason.STOP
             for (word in words) {
                 if (word in request.stop) break
+                if (word == failOn()) throw BackendError("The fake engine fails at '$word'")
                 if (emitted == limit) {
                     reason = FinishReason.LENGTH
                     break

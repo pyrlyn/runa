@@ -10,6 +10,7 @@ kotlin {
             api(projects.config)
             implementation(projects.store)
             implementation(libs.ktor.server.cio)
+            implementation(libs.ktor.server.cors)
             implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {

@@ -26,6 +26,7 @@ public data class DaemonStatus(
     @SerialName("uptime_seconds") val uptimeSeconds: Long,
     val engine: EngineDescription,
     @SerialName("loaded_instances") val loadedInstances: Int,
+    val server: ServerDescription = ServerDescription(),
 )
 
 @Serializable
@@ -128,6 +129,31 @@ public data class UnloadResponse(
     val unloaded: List<String>,
 )
 
+/**
+ * The listener that `runa server start` opens for other programs. Part of the status, and the
+ * answer of `POST /api/v1/server`.
+ */
+@Serializable
+public data class ServerDescription(
+    val running: Boolean = false,
+    val bind: String? = null,
+    val port: Int? = null,
+    val cors: Boolean = false,
+    /** True when the OpenAI-compatible routes ask for an API key. */
+    @SerialName("api_key_required") val apiKeyRequired: Boolean = false,
+)
+
+/** `POST /api/v1/server`: open the listener on [bind] and [port], or close it. */
+@Serializable
+public data class ServerRequest(
+    val running: Boolean,
+    val bind: String? = null,
+    val port: Int? = null,
+    val cors: Boolean = false,
+    /** What clients of the OpenAI-compatible routes must send as their bearer token; null for nothing. */
+    @SerialName("api_key") val apiKey: String? = null,
+)
+
 /** `POST /api/v1/shutdown`. */
 @Serializable
 public data class ShutdownResponse(
@@ -144,12 +170,19 @@ public data class ApiError(
         val message: String,
         /** [INVALID_REQUEST], [UNAUTHORIZED] or [SERVER_ERROR]. */
         val type: String,
+        /** The request field that is wrong, when one is. */
+        val param: String? = null,
+        /** A finer reason than [type], for example [MODEL_NOT_FOUND]. */
+        val code: String? = null,
     )
 
     public companion object {
         public const val INVALID_REQUEST: String = "invalid_request_error"
         public const val UNAUTHORIZED: String = "authentication_error"
         public const val SERVER_ERROR: String = "server_error"
+
+        public const val MODEL_NOT_FOUND: String = "model_not_found"
+        public const val INVALID_API_KEY: String = "invalid_api_key"
     }
 }
 
@@ -159,6 +192,7 @@ public object DaemonRoutes {
     public const val MODELS: String = "/api/v1/models"
     public const val LOAD: String = "/api/v1/models/load"
     public const val UNLOAD: String = "/api/v1/models/unload"
+    public const val SERVER: String = "/api/v1/server"
     public const val SHUTDOWN: String = "/api/v1/shutdown"
 
     public const val EVENT_PROGRESS: String = "progress"

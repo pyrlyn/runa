@@ -1,13 +1,9 @@
 package runa.daemon
 
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondBytesWriter
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -19,7 +15,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.DeserializationStrategy
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.SerializationStrategy
 import runa.core.GpuOffload
 import runa.core.UserInputError
@@ -33,6 +28,8 @@ import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
 import runa.core.api.ModelDescription
 import runa.core.api.ModelList
+import runa.core.api.ServerDescription
+import runa.core.api.ServerRequest
 import runa.core.api.ShutdownResponse
 import runa.core.api.UnloadRequest
 import runa.core.api.UnloadResponse
@@ -43,14 +40,18 @@ import kotlin.time.DurationUnit
 import kotlin.time.TimeMark
 
 /**
- * The daemon's native HTTP API (PLAN.md, section 6). Every route needs the bearer [token], except
- * the status probe: it tells a client that the process it found is a runa daemon, and nothing else.
+ * The daemon's native HTTP API (PLAN.md, section 6), with the OpenAI-compatible one beside it.
+ * Every native route needs the daemon's token, except the status probe on the private listener:
+ * it tells a client that the process it found is a runa daemon, and nothing else.
  */
 internal class DaemonApi(
     private val registry: ModelRegistry,
     private val engine: Engine,
     private val store: () -> StoreListing,
-    val token: String,
+    private val access: Access,
+    private val failures: Failures,
+    private val openAi: OpenAiApi,
+    private val server: PublicServer,
     private val version: String,
     private val pid: Int,
     /** Known only once the server listens. */
@@ -59,14 +60,28 @@ internal class DaemonApi(
     private val log: DaemonLog,
     private val requestShutdown: () -> Unit,
 ) {
-    fun install(application: Application) {
+    fun install(
+        application: Application,
+        listener: Listener,
+    ) {
         application.routing {
-            get(DaemonRoutes.STATUS) { answer { call.respond(DaemonStatus.serializer(), status()) } }
+            openAi.install(this, listener)
+            get(DaemonRoutes.STATUS) {
+                // Open only where nothing but this machine can ask.
+                if (listener == Listener.PRIVATE) {
+                    failures.answer(call) { call.respond(DaemonStatus.serializer(), status()) }
+                } else {
+                    guarded { call.respond(DaemonStatus.serializer(), status()) }
+                }
+            }
             get(DaemonRoutes.MODELS) { guarded { call.respond(ModelList.serializer(), models()) } }
             post(DaemonRoutes.LOAD) { guarded { load(call, call.receive(LoadRequest.serializer())) } }
             post(
                 DaemonRoutes.UNLOAD,
             ) { guarded { call.respond(UnloadResponse.serializer(), unload(call.receive(UnloadRequest.serializer()))) } }
+            post(DaemonRoutes.SERVER) {
+                guarded { call.respond(ServerDescription.serializer(), serve(call.receive(ServerRequest.serializer()), listener)) }
+            }
             post(DaemonRoutes.SHUTDOWN) {
                 guarded {
                     call.respond(ShutdownResponse.serializer(), ShutdownResponse("stopping"))
@@ -85,7 +100,19 @@ internal class DaemonApi(
             uptimeSeconds = started.elapsedNow().inWholeSeconds,
             engine = engine.info.let { EngineDescription(it.name, it.version, it.accelerators) },
             loadedInstances = registry.instances().size,
+            server = server.describe(),
         )
+
+    private suspend fun serve(
+        request: ServerRequest,
+        listener: Listener,
+    ): ServerDescription {
+        if (request.running) return server.start(request) { install(this, Listener.PUBLIC) }
+        // Closing it would cut off the very request that asks for it.
+        if (listener == Listener.PUBLIC) throw UserInputError("The server cannot be stopped through itself; ask the daemon's own port")
+        server.stop()
+        return server.describe()
+    }
 
     private suspend fun models(): ModelList {
         val loaded = registry.instances().groupBy { it.model }
@@ -158,15 +185,13 @@ internal class DaemonApi(
             for (value in progress) event(DaemonRoutes.EVENT_PROGRESS, LoadProgress.serializer(), LoadProgress(value))
             load.await().fold(
                 onSuccess = { event(DaemonRoutes.EVENT_LOADED, LoadResponse.serializer(), loaded(it)) },
-                onFailure = { event(DaemonRoutes.EVENT_ERROR, ApiError.serializer(), failure(it).second) },
+                onFailure = { event(DaemonRoutes.EVENT_ERROR, ApiError.serializer(), failures.describe(it).second) },
             )
         }
     }
 
-    private fun loaded(result: LoadResult): LoadResponse {
-        log.info("Loaded ${result.instance.model} as '${result.instance.id}' in ${result.loadTime.inWholeMilliseconds} ms")
-        return LoadResponse(LoadResponse.LOADED, result.estimate, result.instance, result.loadTime.toDouble(DurationUnit.SECONDS))
-    }
+    private fun loaded(result: LoadResult) =
+        LoadResponse(LoadResponse.LOADED, result.estimate, result.instance, result.loadTime.toDouble(DurationUnit.SECONDS))
 
     private suspend fun unload(request: UnloadRequest): UnloadResponse {
         val id = request.instanceId
@@ -194,70 +219,15 @@ internal class DaemonApi(
     }
 
     private suspend fun RoutingContext.guarded(block: suspend () -> Unit) =
-        answer {
-            if (!authorized(call.request.headers[HttpHeaders.Authorization])) throw Unauthorized()
+        failures.answer(call) {
+            access.requireToken(call)
             block()
         }
-
-    /** Turns whatever [block] throws into the API's error body. */
-    private suspend fun RoutingContext.answer(block: suspend () -> Unit) {
-        try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val (status, body) = failure(e)
-            call.respond(ApiError.serializer(), body, status)
-        }
-    }
-
-    private fun failure(error: Throwable): Pair<HttpStatusCode, ApiError> {
-        fun body(
-            message: String,
-            type: String,
-        ) = ApiError(ApiError.Detail(message, type))
-        return when (error) {
-            is Unauthorized -> {
-                HttpStatusCode.Unauthorized to body("A valid bearer token is required", ApiError.UNAUTHORIZED)
-            }
-
-            is UserInputError -> {
-                HttpStatusCode.BadRequest to body(error.message.orEmpty(), ApiError.INVALID_REQUEST)
-            }
-
-            is SerializationException -> {
-                HttpStatusCode.BadRequest to body("The request body is not valid: ${error.message}", ApiError.INVALID_REQUEST)
-            }
-
-            else -> {
-                log.error("Request failed: ${error.stackTraceToString()}")
-                HttpStatusCode.InternalServerError to body(error.message ?: error.toString(), ApiError.SERVER_ERROR)
-            }
-        }
-    }
-
-    private fun authorized(header: String?): Boolean {
-        val given = header?.takeIf { it.startsWith(BEARER, ignoreCase = true) }?.substring(BEARER.length) ?: return false
-        val a = given.encodeToByteArray()
-        val b = token.encodeToByteArray()
-        // Every byte is compared, so the time taken says nothing about where the tokens differ.
-        var difference = a.size xor b.size
-        for (i in a.indices) difference = difference or (a[i].toInt() xor b[i % b.size].toInt())
-        return difference == 0
-    }
 
     private suspend fun <T> ApplicationCall.respond(
         serializer: SerializationStrategy<T>,
         value: T,
-        status: HttpStatusCode = HttpStatusCode.OK,
-    ) = respondText(DaemonJson.encodeToString(serializer, value), ContentType.Application.Json, status)
+    ) = respondJson(DaemonJson, serializer, value)
 
-    private suspend fun <T> ApplicationCall.receive(serializer: DeserializationStrategy<T>): T =
-        DaemonJson.decodeFromString(serializer, receiveText().ifBlank { "{}" })
-
-    private class Unauthorized : RuntimeException()
-
-    private companion object {
-        const val BEARER = "Bearer "
-    }
+    private suspend fun <T> ApplicationCall.receive(serializer: DeserializationStrategy<T>): T = receiveJson(DaemonJson, serializer)
 }
