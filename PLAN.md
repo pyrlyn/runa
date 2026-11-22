@@ -1,6 +1,6 @@
 # runa: Kotlin/Native rewrite plan
 
-Status: plan only. No code has been written yet; the Rust implementation was removed in the
+Status: plan only. No code has been written yet; the previous implementation was removed in the
 same pull request that added this file (see [Repository reset](#12-repository-reset)).
 
 ## Contents
@@ -480,13 +480,13 @@ script and Homebrew formula install a working `runa`, and `runa --version` match
 
 ## 12. Repository reset
 
-This pull request removes the Rust implementation and everything tied to it:
-`crates/`, `fuzz/`, `tests/`, `docs/` (Rust-era guides and translations), `dashboard/`, `web/`,
+This pull request removes the previous implementation and everything tied to it:
+`crates/`, `fuzz/`, `tests/`, `docs/` (old guides and translations), `dashboard/`, `web/`,
 `scripts/`, `.cargo/`, `.moon/`, `moon.yml`, `.serena/`, `Cargo.toml`, `Cargo.lock`,
 `rust-toolchain.toml`, `dist-workspace.toml`, `cliff.toml`, `ketch.toml`,
 `sonar-project.properties`, `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`, the old planning notes
 (`plan.md`, `done.md`, `research.md`, `report.html`, `roadmap.md`, `todo.md`, `ideas.md`,
-`toolchain.md`), `.github/build-setup.yml` and the Rust workflows (`ci.yml`, `perf.yml`,
+`toolchain.md`), `.github/build-setup.yml` and the old build workflows (`ci.yml`, `perf.yml`,
 `release.yml`, `release-variants.yml`, `release-failure.yml`, `review.yml`, `bump.yml`,
 `sync-docs.yml`). The history stays in git.
 
@@ -518,6 +518,6 @@ Open questions for Ivan:
    (`--backend lmstudio`, phase 8) first as a quick win? The plan keeps both; the order can swap.
 2. Is Windows (`mingwX64`) needed for 1.0, or later?
 3. GPU backends beyond Metal and CPU for 1.0 (CUDA, Vulkan)?
-4. Should features from the Rust version come back after 1.0 (`fit` forecasting, cloud
+4. Should features from the previous version come back after 1.0 (`fit` forecasting, cloud
    OpenAI/Anthropic providers, media/ASR, adaptive memory, MCP tool loop)?
 5. Licence stays GPL-3.0 with the commercial option in `PRICING.md`?

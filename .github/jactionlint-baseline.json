@@ -2,6 +2,22 @@
   "version": 1,
   "entries": [
     {
+      "file": ".github/workflows/coderabbit-issues.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "1bfbe9e9a844acc7",
+      "context": "2c0045c3d2c62007",
+      "occurrence": 0,
+      "message": "reusable workflow call \"pyrlyn/ci/.github/workflows/coderabbit-issues.yml@main\" must be pinned to a full-length commit SHA like \"owner/repo/path/to/workflow.yml@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
+      "file": ".github/workflows/pipeline.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "10b726717e2a34a0",
+      "context": "abe5e0308a3cc54a",
+      "occurrence": 0,
+      "message": "reusable workflow call \"pyrlyn/ci/.github/workflows/ci.yml@main\" must be pinned to a full-length commit SHA like \"owner/repo/path/to/workflow.yml@{sha}\" because the \"unpinned-uses\" rule is enabled"
+    },
+    {
       "file": ".github/workflows/release-ci-alert.yml",
       "rule": "dangerous-triggers",
       "fingerprint": "e1b416090046774f",
@@ -12,10 +28,26 @@
     {
       "file": ".github/workflows/release-ci-alert.yml",
       "rule": "workflow-run-names",
+      "fingerprint": "fa8a63e2fbe5555d",
+      "context": "becef795608ca146",
+      "occurrence": 0,
+      "message": "workflow \"ci\" specified at \"workflows\" of \"workflow_run\" event is not found in the repository. a workflow is specified by its \"name:\" or its file path when it has no name"
+    },
+    {
+      "file": ".github/workflows/release-ci-alert.yml",
+      "rule": "workflow-run-names",
       "fingerprint": "88b4b05e4e54d8f3",
       "context": "becef795608ca146",
       "occurrence": 0,
       "message": "workflow \"license-check\" specified at \"workflows\" of \"workflow_run\" event is not found in the repository. a workflow is specified by its \"name:\" or its file path when it has no name"
+    },
+    {
+      "file": ".github/workflows/release-ci-alert.yml",
+      "rule": "unpinned-uses",
+      "fingerprint": "d5c5dcbd0c9a5999",
+      "context": "6001caf94cde8951",
+      "occurrence": 0,
+      "message": "reusable workflow call \"pyrlyn/ci/.github/workflows/release-ci-alert.yml@main\" must be pinned to a full-length commit SHA like \"owner/repo/path/to/workflow.yml@{sha}\" because the \"unpinned-uses\" rule is enabled"
     }
   ]
 }

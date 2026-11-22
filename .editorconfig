@@ -10,9 +10,6 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-# rustfmt defaults (no repo sets max_width).
-[*.rs]
-max_line_length = 100
 
 [*.{md,yml,yaml,toml,json,jsonc,js,mjs,cjs,jsx,ts,mts,cts,tsx,astro,vue,svelte,sh,bash,zsh,html,css,scss,gotmpl,dart,ps1,xml,xaml,csproj,props,targets,resx,slnx,entitlements,xcstrings}]
 indent_size = 2
