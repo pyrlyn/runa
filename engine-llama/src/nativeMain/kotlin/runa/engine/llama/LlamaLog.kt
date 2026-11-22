@@ -7,9 +7,7 @@ import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import runa.core.LogLevel
 import runa.engine.llama.cinterop.GGML_LOG_LEVEL_CONT
-import runa.engine.llama.cinterop.GGML_LOG_LEVEL_DEBUG
 import runa.engine.llama.cinterop.GGML_LOG_LEVEL_ERROR
-import runa.engine.llama.cinterop.GGML_LOG_LEVEL_WARN
 import runa.engine.llama.cinterop.llama_backend_init
 import runa.engine.llama.cinterop.llama_log_set
 import kotlin.concurrent.Volatile
@@ -28,14 +26,19 @@ private val openLine = AtomicReference("")
 private val lastError = AtomicReference<String?>(null)
 
 @Volatile
-private var lineLevel = LogLevel.INFO
+private var lineIsError = false
 
 private val backend: Unit by lazy {
     llama_log_set(staticCFunction(::onLog), null)
     llama_backend_init()
 }
 
-/** Initialises llama.cpp once and sends its log to [onLog] from now on, one whole line per call. */
+/**
+ * Initialises llama.cpp once and sends its log to [onLog] from now on, one whole line per call and
+ * always at [LogLevel.DEBUG]: llama.cpp narrates every load at "info" and "warn", which is noise to
+ * someone who asked a model a question. What matters of it reaches the user through
+ * [takeLastLlamaError].
+ */
 @OptIn(ExperimentalAtomicApi::class)
 internal fun startLlama(onLog: (LogLevel, String) -> Unit) {
     sink.store(onLog)
@@ -53,7 +56,7 @@ private fun onLog(
     @Suppress("UNUSED_PARAMETER") data: COpaquePointer?,
 ) {
     val piece = text?.toKString() ?: return
-    if (level != GGML_LOG_LEVEL_CONT) lineLevel = logLevel(level)
+    if (level != GGML_LOG_LEVEL_CONT) lineIsError = level == GGML_LOG_LEVEL_ERROR
     while (true) {
         val before = openLine.load()
         val all = before + piece
@@ -72,19 +75,10 @@ private fun onLog(
 
 @OptIn(ExperimentalAtomicApi::class)
 private fun report(line: String) {
-    val level = lineLevel
-    if (level == LogLevel.ERROR) lastError.store(line)
+    if (lineIsError) lastError.store(line)
     try {
-        sink.load()(level, line)
+        sink.load()(LogLevel.DEBUG, line)
     } catch (_: Throwable) {
         // An exception must not unwind into llama.cpp's C++ frames; a lost log line is harmless.
     }
 }
-
-private fun logLevel(level: UInt): LogLevel =
-    when (level) {
-        GGML_LOG_LEVEL_DEBUG -> LogLevel.DEBUG
-        GGML_LOG_LEVEL_WARN -> LogLevel.WARN
-        GGML_LOG_LEVEL_ERROR -> LogLevel.ERROR
-        else -> LogLevel.INFO
-    }

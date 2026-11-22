@@ -39,8 +39,9 @@ import runa.platform.computeCoreCount
 import kotlin.coroutines.coroutineContext
 
 /**
- * The llama.cpp [Engine]. [onLog] receives llama.cpp's own log, a line at a time and from any
- * thread; llama.cpp has a single log per process, so the engine created last gets it.
+ * The llama.cpp [Engine]. [onLog] receives llama.cpp's own log at [LogLevel.DEBUG] and the engine's
+ * notices at their own level, a line at a time and from any thread; llama.cpp has a single log per
+ * process, so the engine created last gets it.
  */
 public class LlamaEngine(
     private val onLog: (LogLevel, String) -> Unit = { _, _ -> },
