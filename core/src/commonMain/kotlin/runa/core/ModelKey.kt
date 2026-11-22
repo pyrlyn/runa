@@ -22,6 +22,9 @@ public data class ModelKey(
 
     override fun toString(): String = if (variant == null) model else "$model@$variant"
 
+    /** True when [name] is this key, its `publisher/repo` or its repo alone; case does not matter. */
+    public fun isNamed(name: String): Boolean = listOf(toString(), model, repo).any { it.equals(name, ignoreCase = true) }
+
     public companion object {
         /** Parses what a user typed; null unless every part passes [isValidName]. */
         public fun parse(text: String): ModelKey? {
