@@ -248,10 +248,19 @@ All of this lives in `:engine-llama`, behind the `Engine` and `LoadedModel` inte
   (`-DBUILD_SHARED_LIBS=OFF`, only the library, Metal on for macOS with the shader library
   embedded, OpenMP off, `GGML_NATIVE` off with an AVX2 baseline on x64) and produces `libllama.a`,
   `libggml*.a`. `mingwX64` compiles against the bindings but has no static libraries yet.
-- `src/nativeInterop/cinterop/llama.def` declares the headers (`llama.h`) and `staticLibraries`;
-  link the C++ runtime (`-lc++` on macOS, `-lstdc++` on Linux) and the Metal/Foundation frameworks.
+- `src/nativeInterop/cinterop/llama.def` declares the headers (`llama.h`, `runa_llama.h`) and
+  `staticLibraries`; link the C++ runtime (`-lc++` on macOS, `-lstdc++` on Linux) and the
+  Metal/Foundation frameworks.
+- Chat templates, tool calls and JSON answers are in llama.cpp's `common` library, which is C++
+  and so out of cinterop's reach. `src/nativeInterop/shim` is a C API over it (`runa_llama.h`:
+  the templates of a model, and a turn that renders the chat, samples and parses the answer as
+  it is written); it speaks JSON where llama.cpp's chat code does and never throws. The CMake
+  project that the Gradle task builds is this shim, with llama.cpp as its subdirectory and
+  `LLAMA_BUILD_COMMON` on, which adds `libruna-llama.a`, `libllama-common*.a` and
+  `libcpp-httplib.a` to the link and about 3 MB to the executable.
 - One Kotlin class, `LlamaModel`, owns the native model and context and frees them in `close()`;
-  a sampler lives for one generation. No raw pointer leaves `:engine-llama`.
+  a turn of the shim, with its sampler, lives for one generation. No raw pointer leaves
+  `:engine-llama`.
 - llama.cpp is not tied to a thread, it only must not be entered twice at once. So a model has no
   thread of its own: its calls run one at a time on a serial view of `Dispatchers.IO`, which needs
   no shutdown and cannot be closed under a coroutine that still has to resume on it.
@@ -506,8 +515,9 @@ daemon (asserted).
 
 ### Phase 6: OpenAI-compatible server and chat
 
-Status: in progress. Landed in [#150](https://github.com/pyrlyn/runa/pull/150): the `/v1/*`
-endpoints of step 1 without tools and `response_format`, and step 2. Verified on macOS arm64 with
+Status: done, in three pull requests. Landed in
+[#150](https://github.com/pyrlyn/runa/pull/150): the `/v1/*` endpoints of step 1 without tools and
+`response_format`, and step 2. Verified on macOS arm64 with
 Qwen2.5 0.5B Q4_K_M: the unit tests (the endpoints against the fake engine with golden SSE
 streams, the public listener over real sockets, the `server` commands against a fake daemon) and
 `app/integration/server.sh`, which drives the real executable with `curl`; the unit tests also in
@@ -521,9 +531,19 @@ the input state machine, the command against a fake daemon), also in the Ubuntu 
 in a pseudo-terminal, where the model recalled a number from an earlier turn and forgot it after
 `/clear`.
 
-Left for the next pull request: tools and `response_format` through grammars; the `docs/` examples
-for `curl` and the `openai` Python client with their CI smoke test. Embeddings are tested against
-the fake engine only: the test model is a chat model.
+Landed in [#152](https://github.com/pyrlyn/runa/pull/152): tools and `response_format` of step 1,
+and [`docs/openai.md`](docs/openai.md) with its examples. Verified on macOS arm64 with the same
+model: the unit tests (the endpoint against the fake engine with a golden stream of a tool call,
+the JSON that crosses the shim), the engine tests on real weights (a required and a named call
+whose arguments fit the schema, a tool's result read back, JSON of a schema), also in the Ubuntu
+container; `app/integration/server.sh`, which now asks the real executable for a tool call, whole
+and streamed, and for JSON of a schema. `app/integration/openai.sh` runs the example of
+`docs/openai.md` with the official `openai` Python client; it installs that package from PyPI, so
+it was first run by CI and not on the machine the phase was written on.
+
+Still owed: embeddings are tested against the fake engine only (the test model is a chat model);
+requests to one instance are decoded one after another; `runa chat` has no recall of earlier
+input on the arrow keys.
 
 What differs from the steps below:
 
@@ -531,8 +551,24 @@ What differs from the steps below:
   `load` takes it. A stored model that is not loaded is loaded by the request, with the configured
   defaults and once however many requests arrive together. An unknown model is `404` with
   `code: model_not_found` on `/v1/*`; the native API keeps `400`.
-- What does not exist yet is refused with `400` rather than ignored: `tools`, `functions`, a
-  `response_format` other than text, `n` above 1, `echo`, `suffix`, `dimensions`.
+- What does not exist is refused with `400` rather than ignored: `functions`, content that is not
+  text, `n` above 1, `echo`, `suffix`, `dimensions`.
+- Tools and JSON answers come from llama.cpp's `common` library through a C shim (section 5.4),
+  not from grammars written here: each chat template has its own format for a tool call, and
+  llama.cpp already has the grammar and the parser for each. Since then a chat is rendered with
+  the model's own Jinja template; the note of phase 4 about templates no longer holds, except that
+  a template llama.cpp cannot read is still answered with ChatML and a warning.
+- `tool_choice` with a function's name is met by offering only that tool and requiring a call:
+  llama.cpp can require a call but not name it. `none` keeps the tools from the model, because a
+  model that is shown tools it may not call writes the call out as text. `required` holds the
+  call to the tool's schema but, as in llama.cpp, lets the model write text before it, and a small
+  model can spend its `max_tokens` there.
+- `response_format` is `json_object` (any object, or llama.cpp's `schema` beside the type) or
+  `json_schema`, on chat completions only; `strict` is not read, the schema always binds.
+  Reasoning is not separated: what a model thinks aloud stays in `content`, and no reasoning
+  model has been run.
+- A tool call gets its `id` from runa (`call_` and 24 characters); `/api/v1/chat` and `runa chat`
+  give the model no tools.
 - `top_k`, `min_p` and `repeat_penalty` are taken as llama.cpp's server takes them. `max_tokens`
   below zero means no limit; `developer` is read as the system role; message content may be a
   string or a list of text parts.
