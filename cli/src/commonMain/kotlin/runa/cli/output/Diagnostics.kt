@@ -16,6 +16,12 @@ internal class Diagnostics(
 
     fun warn(message: () -> String) = log(LogLevel.WARN) { terminal.theme.warning("Warning:") + " " + message() }
 
+    /** A message whose level is only known at run time, such as a line of an engine's log. */
+    fun at(
+        level: LogLevel,
+        message: () -> String,
+    ) = if (level >= LogLevel.WARN) warn(message) else log(level, message)
+
     private fun log(
         level: LogLevel,
         message: () -> String,

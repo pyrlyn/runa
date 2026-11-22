@@ -52,6 +52,7 @@ kotlin {
             dependencies {
                 implementation(projects.cli)
                 implementation(projects.daemon)
+                implementation(projects.engineLlama)
             }
         }
     }

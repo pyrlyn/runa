@@ -8,6 +8,8 @@ import io.ktor.client.engine.HttpClientEngine
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
+import runa.engine.Engine
+import runa.engine.testing.FakeEngine
 import runa.gguf.GgufWriter
 import runa.platform.HostOs
 import runa.platform.systemEnv
@@ -34,6 +36,7 @@ internal class TestCli(
         /** Answers the CLI's HTTP requests; without one, a request reaches the real network. */
         http: HttpClientEngine? = null,
         memory: Long? = 16_000_000_000,
+        engine: Engine = FakeEngine(),
     ): CliRun {
         val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = input.isNotEmpty())
         recorder.inputLines = input.toMutableList()
@@ -47,6 +50,7 @@ internal class TestCli(
                 terminal = Terminal(terminalInterface = recorder),
                 httpEngine = http,
                 physicalMemory = { memory },
+                engine = { engine },
             )
         val exitCode = runCli(args.toList(), environment, extraCommands)
         return CliRun(exitCode, recorder.stdout(), recorder.stderr())

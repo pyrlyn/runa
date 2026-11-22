@@ -35,6 +35,9 @@ class GoldenOutputTest {
     fun importHelp() = golden("import-help.txt", "import", "--help")
 
     @Test
+    fun runHelp() = golden("run-help.txt", "run", "--help")
+
+    @Test
     fun versionJson() = golden("version.json", "version", "--json")
 
     @Test

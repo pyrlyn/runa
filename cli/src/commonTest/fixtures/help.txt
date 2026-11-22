@@ -18,6 +18,7 @@ Local models:
   get     Download a GGUF model from Hugging Face
   ls      List the models on this machine
   import  Add a GGUF file to the model store
+  run     Ask a model one question
 
 Commands:
   version     Print the runa version

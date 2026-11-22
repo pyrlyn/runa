@@ -10,6 +10,7 @@ import runa.config.ConfigFile
 import runa.config.ConfigKey
 import runa.config.ConfigResolver
 import runa.core.LogLevel
+import runa.engine.Engine
 import runa.hub.HubClient
 import runa.platform.RunaPaths
 import runa.platform.resolveRunaPaths
@@ -47,6 +48,9 @@ internal class Globals(
     val store: ModelStore by lazy {
         ModelStore(environment.fileSystem, checkNotNull(config.resolve(ConfigKey.MODELS_DIR).value).toPath())
     }
+
+    /** The in-process engine of `runa run`, created on first use: no other command pays for it. */
+    val engine: Engine by lazy { environment.engine { level, line -> log.at(level) { line } } }
 
     /** A client for Hugging Face, or for the mirror named by `HF_ENDPOINT`; the caller closes it. */
     fun hub(): HubClient {

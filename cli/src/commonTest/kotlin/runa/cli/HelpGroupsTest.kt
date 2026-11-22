@@ -35,6 +35,7 @@ class HelpGroupsTest {
             |  get     Download a GGUF model from Hugging Face
             |  ls      List the models on this machine
             |  import  Add a GGUF file to the model store
+            |  run     Ask a model one question
             |  load    Does load
             |
             |Serve:

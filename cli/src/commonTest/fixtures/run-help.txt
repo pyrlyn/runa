@@ -1,0 +1,26 @@
+Usage: runa run [<options>] <model> <prompt>
+
+  Ask a model one question
+
+  The model is loaded in this process, answers and is unloaded again: no daemon
+  is needed. The answer is printed as it is generated; a longer context than
+  the model has is lowered to it.
+
+Options:
+  -s, --system=<text>       System prompt
+  --max-tokens=<n>          Stop after this many tokens
+  --temp=<t>                Sampling temperature; 0 always takes the most
+                            likely token (default: 0.8)
+  --seed=<n>                Random seed; the same seed gives the same answer
+  --gpu=off|max|0..1        How much of the model runs on the GPU (default: gpu
+                            in config.json)
+  -c, --context-length=<n>  Tokens of context (default: context_length in
+                            config.json, else 4096)
+  --stats                   Print token counts, time to first token and tokens
+                            per second
+  --json                    Print one JSON object when the answer is complete
+  -h, --help                Show this message and exit
+
+Arguments:
+  <model>   A model from `runa ls`, or the path of a .gguf file
+  <prompt>  What to ask the model
