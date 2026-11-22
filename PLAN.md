@@ -288,7 +288,7 @@ All endpoints need `Authorization: Bearer <token>` from the discovery file, exce
 | `POST /api/v1/models/unload` | `{instance_id}` or `{all: true}` | `unload` |
 | `POST /api/v1/models/download` / `GET /api/v1/models/download/status/{job}` | daemon-side downloads (optional; the CLI downloads itself in 1.0) | `get` (later) |
 | `POST /api/v1/chat` | native chat `{model, input, system_prompt, previous_response_id, store, stream, …}` → `{model_instance_id, output, stats, response_id}`; with `stream=true` the SSE events `chat.start`, `message.start`, `message.delta`, `message.end`, `chat.end`, or `error` | `chat` |
-| `GET /api/v1/logs/stream?source=model\|server\|runtime` | SSE log stream | `log stream` |
+| `GET /api/v1/logs/stream?source=model\|server\|runtime&filter=input\|output` | SSE log stream from the moment of the request: one `listening` event, then a `log` event per `{time, source, type, text, level, model, endpoint, tool_calls, stats}`; every source without `source` | `log stream` |
 | `POST /api/v1/server` | start/stop the public listener `{running, bind, port, cors, api_key}` → `{running, bind, port, cors, api_key_required}`, which `status` carries as `server` | `server start\|stop` |
 | `POST /api/v1/shutdown` | graceful stop | `daemon down` |
 | `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/completions`, `POST /v1/embeddings` | OpenAI-compatible, streaming via SSE | third-party clients |
@@ -307,11 +307,11 @@ with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cann
 | `~/.runa/config.json` | defaults: models dir, server port/bind/cors, default context, gpu, ttl, backend |
 | `~/.runa/cli-pref.json` | last loaded models, one-time warnings |
 | `~/.runa/run/daemon.json` | discovery: `{pid, port, token, version}`, mode 0600 |
-| `~/.runa/logs/daemon.log` | rotated daemon log |
+| `~/.runa/logs/daemon.log` | daemon log; at 10 MB it becomes `daemon.log.1`, and the three files before the current one are kept |
 
 On Linux, `XDG_DATA_HOME`/`XDG_CONFIG_HOME`/`XDG_STATE_HOME` are honoured; `RUNA_HOME`
 overrides everything. Environment: `RUNA_HOME`, `RUNA_HOST`, `RUNA_PORT`, `RUNA_TOKEN`,
-`RUNA_BACKEND`, `RUNA_API_KEY`, `RUNA_LOG_LEVEL`, `HF_TOKEN`, `HF_ENDPOINT` (a Hub mirror; `https://`, or `http://` on localhost),
+`RUNA_BACKEND`, `RUNA_API_KEY`, `RUNA_LOG_LEVEL`, `RUNA_LOG_PROMPTS`, `HF_TOKEN`, `HF_ENDPOINT` (a Hub mirror; `https://`, or `http://` on localhost),
 `LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
 
 ## 8. Implementation phases
@@ -618,6 +618,42 @@ Acceptance: the official `openai` Python client and `curl` examples in `docs/` w
 chat REPL state-machine tests; `chat -p` usable in pipes (no colours, no spinner when not a TTY).
 
 ### Phase 7: logs and observability
+
+Status: done ([#153](https://github.com/pyrlyn/runa/pull/153)). Verified on macOS arm64 with
+Qwen2.5 0.5B Q4_K_M: the unit tests (the stream over a real loopback socket against the fake
+engine, the bus, the rotation in a temporary directory, the command against a fake daemon with
+golden output, the rendering of a prompt on real weights), also in an Ubuntu 24.04 arm64
+container; and `app/integration/logs.sh`, which runs the real executable on both: a chat request
+is read as an input and an output event from `log stream --json`, the prompt is in `daemon.log`
+only with `--log-prompts`, the streams end on `daemon down`, and a log file of 10 MB is put aside.
+CI runs the script on the release executable of each target. By hand: a stream that was idle for
+75 s still delivered the 1830 lines llama.cpp logs for one load, none lost. `mingwX64` only
+compiles, and has no log file to rotate because it has no daemon.
+
+What differs from the steps below:
+
+- `--log-prompts` is a global flag like `--log-level`, with `RUNA_LOG_PROMPTS` and `log_prompts`
+  in `config.json` behind it. It is read when the daemon starts; a daemon that runs keeps what it
+  was started with.
+- The `model` source has the prompt as the model read it, after the chat template: the engine
+  interface got `render` for that. A prompt is rendered only while somebody listens or the file
+  wants it, and a prompt that cannot be rendered is left out without failing the request.
+- The `server` source has, besides the daemon's own lines, one line for each request it answered,
+  at the debug level: the log file has them only with `--log-level debug`, like the lines of
+  llama.cpp, which are the `runtime` source. The stream carries every level whatever the file's.
+- The stream is live only: nothing is kept for a listener that comes later, and a listener that
+  falls more than 1024 events behind loses the oldest. Its first event, `listening`, tells a
+  client that nothing after it is missed; a comment line every 15 s keeps a quiet stream open and
+  is how the daemon notices a client that went away.
+- `--filter` belongs to the `model` source; with another source it is a usage error. `--stats`
+  adds the statistics of each answer, in text and in `--json` alike. In JSON a field that does not
+  apply is left out.
+- The log file is the daemon's standard output, so that what llama.cpp or a crash prints lands in
+  it too. Rotation moves the file aside and points the output at a new one; it happens only in the
+  daemon that holds the lock, and only when its output really is the log file. A daemon started in
+  a terminal logs there, and `daemon status` then shows no path. The size is counted by the
+  daemon, so what is printed past its log is not counted. The limits (10 MB, three old files) are
+  not configurable.
 
 Steps:
 1. Log bus in the daemon with sources `model` (prompts and outputs), `server` (requests),
