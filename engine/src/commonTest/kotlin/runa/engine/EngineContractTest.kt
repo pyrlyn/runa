@@ -58,6 +58,16 @@ class EngineContractTest {
         }
 
     @Test
+    fun renderShowsWhatTheModelReads() =
+        runTest {
+            val model = load()
+            assertEquals("one two", model.render(Prompt.Text("one two")))
+            assertEquals("user: hi there", model.render(Prompt.Chat(listOf(ChatMessage(ChatRole.USER, "hi there")))))
+            // Nothing was generated for it.
+            assertEquals(emptyList(), model.requests)
+        }
+
+    @Test
     fun aToolCallIsAnnouncedAndThenGetsItsArguments() =
         runTest {
             val tools = listOf(Tool("lookup"), Tool("add"), Tool("unused"))

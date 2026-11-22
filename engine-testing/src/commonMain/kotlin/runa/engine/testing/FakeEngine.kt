@@ -79,15 +79,22 @@ public class FakeModel(
 
     override suspend fun tokenize(text: String): List<Int> = words(text).map { it.hashCode() }
 
+    override suspend fun render(prompt: Prompt): String {
+        checkOpen()
+        return rendered(prompt)
+    }
+
+    private fun rendered(prompt: Prompt): String =
+        when (prompt) {
+            is Prompt.Text -> prompt.text
+            is Prompt.Chat -> prompt.messages.joinToString(" ") { "${it.role.id}: ${it.content}" }
+        }
+
     override fun generate(request: GenerationRequest): Flow<GenerationEvent> =
         flow {
             checkOpen()
             requests += request
-            val prompt =
-                when (val prompt = request.prompt) {
-                    is Prompt.Text -> prompt.text
-                    is Prompt.Chat -> prompt.messages.joinToString(" ") { "${it.role.id}: ${it.content}" }
-                }
+            val prompt = rendered(request.prompt)
             val words = words(prompt)
             // As a real engine does: there is nothing to continue.
             if (words.isEmpty()) throw UserInputError("The prompt is empty")
