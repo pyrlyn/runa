@@ -99,7 +99,9 @@ internal abstract class ApiTransport(
         } catch (e: BackendError) {
             throw e
         } catch (e: Exception) {
-            throw BackendError("Cannot reach $service at $baseUrl: ${e.message ?: e::class.simpleName}", e)
+            // On macOS the message goes on with the whole NSError, a screen of keys that tell a user nothing.
+            val reason = e.message?.substringBefore(" UserInfo=") ?: e::class.simpleName
+            throw BackendError("Cannot reach $service at $baseUrl: $reason", e)
         }
 
     suspend fun <T> get(

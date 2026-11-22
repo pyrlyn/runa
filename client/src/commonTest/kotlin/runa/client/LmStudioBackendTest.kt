@@ -347,6 +347,17 @@ class LmStudioBackendTest {
     }
 
     @Test
+    fun theReasonOfAFailedConnectionStaysShort() {
+        val reason = """Exception in http request: Error Domain=NSURLErrorDomain Code=-1004 "Could not connect to the server.""""
+        val error =
+            assertFailsWith<BackendError> {
+                lmStudio(answer = { throw IOException("$reason UserInfo={_kCFStreamErrorCodeKey=61, NSUnderlyingError=0x1}") }) { models() }
+            }
+
+        assertEquals("Cannot reach LM Studio at $URL: $reason", error.message)
+    }
+
+    @Test
     fun readsAParameterCountFromItsLabel() {
         assertEquals(7_000_000_000, LmStudioBackend.parameterCount("7B"))
         assertEquals(1_500_000_000, LmStudioBackend.parameterCount("1.5B"))
