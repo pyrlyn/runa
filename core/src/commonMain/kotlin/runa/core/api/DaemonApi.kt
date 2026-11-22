@@ -196,6 +196,11 @@ public object DaemonRoutes {
     public const val SERVER: String = "/api/v1/server"
     public const val SHUTDOWN: String = "/api/v1/shutdown"
 
+    /** Takes `source` (one of [LogEvent.SOURCES]) and `filter` (one of [LogEvent.FILTERS]); without them, everything. */
+    public const val LOGS: String = "/api/v1/logs/stream"
+    public const val LOGS_SOURCE: String = "source"
+    public const val LOGS_FILTER: String = "filter"
+
     // Of a streamed load.
     public const val EVENT_PROGRESS: String = "progress"
     public const val EVENT_LOADED: String = "loaded"
@@ -207,6 +212,10 @@ public object DaemonRoutes {
     public const val EVENT_MESSAGE_END: String = "message.end"
     public const val EVENT_CHAT_END: String = "chat.end"
 
-    /** Instead of the last event of either stream, when it failed. */
+    // Of the log stream: one `listening` once no event can be missed any more, then a `log` per event.
+    public const val EVENT_LISTENING: String = "listening"
+    public const val EVENT_LOG: String = "log"
+
+    /** Instead of the last event of a streamed load or chat, when it failed. */
     public const val EVENT_ERROR: String = "error"
 }

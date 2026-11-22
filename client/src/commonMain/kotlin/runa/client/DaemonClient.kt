@@ -7,6 +7,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -37,6 +38,7 @@ import runa.core.api.DaemonStatus
 import runa.core.api.LoadProgress
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
+import runa.core.api.LogEvent
 import runa.core.api.ModelList
 import runa.core.api.ServerDescription
 import runa.core.api.ServerRequest
@@ -133,6 +135,48 @@ public class DaemonClient(
             DaemonRoutes.SERVER,
             { json(ServerRequest.serializer(), request) },
         ) { it.read(ServerDescription.serializer()) }
+
+    /**
+     * Reads the daemon's log as it is written, until the daemon ends the stream, which it does when
+     * it stops. [source] is one of [LogEvent.SOURCES] and [filter] one of [LogEvent.FILTERS]; null
+     * for everything. [onListening] is called once: no event after it is missed.
+     *
+     * @throws BackendError when the stream cannot be opened. A stream that breaks later has ended.
+     */
+    public suspend fun logs(
+        source: String? = null,
+        filter: String? = null,
+        onListening: () -> Unit = {},
+        onEvent: (LogEvent) -> Unit,
+    ) {
+        var listening = false
+        try {
+            call(
+                HttpMethod.Get,
+                DaemonRoutes.LOGS,
+                {
+                    source?.let { parameter(DaemonRoutes.LOGS_SOURCE, it) }
+                    filter?.let { parameter(DaemonRoutes.LOGS_FILTER, it) }
+                },
+            ) { response ->
+                response.events { event, data ->
+                    when (event) {
+                        DaemonRoutes.EVENT_LISTENING -> {
+                            listening = true
+                            onListening()
+                        }
+
+                        DaemonRoutes.EVENT_LOG -> {
+                            onEvent(decode(LogEvent.serializer(), data))
+                        }
+                    }
+                }
+            }
+        } catch (e: BackendError) {
+            // A daemon that stops cuts the connection: that is how this stream ends, not a failure of it.
+            if (!listening) throw e
+        }
+    }
 
     /** Asks the daemon to stop; it answers first and exits afterwards. */
     public suspend fun shutdown() {

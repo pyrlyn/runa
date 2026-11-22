@@ -1,8 +1,15 @@
 package runa.daemon
 
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
+import io.ktor.server.response.header
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
@@ -14,6 +21,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
 import runa.core.GpuOffload
@@ -27,6 +40,7 @@ import runa.core.api.EngineDescription
 import runa.core.api.LoadProgress
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
+import runa.core.api.LogEvent
 import runa.core.api.ModelDescription
 import runa.core.api.ModelList
 import runa.core.api.ServerDescription
@@ -39,6 +53,7 @@ import runa.store.StoreListing
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * The daemon's native HTTP API (PLAN.md, section 6), with the OpenAI-compatible one beside it.
@@ -66,6 +81,18 @@ internal class DaemonApi(
         application: Application,
         listener: Listener,
     ) {
+        // Every request is an event of the log, whatever becomes of it.
+        application.intercept(ApplicationCallPipeline.Monitoring) {
+            val asked = TimeSource.Monotonic.markNow()
+            try {
+                proceed()
+            } finally {
+                // A request no route took is answered after this pipeline, with a 404.
+                val status = call.response.status() ?: HttpStatusCode.NotFound
+                val request = call.request
+                log.request("${request.httpMethod.value} ${request.path()} ${status.value} ${asked.elapsedNow().inWholeMilliseconds} ms")
+            }
+        }
         application.routing {
             openAi.install(this, listener)
             get(DaemonRoutes.STATUS) {
@@ -82,6 +109,7 @@ internal class DaemonApi(
                 DaemonRoutes.UNLOAD,
             ) { guarded { call.respond(UnloadResponse.serializer(), unload(call.receive(UnloadRequest.serializer()))) } }
             post(DaemonRoutes.CHAT) { guarded { chat.answer(call, call.receive(ChatRequest.serializer())) } }
+            get(DaemonRoutes.LOGS) { guarded { streamLog(call) } }
             post(DaemonRoutes.SERVER) {
                 guarded { call.respond(ServerDescription.serializer(), serve(call.receive(ServerRequest.serializer()), listener)) }
             }
@@ -105,6 +133,52 @@ internal class DaemonApi(
             loadedInstances = registry.instances().size,
             server = server.describe(),
         )
+
+    /**
+     * The log from now on, until the client goes away or the daemon stops. The `listening` event
+     * says that the events after it are all there: whatever the client does next, it will see.
+     */
+    private suspend fun streamLog(call: ApplicationCall) {
+        val source = choice(call, DaemonRoutes.LOGS_SOURCE, LogEvent.SOURCES)
+        val filter = choice(call, DaemonRoutes.LOGS_FILTER, LogEvent.FILTERS)
+        val events =
+            log.events
+                .onSubscription { emit(LISTENING) }
+                .filter { it === LISTENING || ((source == null || it.source == source) && (filter == null || it.type == filter)) }
+                .map {
+                    if (it === LISTENING) {
+                        sseFrame("{}", DaemonRoutes.EVENT_LISTENING)
+                    } else {
+                        sseFrame(DaemonJson.encodeToString(LogEvent.serializer(), it), DaemonRoutes.EVENT_LOG)
+                    }
+                }
+        // A comment, which a client skips. It keeps a quiet stream from looking dead to whatever
+        // sits in between, and it is the write that fails once the client has gone away.
+        val keepAlive =
+            flow {
+                while (true) {
+                    delay(KEEP_ALIVE)
+                    emit(": keep-alive\n\n")
+                }
+            }
+        call.response.header(HttpHeaders.CacheControl, "no-cache")
+        call.respondBytesWriter(ContentType.Text.EventStream) {
+            merge(events, keepAlive).collect {
+                writeStringUtf8(it)
+                flush()
+            }
+        }
+    }
+
+    private fun choice(
+        call: ApplicationCall,
+        parameter: String,
+        choices: List<String>,
+    ): String? {
+        val value = call.request.queryParameters[parameter] ?: return null
+        if (value !in choices) throw UserInputError("$parameter must be one of: ${choices.joinToString(", ")}")
+        return value
+    }
 
     private suspend fun serve(
         request: ServerRequest,
@@ -233,4 +307,11 @@ internal class DaemonApi(
     ) = respondJson(DaemonJson, serializer, value)
 
     private suspend fun <T> ApplicationCall.receive(serializer: DeserializationStrategy<T>): T = receiveJson(DaemonJson, serializer)
+
+    private companion object {
+        val KEEP_ALIVE = 15.seconds
+
+        /** Not an event of the log: it marks, in the flow of them, the moment from which none is missed. */
+        val LISTENING = LogEvent(time = "", source = "", type = "", text = "")
+    }
 }
