@@ -8,6 +8,8 @@ import okio.Path.Companion.toPath
 import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.LoadConfig
+import runa.engine.testing.FakeEngine
+import runa.engine.testing.FakeModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -16,7 +18,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-/** The behaviour every [Engine] must have, shown on [FakeEngine]; the llama.cpp engine runs the same checks in phase 4. */
+/** The behaviour every [Engine] must have, shown on [FakeEngine]; `:engine-llama` checks the same on a real model. */
 class EngineContractTest {
     private val engine = FakeEngine()
     private val file = "/models/fake.gguf".toPath()
