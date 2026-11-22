@@ -1,6 +1,5 @@
 package runa.store
 
-import okio.FileMetadata
 import okio.FileSystem
 import okio.IOException
 import okio.Path
@@ -17,6 +16,7 @@ import runa.gguf.quantizationInName
 import runa.gguf.readGgufHeader
 import runa.gguf.withoutQuantization
 import runa.platform.createHardLink
+import runa.platform.resolvedMetadataOrNull
 
 /**
  * The models on disk: `<models dir>/<publisher>/<repo>/<file>.gguf`, the layout LM Studio uses.
@@ -170,7 +170,7 @@ public class ModelStore(
         file: Path,
         cached: IndexEntry?,
     ): IndexEntry {
-        val metadata = resolved(file) ?: throw IOException("broken link")
+        val metadata = fileSystem.resolvedMetadataOrNull(file) ?: throw IOException("broken link")
         val size = metadata.size ?: 0
         val mtime = metadata.lastModifiedAtMillis ?: 0
         if (cached != null && cached.size == size && cached.mtime == mtime) return cached
@@ -217,18 +217,9 @@ public class ModelStore(
         file.second.quantization ?: quantizationInName(ggufStem(file.first.name))
 
     private fun directoriesIn(directory: Path): List<Path> =
-        children(directory).filter { !it.name.startsWith(".") && resolved(it)?.isDirectory == true }
+        children(directory).filter { !it.name.startsWith(".") && fileSystem.resolvedMetadataOrNull(it)?.isDirectory == true }
 
     private fun children(directory: Path): List<Path> = fileSystem.listOrNull(directory).orEmpty().sorted()
-
-    /** The metadata of what [path] points to, following a symbolic link; null when nothing is there. */
-    private fun resolved(path: Path): FileMetadata? =
-        try {
-            val metadata = fileSystem.metadataOrNull(path)
-            if (metadata?.symlinkTarget == null) metadata else fileSystem.metadataOrNull(fileSystem.canonicalize(path))
-        } catch (_: IOException) {
-            null
-        }
 
     private companion object {
         const val DEFAULT_PUBLISHER = "local"

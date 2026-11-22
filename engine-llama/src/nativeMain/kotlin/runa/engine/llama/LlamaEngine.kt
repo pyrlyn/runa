@@ -36,6 +36,7 @@ import runa.gguf.GgufHeader
 import runa.gguf.GgufSplitPart
 import runa.gguf.readGgufHeader
 import runa.platform.computeCoreCount
+import runa.platform.resolvedMetadataOrNull
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -166,7 +167,7 @@ public class LlamaEngine(
         val part = GgufSplitPart.parse(model.name)
         val directory = model.parent
         val files = if (part == null || directory == null) listOf(model) else (1..part.total).map { directory / part.fileName(it) }
-        return files.sumOf { FileSystem.SYSTEM.metadataOrNull(it)?.size ?: 0L }
+        return files.sumOf { FileSystem.SYSTEM.resolvedMetadataOrNull(it)?.size ?: 0L }
     }
 
     private fun reason(): String = takeLastLlamaError()?.let { ": ${it.trim()}" }.orEmpty()

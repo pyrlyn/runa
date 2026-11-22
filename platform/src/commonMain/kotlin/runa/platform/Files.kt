@@ -1,7 +1,9 @@
 package runa.platform
 
 import okio.BufferedSink
+import okio.FileMetadata
 import okio.FileSystem
+import okio.IOException
 import okio.Path
 
 /**
@@ -31,3 +33,15 @@ public expect fun createHardLink(
     target: Path,
     link: Path,
 )
+
+/**
+ * The metadata of what [path] names, following a symbolic link: a linked model is as large as its
+ * target, not as the link. Null when nothing is there or the link leads nowhere.
+ */
+public fun FileSystem.resolvedMetadataOrNull(path: Path): FileMetadata? =
+    try {
+        val metadata = metadataOrNull(path)
+        if (metadata?.symlinkTarget == null) metadata else metadataOrNull(canonicalize(path))
+    } catch (_: IOException) {
+        null
+    }

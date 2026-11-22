@@ -86,6 +86,18 @@ class LlamaEngineTest {
         }
 
     @Test
+    fun aLinkedModelWeighsWhatItsTargetDoes() =
+        withTestModelFile { path ->
+            val link = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "runa-linked-model-${Random.nextLong().toULong()}.gguf"
+            FileSystem.SYSTEM.createSymlink(link, path)
+            try {
+                assertEquals(testEngine.estimateMemory(path, LoadConfig()), testEngine.estimateMemory(link, LoadConfig()))
+            } finally {
+                FileSystem.SYSTEM.delete(link)
+            }
+        }
+
+    @Test
     fun aContextLongerThanTheModelsIsLowered() =
         withTestModelFile { path ->
             val trained = testEngine.estimateMemory(path, LoadConfig())
