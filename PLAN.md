@@ -201,7 +201,7 @@ Kotlin Multiplatform project, Gradle Kotlin DSL, version catalog in `gradle/libs
 | `:config` | config file (`config.json`), env overrides, CLI preferences, discovery file read/write | `:core`, `:platform` |
 | `:gguf` | pure-Kotlin GGUF header and metadata parser (architecture, parameter count, context length, quantization, tensor sizes) | okio |
 | `:store` | on-disk model store: layout, index, `ls`, `import` (move/copy/hard link/symlink), integrity | `:gguf`, `:config` |
-| `:hub` | Hugging Face client: repo info, file list, GGUF variant selection, resumable downloads with SHA-256 check, auth token | Ktor client |
+| `:hub` | Hugging Face client: repo info, file list, GGUF variant selection, resumable downloads with SHA-256 check, auth token | `:core`, `:gguf`, Ktor client |
 | `:engine` | llama.cpp binding: load model, context, tokenize, sample, stream tokens, embeddings, chat templates, grammars; memory estimate | cinterop `llama` |
 | `:daemon` | model registry (instances, TTL eviction, JIT load, parallel slots), HTTP server, SSE, log bus | `:engine`, `:store`, `:hub`, Ktor server |
 | `:client` | typed client for the daemon API; `LmStudioBackend` for LM Studio's REST API; backend selection | Ktor client |
@@ -281,7 +281,8 @@ with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cann
 
 On Linux, `XDG_DATA_HOME`/`XDG_CONFIG_HOME`/`XDG_STATE_HOME` are honoured; `RUNA_HOME`
 overrides everything. Environment: `RUNA_HOME`, `RUNA_HOST`, `RUNA_PORT`, `RUNA_BACKEND`,
-`RUNA_LOG_LEVEL`, `HF_TOKEN`, `LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
+`RUNA_LOG_LEVEL`, `HF_TOKEN`, `HF_ENDPOINT` (a Hub mirror; `https://`, or `http://` on localhost),
+`LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
 
 ## 8. Implementation phases
 
@@ -355,6 +356,15 @@ corrupt/truncated-file test; `ls --json` schema test; import tests for all four 
 dir; `ls` on 200 models finishes under 200 ms with a warm index.
 
 ### Phase 3: Hugging Face download, `get`
+
+Status: code complete ([#147](https://github.com/pyrlyn/runa/pull/147)); the manual download of a
+real model from huggingface.co is still to do. Verified on macOS arm64 and in an Ubuntu 24.04 arm64
+container, with tests on Ktor's `MockEngine` and with the real binaries against a local stand-in for
+the Hub (interrupt, resume, split model). The default variant is the largest quantized one whose
+files take at most 70 % of physical memory: `runtime survey` does not exist yet, and the engine's
+own estimate comes with phase 4. `mmproj` files are listed but not downloaded; pairing a projector
+with a vision model belongs to the phase that loads one. `HF_TOKEN` goes to the Hub's own origin
+only, never to the CDN host a download redirects to.
 
 Steps:
 1. `:hub`: resolve `owner/repo`, `owner/repo@quant`, or a full `https://huggingface.co/...` URL;
