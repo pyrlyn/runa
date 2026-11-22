@@ -176,7 +176,8 @@ runa (CLI process)                         runa daemon (background process, same
   RunaClient (Ktor client) ---- HTTP/SSE ---> /api/v1/*  native API (LM Studio-shaped)
      |                                        /v1/*      OpenAI-compatible API
      |                                        ModelRegistry: loaded instances, TTL, JIT load
-     |                                        Engine (llama.cpp via cinterop, Metal on macOS)
+     |                                        Engine interface -> LlamaEngine (llama.cpp via
+     |                                                            cinterop, Metal on macOS)
      +-- local-only commands (ls, import, get, run, runtime survey) work without the daemon
 ```
 
@@ -202,14 +203,20 @@ Kotlin Multiplatform project, Gradle Kotlin DSL, version catalog in `gradle/libs
 | `:gguf` | pure-Kotlin GGUF header and metadata parser (architecture, parameter count, context length, quantization, tensor sizes) | okio |
 | `:store` | on-disk model store: layout, index, `ls`, `import` (move/copy/hard link/symlink), integrity | `:gguf`, `:config` |
 | `:hub` | Hugging Face client: repo info, file list, GGUF variant selection, resumable downloads with SHA-256 check, auth token | `:core`, `:gguf`, Ktor client |
-| `:engine` | llama.cpp binding: load model, context, tokenize, sample, stream tokens, embeddings, chat templates, grammars; memory estimate | cinterop `llama` |
-| `:daemon` | model registry (instances, TTL eviction, JIT load, parallel slots), HTTP server, SSE, log bus | `:engine`, `:store`, `:hub`, Ktor server |
+| `:engine` | backend-agnostic inference API: `Engine` (memory estimate, load) and `LoadedModel` (tokenize, generate as a `Flow<GenerationEvent>`, embeddings), request, sampling and stats types | `:core`, okio, kotlinx.coroutines |
+| `:engine-llama` | the llama.cpp implementation of `Engine`: load model, context, sampling, chat templates, grammars; the only module with cinterop (added in phase 4) | `:engine`, cinterop `llama` |
+| `:daemon` | model registry (instances, TTL eviction, JIT load, parallel slots), HTTP server, SSE, log bus | `:engine` (interface only), `:store`, `:hub`, Ktor server |
 | `:client` | typed client for the daemon API; `LmStudioBackend` for LM Studio's REST API; backend selection | Ktor client |
 | `:cli` | clikt command tree, output formatting (tables, `--json`), progress bars, prompts, chat REPL | clikt, mordant, `:client` and local modules |
-| `:app` | `main()`, the `runa` executable for every target | `:cli`, `:daemon` |
+| `:app` | `main()`, the `runa` executable for every target; picks the `Engine` implementation | `:cli`, `:daemon`, `:engine-llama` |
 
 Rule: `:cli` never touches `:engine` directly except through `runa run`, which embeds the engine
 for one-shot use without a daemon.
+
+Rule: `:daemon` and `:cli` depend on the `Engine` interface, never on `:engine-llama`. Only `:app`
+names the implementation and passes it in. That keeps the C API in one module, lets every other
+module build and test without the llama.cpp static libraries, and leaves room for another backend
+(MLX, a remote engine) without touching the daemon.
 
 ### 5.3 Libraries
 
@@ -231,15 +238,17 @@ Exact versions are pinned in phase 0 in `gradle/libs.versions.toml` (latest stab
 
 ### 5.4 Native interop (llama.cpp)
 
+All of this lives in `:engine-llama`, behind the `Engine` and `LoadedModel` interfaces of `:engine`.
+
 - Vendor llama.cpp as a git submodule at `third_party/llama.cpp`, pinned to a release tag.
 - A Gradle task per target runs CMake (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`, Metal on for
   macOS with the shader library embedded, OpenMP off) and produces `libllama.a`, `libggml*.a`.
 - `src/nativeInterop/cinterop/llama.def` declares the headers (`llama.h`) and `staticLibraries`;
   link the C++ runtime (`-lc++` on macOS, `-lstdc++` on Linux) and the Metal/Foundation frameworks.
 - Kotlin wrapper classes own every native pointer (`LlamaModel`, `LlamaContext`, `LlamaSampler`)
-  and free them in `close()`; use them with `use {}`. No raw pointer leaves `:engine`.
-- Token streaming: generation runs on the instance's dispatcher and emits into a `Flow<Token>`;
-  cancellation checks between decode steps.
+  and free them in `close()`; use them with `use {}`. No raw pointer leaves `:engine-llama`.
+- Token streaming: generation runs on the instance's dispatcher and emits into the
+  `Flow<GenerationEvent>` of `LoadedModel.generate`; cancellation checks between decode steps.
 - Model loading progress uses llama.cpp's progress callback through `staticCFunction` and a
   `StableRef`.
 
@@ -382,9 +391,14 @@ model (for example a 0.5B Q4 GGUF) recorded in the PR.
 
 ### Phase 4: inference engine, `runa run`
 
+Status: in progress. The `Engine` abstraction is done: the `:engine` interfaces, the `LoadConfig`,
+`GpuOffload` and `ChatMessage` types in `:core`, and a contract test on a fake engine. The
+llama.cpp implementation (steps 1 to 4) is not started.
+
 Steps:
-1. Submodule llama.cpp, CMake build task per target, `llama.def`, link flags (section 5.4).
-2. `:engine` wrappers: load with `n_gpu_layers` from `--gpu off|max|0..1`, context length,
+1. Submodule llama.cpp, CMake build task per target, `llama.def`, link flags (section 5.4), in a
+   new `:engine-llama` module.
+2. `LlamaEngine`, the llama.cpp implementation of `Engine`: load with `n_gpu_layers` from `--gpu off|max|0..1`, context length,
    threads; tokenize; apply the model's chat template; sample (temperature, top-p, top-k, min-p,
    repeat penalty, seed); stream tokens as a `Flow`; stop strings; embeddings.
 3. Memory estimate (weights + KV cache for the requested context) used by `--estimate-only` and by
@@ -395,7 +409,8 @@ Steps:
 Acceptance: a CI job downloads a tiny GGUF (cached between runs) and checks that `runa run` with a
 fixed seed and temperature 0 produces deterministic output; leak check (load/unload 50 times,
 RSS stable within 5 %); tokens/s on macOS arm64 within 10 % of `llama-cli` from the same
-llama.cpp tag on the same model (measured, recorded in the PR).
+llama.cpp tag on the same model (measured, recorded in the PR). `LlamaEngine` passes the same
+contract checks as the fake engine (`EngineContractTest`).
 
 ### Phase 5: daemon, `load`, `unload`, `ps`, `status`
 
@@ -482,6 +497,9 @@ script and Homebrew formula install a working `runa`, and `runa --version` match
 - Golden files for help text and every `--json` output, so output changes are explicit in review.
 - No model weights in git: tests generate synthetic GGUF headers; the integration job downloads one
   tiny public GGUF into a CI cache.
+- The daemon and the HTTP API are tested against a fake `Engine` (no weights, no llama.cpp); the
+  fake moves from `:engine`'s tests to a shared test module when phase 5 needs it. One contract
+  test defines what every `Engine` must do and runs against each implementation.
 - Integration tests run the built binary as a subprocess (daemon start/stop, server, chat `-p`).
 - Each phase adds its tests in the same pull request; coverage is reported once SonarCloud runs.
 
@@ -538,8 +556,8 @@ Risks:
   every instance gets its own single-thread dispatcher and all llama.cpp calls go through it.
 - **Binary size and start-up time** with Ktor server + client in one executable. Measure in
   phase 0; split `runa __daemon` into its own executable target if needed.
-- **llama.cpp API churn.** Pin a tag, upgrade deliberately, keep `:engine` the only module that
-  sees the C API.
+- **llama.cpp API churn.** Pin a tag, upgrade deliberately, keep `:engine-llama` the only module
+  that sees the C API.
 - **CI runs only on Linux.** GitHub Actions runs again (it started no run between 2026-10-26 and
   phase 3), and `ubuntu-24.04 (linuxX64)` passes for phases 1 to 3. The `macos-14 (macosArm64)` job
   is cancelled before it starts: GitHub answers "The configuration 'macos-14-arm64-us-default' is
