@@ -57,6 +57,12 @@ class GoldenOutputTest {
     fun daemonHelp() = golden("daemon-help.txt", "daemon", "--help")
 
     @Test
+    fun logHelp() = golden("log-help.txt", "log", "--help")
+
+    @Test
+    fun logStreamHelp() = golden("log-stream-help.txt", "log", "stream", "--help")
+
+    @Test
     fun serverHelp() = golden("server-help.txt", "server", "--help")
 
     @Test
