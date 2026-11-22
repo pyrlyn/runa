@@ -166,13 +166,14 @@ public data class Completion(
     val toolCalls: List<ToolCall> = emptyList(),
 )
 
-/** Collects a [LoadedModel.generate] flow into one [Completion]. */
-public suspend fun Flow<GenerationEvent>.toCompletion(): Completion {
-    val text = StringBuilder()
-    val calls = mutableListOf<GenerationEvent.ToolCallStarted>()
-    val arguments = mutableMapOf<Int, StringBuilder>()
-    var finished: GenerationEvent.Finished? = null
-    collect { event ->
+/** Puts the events of one generation together into its [Completion]. */
+public class CompletionBuilder {
+    private val text = StringBuilder()
+    private val calls = mutableListOf<GenerationEvent.ToolCallStarted>()
+    private val arguments = mutableMapOf<Int, StringBuilder>()
+    private var finished: GenerationEvent.Finished? = null
+
+    public fun add(event: GenerationEvent) {
         when (event) {
             is GenerationEvent.Text -> text.append(event.text)
             is GenerationEvent.ToolCallStarted -> calls += event
@@ -180,7 +181,18 @@ public suspend fun Flow<GenerationEvent>.toCompletion(): Completion {
             is GenerationEvent.Finished -> finished = event
         }
     }
-    val end = checkNotNull(finished) { "The engine ended generation without a Finished event" }
-    val toolCalls = calls.map { ToolCall(it.id, it.name, arguments[it.index]?.toString().orEmpty()) }
-    return Completion(text.toString(), end.reason, end.stats, toolCalls)
+
+    /** @throws IllegalStateException when the generation has not finished. */
+    public fun build(): Completion {
+        val end = checkNotNull(finished) { "The engine ended generation without a Finished event" }
+        val toolCalls = calls.map { ToolCall(it.id, it.name, arguments[it.index]?.toString().orEmpty()) }
+        return Completion(text.toString(), end.reason, end.stats, toolCalls)
+    }
+}
+
+/** Collects a [LoadedModel.generate] flow into one [Completion]. */
+public suspend fun Flow<GenerationEvent>.toCompletion(): Completion {
+    val completion = CompletionBuilder()
+    collect(completion::add)
+    return completion.build()
 }
