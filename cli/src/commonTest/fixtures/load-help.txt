@@ -7,6 +7,9 @@ Usage: runa load [<options>] [<model>]
   than once: the second copy is called `key:2`, or what --identifier says. On
   success the identifier is printed.
 
+  With --backend lmstudio the model is loaded into LM Studio, which takes
+  --context-length and none of the other settings.
+
 Options:
   --identifier=<id>         The name to address the loaded model by (default:
                             its key)

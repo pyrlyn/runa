@@ -2,6 +2,9 @@ Usage: runa ls [<options>] [<key>]
 
   List the models on this machine
 
+  With --backend lmstudio: the models of a running LM Studio, one row each, as
+  its API lists them.
+
 Options:
   --llm        Show language models only
   --embedding  Show embedding models only

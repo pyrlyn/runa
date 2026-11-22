@@ -21,6 +21,7 @@ import okio.Path
 import okio.Path.Companion.toPath
 import runa.cli.CommandGroup
 import runa.cli.Globals
+import runa.cli.daemon.requireRunaBackend
 import runa.cli.output.hundredths
 import runa.cli.output.statsSummary
 import runa.config.ConfigKey
@@ -98,6 +99,7 @@ internal class RunCommand : CliktCommand(name = "run") {
         """.trimIndent()
 
     override fun run() {
+        requireRunaBackend(globals)
         val (name, path) = resolve()
         val config = globals.config
         val load =

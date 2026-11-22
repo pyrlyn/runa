@@ -15,6 +15,7 @@ import runa.platform.physicalMemoryBytes
 import runa.platform.spawnDetached
 import runa.platform.systemEnv
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /** Everything the CLI reads from the outside world, so tests can replace all of it. */
@@ -42,6 +43,8 @@ public class CliEnvironment internal constructor(
     internal val daemonLockHeld: (Path) -> Boolean = FileLock::isHeld,
     /** How long a command waits for a daemon it started (PLAN.md, section 5.1). */
     internal val daemonStartTimeout: Duration = 30.seconds,
+    /** How often a download that LM Studio runs is asked how far it is. */
+    internal val downloadPoll: Duration = 500.milliseconds,
 ) {
     /**
      * The real process environment. Version and commit come from the executable's BuildInfo, and

@@ -6,13 +6,17 @@ import runa.cli.output.Diagnostics
 import runa.cli.output.HumanRenderer
 import runa.cli.output.JsonRenderer
 import runa.cli.output.Renderer
+import runa.client.LmStudioBackend
 import runa.config.ConfigFile
 import runa.config.ConfigKey
 import runa.config.ConfigKind
 import runa.config.ConfigResolver
 import runa.config.DaemonSettings
+import runa.core.Backend
 import runa.core.GpuOffload
 import runa.core.LogLevel
+import runa.core.UserInputError
+import runa.core.httpUrl
 import runa.engine.Engine
 import runa.hub.HubClient
 import runa.platform.RunaPaths
@@ -30,7 +34,7 @@ internal class Globals(
     /** `-y`: answer every prompt with its default. Read by the interactive commands of later phases. */
     val yes: Boolean,
     private val flags: Map<ConfigKey, String>,
-    tokenFlag: String? = null,
+    private val tokenFlag: String? = null,
 ) {
     val paths: RunaPaths = resolveRunaPaths(environment.os, environment.env)
 
@@ -52,6 +56,24 @@ internal class Globals(
 
     /** The bearer token for a daemon whose discovery file this machine does not have. */
     val token: String? = (tokenFlag ?: environment.env(TOKEN_ENV))?.takeIf { it.isNotBlank() }
+
+    /** The service the model commands talk to. */
+    val backend: Backend by lazy {
+        val id = checkNotNull(config.resolve(ConfigKey.BACKEND).value)
+        // Flags and the environment are checked at the start; this is for a config.json edited by hand.
+        Backend.parse(id) ?: throw UserInputError("'$id' is not a backend: use ${Backend.entries.joinToString(" or ") { it.id }}")
+    }
+
+    /**
+     * A client for the LM Studio at `--host` and `--port`, by default this machine's port 1234; the
+     * caller closes it. The daemon's token is never sent there: LM Studio has its own.
+     */
+    fun lmStudio(): LmStudioBackend {
+        val host = checkNotNull(config.resolve(ConfigKey.HOST).value)
+        val port = config.resolve(ConfigKey.PORT).value?.toInt() ?: LmStudioBackend.DEFAULT_PORT
+        val token = (tokenFlag ?: environment.env(LmStudioBackend.TOKEN_ENV))?.takeIf { it.isNotBlank() }
+        return LmStudioBackend(environment.httpEngine, httpUrl(host, port), token)
+    }
 
     /** The model store at the configured `models_dir`. */
     val store: ModelStore by lazy {

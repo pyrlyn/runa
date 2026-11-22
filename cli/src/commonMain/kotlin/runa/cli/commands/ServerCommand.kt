@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.daemon.DaemonConnector
+import runa.cli.daemon.requireRunaBackend
 import runa.config.ConfigKey
 import runa.core.UserInputError
 import runa.core.api.ServerDescription
@@ -72,6 +73,7 @@ internal class ServerCommand : CliktCommand(name = "server") {
         override fun help(context: Context): String = "Open the API on a port for other programs, unless it is open already"
 
         override fun run() {
+            requireRunaBackend(globals)
             val key = apiKey ?: globals.environment.env(API_KEY_ENV)?.takeIf { it.isNotEmpty() }
             if (key != null && key.isBlank()) throw UserInputError("--api-key must not be empty")
             val request =
@@ -118,6 +120,7 @@ internal class ServerCommand : CliktCommand(name = "server") {
         override fun help(context: Context): String = "Close the port; the daemon keeps running and keeps its models"
 
         override fun run() {
+            requireRunaBackend(globals)
             // A daemon that does not run serves nothing, so there is no reason to start one.
             val stopped =
                 runBlocking {
@@ -138,6 +141,7 @@ internal class ServerCommand : CliktCommand(name = "server") {
         override fun help(context: Context): String = "Show whether the server runs and where"
 
         override fun run() {
+            requireRunaBackend(globals)
             // Never starts the daemon: asking must not change the answer.
             val server = runBlocking { DaemonConnector(globals).find()?.use { it.status.server } } ?: ServerDescription()
             globals.renderer(json).render(server, ServerDescription.serializer()) {

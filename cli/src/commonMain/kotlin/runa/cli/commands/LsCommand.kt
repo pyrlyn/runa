@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.mordant.rendering.Widget
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -17,8 +18,11 @@ import runa.cli.Globals
 import runa.cli.output.formatBytes
 import runa.cli.output.formatCount
 import runa.cli.output.listing
+import runa.core.Backend
+import runa.core.ModelKey
 import runa.core.ModelKind
 import runa.core.UserInputError
+import runa.core.api.ModelDescription
 import runa.store.StoredModel
 import runa.store.isNamed
 
@@ -64,23 +68,22 @@ internal class LsCommand : CliktCommand(name = "ls") {
 
     override val helpTags: Map<String, String> = CommandGroup.LOCAL_MODELS.helpTags
 
-    override fun help(context: Context): String = "List the models on this machine"
+    override fun help(context: Context): String =
+        """
+        List the models on this machine
+
+        With --backend lmstudio: the models of a running LM Studio, one row each, as its API lists them.
+        """.trimIndent()
 
     override fun run() {
         if (llm && embedding) throw UsageError("--llm and --embedding cannot be used together")
+        if (globals.backend == Backend.LMSTUDIO) return listLmStudio()
         val store = globals.store
         globals.log.debug { "Scanning ${store.modelsDir}" }
         val listing = store.list()
         listing.problems.forEach { globals.log.warn { "Skipped ${it.path}: ${it.message}" } }
 
-        val kind =
-            if (llm) {
-                ModelKind.LLM
-            } else if (embedding) {
-                ModelKind.EMBEDDING
-            } else {
-                null
-            }
+        val kind = wantedKind()
         val wanted = key
         val models = listing.models.filter { model -> (kind == null || model.kind == kind) && (wanted == null || model.isNamed(wanted)) }
         if (wanted != null && models.isEmpty()) throw UserInputError("No model matches '$key' in ${store.modelsDir}")
@@ -93,9 +96,48 @@ internal class LsCommand : CliktCommand(name = "ls") {
         }
     }
 
+    private fun wantedKind(): ModelKind? =
+        when {
+            llm -> ModelKind.LLM
+            embedding -> ModelKind.EMBEDDING
+            else -> null
+        }
+
+    /** What LM Studio lists, in the types of runa's own API: there is no file on this machine to describe. */
+    private fun listLmStudio() {
+        if (variants) throw UserInputError("--variants is not supported by the lmstudio backend: LM Studio lists every model once")
+        val kind = wantedKind()?.id
+        val wanted = key
+        val models =
+            runBlocking { globals.lmStudio().use { it.models().models } }.filter { model ->
+                (kind == null || model.type == kind) &&
+                    (wanted == null || model.key.equals(wanted, ignoreCase = true) || ModelKey.parse(model.key)?.isNamed(wanted) == true)
+            }
+        if (wanted != null && models.isEmpty()) throw UserInputError("No model matches '$wanted' in LM Studio")
+        if (models.isEmpty() && !globals.wantsJson(json)) {
+            globals.log.info { "LM Studio has no models. Download one with: runa --backend lmstudio get <model>" }
+            return
+        }
+        globals.renderer(json).render(models, ListSerializer(ModelDescription.serializer())) { rows ->
+            keyListing(
+                rows.map {
+                    listOf(
+                        it.key,
+                        it.type,
+                        it.params?.let(::formatCount).orEmpty(),
+                        it.architecture.orEmpty(),
+                        it.quantization.orEmpty(),
+                        formatBytes(it.sizeBytes),
+                    )
+                },
+            )
+        }
+    }
+
+    private fun keyListing(rows: List<List<String>>): Widget = listing(listOf("KEY", "TYPE", "PARAMS", "ARCH", "QUANT", "SIZE"), rows)
+
     private fun byVariant(entries: List<ModelEntry>): Widget =
-        listing(
-            listOf("KEY", "TYPE", "PARAMS", "ARCH", "QUANT", "SIZE"),
+        keyListing(
             entries.map {
                 listOf(
                     it.key,

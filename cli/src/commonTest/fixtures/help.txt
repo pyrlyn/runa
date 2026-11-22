@@ -10,11 +10,13 @@ Options:
                        RUNA_LOG_PROMPTS)
   --quiet              Print errors only
   --verbose            Print debug detail
-  --host=<host>        Daemon host (env: RUNA_HOST)
-  --port=<port>        Daemon port (env: RUNA_PORT)
+  --host=<host>        Host of the daemon, or of LM Studio (env: RUNA_HOST)
+  --port=<port>        Port of the daemon, or of LM Studio instead of 1234
+                       (env: RUNA_PORT)
   --token=<token>      API token of a daemon on another machine (env:
-                       RUNA_TOKEN)
-  --backend=<name>     runa or lmstudio (env: RUNA_BACKEND)
+                       RUNA_TOKEN), or of LM Studio (env: LM_API_TOKEN)
+  --backend=<name>     runa, or lmstudio to list, load and chat with the models
+                       of a running LM Studio (env: RUNA_BACKEND)
   -y, --yes            Take the default answer for every prompt
   -v, --version        Show the version and exit
   -h, --help           Show this message and exit
@@ -26,8 +28,8 @@ Local models:
   run     Ask a model one question
   chat    Talk to a model
   load    Load a model into the daemon
-  unload  Unload a model from the daemon and free its memory
-  ps      List the models the daemon has loaded
+  unload  Unload a model and free its memory
+  ps      List the loaded models
 
 Serve:
   status  Show whether the daemon runs and what it has loaded

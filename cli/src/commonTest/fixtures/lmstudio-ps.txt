@@ -1,0 +1,3 @@
+ID                    MODEL                 CONTEXT  PARALLEL  SIZE
+acme/tiny             acme/tiny             4096     4         668 MB
+text-embedding-small  text-embedding-small  512                84.1 MB

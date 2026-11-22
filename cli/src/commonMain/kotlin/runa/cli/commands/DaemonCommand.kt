@@ -16,6 +16,7 @@ import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.daemon.DaemonConnection
 import runa.cli.daemon.DaemonConnector
+import runa.cli.daemon.requireRunaBackend
 import runa.cli.output.formatSeconds
 import runa.core.BackendError
 import runa.core.ExitCode
@@ -83,7 +84,10 @@ internal class StatusCommand : CliktCommand(name = "status") {
 
     override fun help(context: Context): String = "Show whether the daemon runs and what it has loaded"
 
-    override fun run() = printStatus(globals, json)
+    override fun run() {
+        requireRunaBackend(globals)
+        printStatus(globals, json)
+    }
 }
 
 internal class DaemonCommand : CliktCommand(name = "daemon") {
@@ -113,6 +117,7 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
         override fun help(context: Context): String = "Start the daemon, unless it runs already"
 
         override fun run() {
+            requireRunaBackend(globals)
             val view =
                 runBlocking {
                     DaemonConnector(globals).require().use { daemon ->
@@ -129,7 +134,12 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
 
         override fun help(context: Context): String = "Stop the daemon; the models it holds are unloaded"
 
-        override fun run() =
+        override fun run() {
+            requireRunaBackend(globals)
+            stop()
+        }
+
+        private fun stop() =
             runBlocking {
                 val connector = DaemonConnector(globals)
                 val daemon = connector.find()
@@ -160,7 +170,10 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
 
         override fun help(context: Context): String = "Show whether the daemon runs; the same as `runa status`"
 
-        override fun run() = printStatus(globals, json)
+        override fun run() {
+            requireRunaBackend(globals)
+            printStatus(globals, json)
+        }
     }
 
     private companion object {

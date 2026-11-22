@@ -1,0 +1,1 @@
+[{"id":"acme/tiny","model":"acme/tiny","context_length":4096,"gpu":null,"parallel":4,"ttl_seconds":null,"idle_seconds":null,"size_bytes":668000000},{"id":"text-embedding-small","model":"text-embedding-small","context_length":512,"gpu":null,"parallel":null,"ttl_seconds":null,"idle_seconds":null,"size_bytes":84106624}]

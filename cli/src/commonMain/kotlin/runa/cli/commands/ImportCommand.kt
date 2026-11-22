@@ -16,6 +16,7 @@ import kotlinx.serialization.Serializable
 import okio.Path.Companion.toPath
 import runa.cli.CommandGroup
 import runa.cli.Globals
+import runa.cli.daemon.requireRunaBackend
 import runa.core.ModelKey
 import runa.core.UserInputError
 import runa.store.ImportMode
@@ -49,6 +50,7 @@ internal class ImportCommand : CliktCommand(name = "import") {
     override fun help(context: Context): String = "Add a GGUF file to the model store"
 
     override fun run() {
+        requireRunaBackend(globals)
         val store = globals.store
         val source = store.inspect(file.toPath())
         val key = userRepo?.let(::parseKey) ?: chooseKey(source.suggestedKey)

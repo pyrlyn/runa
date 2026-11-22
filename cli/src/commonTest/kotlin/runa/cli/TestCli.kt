@@ -62,6 +62,7 @@ internal class TestCli(
                 daemonLockHeld = { daemon?.running == true },
                 // Long enough for a fake that starts at once, short enough for one that never does.
                 daemonStartTimeout = 300.milliseconds,
+                downloadPoll = 1.milliseconds,
             )
         val exitCode = runCli(args.toList(), environment, extraCommands)
         return CliRun(exitCode, recorder.stdout(), recorder.stderr())

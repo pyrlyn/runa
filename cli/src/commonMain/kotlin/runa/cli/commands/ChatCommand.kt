@@ -15,12 +15,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import runa.cli.CommandGroup
 import runa.cli.Globals
-import runa.cli.daemon.DaemonConnector
 import runa.cli.daemon.chooseModel
 import runa.cli.daemon.load
 import runa.cli.daemon.loadedNote
+import runa.cli.daemon.modelBackend
 import runa.cli.output.printError
-import runa.client.DaemonClient
+import runa.client.ModelBackend
 import runa.core.BackendError
 import runa.core.ModelKey
 import runa.core.UserInputError
@@ -58,15 +58,18 @@ internal class ChatCommand : CliktCommand(name = "chat") {
 
         With -p, or with the question on standard input, the one answer goes to standard output and
         nothing else does.
+
+        With --backend lmstudio the model is one of a running LM Studio, which then also keeps the
+        conversation.
         """.trimIndent()
 
     override fun run() {
         val question = prompt ?: pipedQuestion()
         if (question == null && globals.wantsJson(json)) throw UserInputError("--json needs one question: give it with -p")
         runBlocking {
-            DaemonConnector(globals).require().use { daemon ->
-                val instance = instance(daemon.client, model)
-                if (question != null) once(daemon.client, instance, question) else converse(daemon.client, instance)
+            globals.modelBackend().use { backend ->
+                val instance = instance(backend, model)
+                if (question != null) once(backend, instance, question) else converse(backend, instance)
             }
         }
     }
@@ -84,7 +87,7 @@ internal class ChatCommand : CliktCommand(name = "chat") {
      * name: the one loaded instance, else the model the user picks.
      */
     private suspend fun instance(
-        client: DaemonClient,
+        client: ModelBackend,
         name: String?,
     ): String {
         val models = client.models().models
@@ -93,16 +96,17 @@ internal class ChatCommand : CliktCommand(name = "chat") {
         val forProgram = globals.wantsJson(json)
         val wanted = name ?: terminal.chooseModel(models, mayAsk = !globals.yes && !forProgram)
         loaded.firstOrNull { it.id == wanted }?.let { return it.id }
-        val stored = models.singleOrNull { ModelKey.parse(it.key)?.isNamed(wanted) == true }
+        // LM Studio has keys without a publisher, which are no ModelKey and are only ever named whole.
+        val stored = models.singleOrNull { it.key.equals(wanted, ignoreCase = true) || ModelKey.parse(it.key)?.isNamed(wanted) == true }
         stored?.loadedInstances?.firstOrNull()?.let { return it.id }
         // A name that fits no model, or more than one, is the daemon's to explain.
         val response = client.load(terminal, LoadRequest(model = wanted, ttl = ttl), showProgress = !forProgram)
         response.loadedNote()?.let { note -> globals.log.info { note } }
-        return checkNotNull(response.instance) { "The daemon loaded a model without saying which" }.id
+        return checkNotNull(response.instance) { "A model was loaded without a word about which" }.id
     }
 
     private suspend fun once(
-        client: DaemonClient,
+        client: ModelBackend,
         instance: String,
         question: String,
     ) {
@@ -114,7 +118,7 @@ internal class ChatCommand : CliktCommand(name = "chat") {
     }
 
     private suspend fun converse(
-        client: DaemonClient,
+        client: ModelBackend,
         instance: String,
     ) {
         var state = ChatState(model = instance, systemPrompt = system, showStats = stats)
@@ -178,7 +182,7 @@ internal class ChatCommand : CliktCommand(name = "chat") {
         }
 
     private suspend fun ask(
-        client: DaemonClient,
+        client: ModelBackend,
         state: ChatState,
         text: String,
         streaming: Boolean,
@@ -194,11 +198,15 @@ internal class ChatCommand : CliktCommand(name = "chat") {
                 previousResponseId = state.previousResponseId,
             )
         var endsLine = true
+        var began = false
         try {
             return client.chat(request) { piece ->
-                if (streaming && piece.isNotEmpty()) {
-                    terminal.rawPrint(piece)
-                    endsLine = piece.endsWith('\n')
+                // A model that reasons first leaves empty lines before its answer; they say nothing.
+                val shown = if (began) piece else piece.trimStart()
+                if (streaming && shown.isNotEmpty()) {
+                    began = true
+                    terminal.rawPrint(shown)
+                    endsLine = shown.endsWith('\n')
                 }
             }
         } finally {

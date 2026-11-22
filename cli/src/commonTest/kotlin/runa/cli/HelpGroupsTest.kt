@@ -38,8 +38,8 @@ class HelpGroupsTest {
             |  run     Ask a model one question
             |  chat    Talk to a model
             |  load    Load a model into the daemon
-            |  unload  Unload a model from the daemon and free its memory
-            |  ps      List the models the daemon has loaded
+            |  unload  Unload a model and free its memory
+            |  ps      List the loaded models
             |  tune    Does tune
             |
             |Serve:
