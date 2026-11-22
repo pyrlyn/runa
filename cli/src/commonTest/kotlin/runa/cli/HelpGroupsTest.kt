@@ -24,8 +24,8 @@ class HelpGroupsTest {
         val commands =
             listOf(
                 Grouped("survey", CommandGroup.RUNTIME),
-                Grouped("server", CommandGroup.SERVE),
-                Grouped("load", CommandGroup.LOCAL_MODELS),
+                Grouped("expose", CommandGroup.SERVE),
+                Grouped("tune", CommandGroup.LOCAL_MODELS),
             )
         val help = TestCli().run("--help", extraCommands = commands).stdout
         val sections = help.substringAfter("Show this message and exit\n\n")
@@ -36,10 +36,15 @@ class HelpGroupsTest {
             |  ls      List the models on this machine
             |  import  Add a GGUF file to the model store
             |  run     Ask a model one question
-            |  load    Does load
+            |  load    Load a model into the daemon
+            |  unload  Unload a model from the daemon and free its memory
+            |  ps      List the models the daemon has loaded
+            |  tune    Does tune
             |
             |Serve:
-            |  server  Does server
+            |  status  Show whether the daemon runs and what it has loaded
+            |  daemon  Start and stop the background process that keeps models loaded
+            |  expose  Does expose
             |
             |Runtime:
             |  survey  Does survey

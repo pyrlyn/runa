@@ -1,0 +1,7 @@
+Usage: runa status [<options>]
+
+  Show whether the daemon runs and what it has loaded
+
+Options:
+  --json      Print JSON
+  -h, --help  Show this message and exit

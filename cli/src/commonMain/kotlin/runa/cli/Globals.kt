@@ -9,12 +9,15 @@ import runa.cli.output.Renderer
 import runa.config.ConfigFile
 import runa.config.ConfigKey
 import runa.config.ConfigResolver
+import runa.config.DaemonSettings
+import runa.core.GpuOffload
 import runa.core.LogLevel
 import runa.engine.Engine
 import runa.hub.HubClient
 import runa.platform.RunaPaths
 import runa.platform.resolveRunaPaths
 import runa.store.ModelStore
+import kotlin.time.Duration.Companion.seconds
 
 /** The root command's parsed global options, shared with every subcommand through the Clikt context. */
 internal class Globals(
@@ -26,6 +29,7 @@ internal class Globals(
     /** `-y`: answer every prompt with its default. Read by the interactive commands of later phases. */
     val yes: Boolean,
     private val flags: Map<ConfigKey, String>,
+    tokenFlag: String? = null,
 ) {
     val paths: RunaPaths = resolveRunaPaths(environment.os, environment.env)
 
@@ -35,14 +39,18 @@ internal class Globals(
     // The file is read on first use: `version` and `config path` keep working when it is broken.
     val config: ConfigResolver = ConfigResolver(flags, environment.env, ::loadConfigFile, paths)
 
-    val log: Diagnostics =
-        Diagnostics(terminal) {
-            when {
-                quiet -> LogLevel.ERROR
-                verbose -> LogLevel.DEBUG
-                else -> LogLevel.parse(config.resolve(ConfigKey.LOG_LEVEL).value.orEmpty()) ?: LogLevel.INFO
-            }
+    private val logLevel: LogLevel by lazy {
+        when {
+            quiet -> LogLevel.ERROR
+            verbose -> LogLevel.DEBUG
+            else -> LogLevel.parse(config.resolve(ConfigKey.LOG_LEVEL).value.orEmpty()) ?: LogLevel.INFO
         }
+    }
+
+    val log: Diagnostics = Diagnostics(terminal) { logLevel }
+
+    /** The bearer token for a daemon whose discovery file this machine does not have. */
+    val token: String? = (tokenFlag ?: environment.env(TOKEN_ENV))?.takeIf { it.isNotBlank() }
 
     /** The model store at the configured `models_dir`. */
     val store: ModelStore by lazy {
@@ -58,8 +66,33 @@ internal class Globals(
         return HubClient(environment.httpEngine, env("HF_ENDPOINT") ?: HubClient.DEFAULT_ENDPOINT, env("HF_TOKEN"))
     }
 
+    /** What a daemon started by this command line runs with. */
+    fun daemonSettings(): DaemonSettings =
+        DaemonSettings(
+            version = environment.version,
+            paths = paths,
+            modelsDir = store.modelsDir,
+            port = config.resolve(ConfigKey.PORT).value?.toInt(),
+            logLevel = logLevel,
+            contextLength = config.resolve(ConfigKey.CONTEXT_LENGTH).value?.toInt(),
+            gpu = GpuOffload.parse(config.resolve(ConfigKey.GPU).value.orEmpty()) ?: GpuOffload.Max,
+            ttl =
+                config
+                    .resolve(ConfigKey.TTL)
+                    .value
+                    ?.toInt()
+                    ?.seconds,
+        )
+
+    /** The global flags among [keys] that were given, as arguments for another `runa` process. */
+    fun flagArguments(vararg keys: ConfigKey): List<String> = keys.flatMap { key -> flags[key]?.let { listOf(key.flag, it) }.orEmpty() }
+
     /** [jsonHere] is a command's own `--json`, so both `runa --json ls` and `runa ls --json` work. */
     fun wantsJson(jsonHere: Boolean = false): Boolean = json || jsonHere
 
     fun renderer(jsonHere: Boolean = false): Renderer = if (wantsJson(jsonHere)) JsonRenderer(terminal) else HumanRenderer(terminal)
+
+    companion object {
+        const val TOKEN_ENV: String = "RUNA_TOKEN"
+    }
 }

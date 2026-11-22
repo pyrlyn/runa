@@ -9,6 +9,8 @@ Options:
   --verbose            Print debug detail
   --host=<host>        Daemon host (env: RUNA_HOST)
   --port=<port>        Daemon port (env: RUNA_PORT)
+  --token=<token>      API token of a daemon on another machine (env:
+                       RUNA_TOKEN)
   --backend=<name>     runa or lmstudio (env: RUNA_BACKEND)
   -y, --yes            Take the default answer for every prompt
   -v, --version        Show the version and exit
@@ -19,6 +21,13 @@ Local models:
   ls      List the models on this machine
   import  Add a GGUF file to the model store
   run     Ask a model one question
+  load    Load a model into the daemon
+  unload  Unload a model from the daemon and free its memory
+  ps      List the models the daemon has loaded
+
+Serve:
+  status  Show whether the daemon runs and what it has loaded
+  daemon  Start and stop the background process that keeps models loaded
 
 Commands:
   version     Print the runa version

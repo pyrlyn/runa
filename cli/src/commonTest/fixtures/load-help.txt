@@ -1,0 +1,27 @@
+Usage: runa load [<options>] [<model>]
+
+  Load a model into the daemon
+
+  The model stays in memory until `runa unload`, its --ttl or `runa daemon
+  down`. The daemon is started when it does not run. A model can be loaded more
+  than once: the second copy is called `key:2`, or what --identifier says. On
+  success the identifier is printed.
+
+Options:
+  --identifier=<id>         The name to address the loaded model by (default:
+                            its key)
+  -c, --context-length=<n>  Tokens of context (default: context_length in
+                            config.json, else 4096)
+  --gpu=off|max|0..1        How much of the model runs on the GPU (default: gpu
+                            in config.json)
+  --parallel=<n>            How many requests the model serves at once
+                            (default: 1)
+  --ttl=<seconds>           Unload the model after this long without a request;
+                            0 for never (default: ttl in config.json)
+  --estimate-only           Print the memory the model would take and load
+                            nothing
+  --json                    Print JSON
+  -h, --help                Show this message and exit
+
+Arguments:
+  <model>  A model from `runa ls`; without one, a list to choose from is shown

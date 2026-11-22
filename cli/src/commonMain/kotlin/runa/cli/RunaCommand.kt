@@ -14,10 +14,16 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.mordant.terminal.Terminal
 import runa.cli.commands.ConfigCommand
+import runa.cli.commands.DaemonCommand
+import runa.cli.commands.DaemonProcessCommand
 import runa.cli.commands.GetCommand
 import runa.cli.commands.ImportCommand
+import runa.cli.commands.LoadCommand
 import runa.cli.commands.LsCommand
+import runa.cli.commands.PsCommand
 import runa.cli.commands.RunCommand
+import runa.cli.commands.StatusCommand
+import runa.cli.commands.UnloadCommand
 import runa.cli.commands.VersionCommand
 import runa.config.ConfigKey
 
@@ -33,6 +39,7 @@ internal class RunaCommand(
     private val verbose by option("--verbose", help = "Print debug detail").flag()
     private val host by option("--host", metavar = "host", help = "Daemon host (env: RUNA_HOST)")
     private val port by option("--port", metavar = "port", help = "Daemon port (env: RUNA_PORT)")
+    private val token by option("--token", metavar = "token", help = "API token of a daemon on another machine (env: RUNA_TOKEN)")
     private val backend by option("--backend", metavar = "name", help = "runa or lmstudio (env: RUNA_BACKEND)")
     private val yes by option("-y", "--yes", help = "Take the default answer for every prompt").flag()
 
@@ -48,6 +55,12 @@ internal class RunaCommand(
                 LsCommand(),
                 ImportCommand(),
                 RunCommand(),
+                LoadCommand(),
+                UnloadCommand(),
+                PsCommand(),
+                StatusCommand(),
+                DaemonCommand(),
+                DaemonProcessCommand(),
                 VersionCommand(),
                 ConfigCommand(),
                 CompletionCommand(name = "completion", help = "Print a completion script for bash, zsh or fish"),
@@ -68,7 +81,7 @@ internal class RunaCommand(
                 port?.let { ConfigKey.PORT to it },
                 backend?.let { ConfigKey.BACKEND to it },
             ).toMap()
-        val globals = Globals(environment, terminal, json, quiet, verbose, yes, flags)
+        val globals = Globals(environment, terminal, json, quiet, verbose, yes, flags, token)
         globals.config.checkOverrides()
         currentContext.obj = globals
     }

@@ -1,0 +1,11 @@
+Usage: runa unload [<options>] [<id>]
+
+  Unload a model from the daemon and free its memory
+
+Options:
+  --all       Unload every model
+  --json      Print JSON
+  -h, --help  Show this message and exit
+
+Arguments:
+  <id>  The identifier `runa ps` shows; not needed when one model is loaded

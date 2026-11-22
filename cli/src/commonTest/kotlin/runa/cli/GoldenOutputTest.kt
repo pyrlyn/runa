@@ -38,6 +38,21 @@ class GoldenOutputTest {
     fun runHelp() = golden("run-help.txt", "run", "--help")
 
     @Test
+    fun loadHelp() = golden("load-help.txt", "load", "--help")
+
+    @Test
+    fun unloadHelp() = golden("unload-help.txt", "unload", "--help")
+
+    @Test
+    fun psHelp() = golden("ps-help.txt", "ps", "--help")
+
+    @Test
+    fun statusHelp() = golden("status-help.txt", "status", "--help")
+
+    @Test
+    fun daemonHelp() = golden("daemon-help.txt", "daemon", "--help")
+
+    @Test
     fun versionJson() = golden("version.json", "version", "--json")
 
     @Test
