@@ -9,6 +9,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import runa.core.UserInputError
+import runa.platform.writeAtomically
 
 /**
  * `config.json` as a JSON tree. Kept as a tree, not a data class, so keys written by a newer runa
@@ -45,14 +46,9 @@ public class ConfigFile private constructor(
         return ConfigFile(path, root.withValue(key.id.split('.'), primitive))
     }
 
-    /** Writes the file through a temporary sibling so a crash never leaves half a config. */
     public fun save(fileSystem: FileSystem) {
-        val parent = checkNotNull(path.parent) { "config path has no parent: $path" }
-        val temporary = parent / "${path.name}.tmp"
         try {
-            fileSystem.createDirectories(parent)
-            fileSystem.write(temporary) { writeUtf8(format.encodeToString(JsonObject.serializer(), root) + "\n") }
-            fileSystem.atomicMove(temporary, path)
+            fileSystem.writeAtomically(path) { writeUtf8(format.encodeToString(JsonObject.serializer(), root) + "\n") }
         } catch (e: IOException) {
             throw UserInputError("Cannot write $path: ${e.message}")
         }
