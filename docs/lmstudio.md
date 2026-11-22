@@ -36,7 +36,7 @@ runa's daemon (`RUNA_TOKEN`) is never sent to LM Studio.
 |---|---|
 | `ls` | The models LM Studio lists, one row each. `--llm`, `--embedding` and a name filter them; `--variants` is refused, because LM Studio lists every model once |
 | `ps` | The loaded instances. The `GPU`, `IDLE` and `TTL` columns are left out: LM Studio does not report them |
-| `load` | Loads the model into LM Studio. `--context-length` is passed on; `--gpu`, `--parallel`, `--ttl`, `--identifier` and `--estimate-only` are refused, because LM Studio's REST API has nothing for them. There is no progress bar: LM Studio reports no progress |
+| `load` | Loads the model into LM Studio. `--context-length` is passed on; `--gpu`, `--parallel`, `--ttl`, `--identifier`, `--estimate-only` and `--auto` are refused, because LM Studio's REST API has nothing for them. There is no progress bar: LM Studio reports no progress |
 | `unload` | Unloads an instance; `--all` unloads every instance LM Studio lists, one request each |
 | `chat` | Loads the model when it is not loaded, then chats. LM Studio keeps the conversation. Only the answer is printed: the reasoning of a model that thinks first is in `--json`, as `output` items of type `reasoning` |
 | `get` | Asks LM Studio to download a model from its catalog (`ibm/granite-4-micro`), or from Hugging Face (`owner/repo@quantization` or a URL), and waits for it. The download belongs to LM Studio and goes on when the command is interrupted. `--select` is refused |

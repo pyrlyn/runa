@@ -13,6 +13,8 @@ How to use the OpenAI-compatible API, with `curl` and the `openai` Python client
 [`docs/openai.md`](docs/openai.md). How to watch what the daemon and its models do, and what its
 log file holds, is in [`docs/logs.md`](docs/logs.md). How to list, load and chat with the models
 of a running LM Studio through the same commands is in [`docs/lmstudio.md`](docs/lmstudio.md).
+What `runa runtime survey` tells about a machine, and how `runa load --auto` chooses by it, is in
+[`docs/hardware.md`](docs/hardware.md).
 
 ## Build
 
