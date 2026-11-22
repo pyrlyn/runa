@@ -38,6 +38,8 @@ public data class EngineDescription(
     val name: String,
     val version: String,
     val accelerators: List<String>,
+    /** True when the engine can put a model on a GPU of its machine; false also from a daemon too old to tell. */
+    @SerialName("gpu_offload") val gpuOffload: Boolean = false,
 )
 
 /** `GET /api/v1/models`. */

@@ -1,0 +1,1 @@
+{"os":"macos","cpu":{"model":"Apple M3 Pro","architecture":"arm64","cores":12,"performance_cores":6,"threads":12},"memory_bytes":36000000000,"gpus":[{"name":"Apple M3 Pro","memory_bytes":27000000000,"unified_memory":true,"source":"metal"}],"engine":{"name":"fake","version":"0","accelerators":["cpu"],"gpu_offload":false}}

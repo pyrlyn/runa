@@ -28,14 +28,17 @@ import kotlin.time.Duration.Companion.milliseconds
  * In a chat it calls a tool when it must, and otherwise the tools the last message names. Asked for
  * JSON, it answers `{"echo": prompt}`.
  */
-public class FakeEngine : Engine {
+public class FakeEngine(
+    /** Whether it says it can compute on a GPU. */
+    gpuOffload: Boolean = false,
+) : Engine {
     /** Every load so far, in order. */
     public val loads: MutableList<FakeLoad> = mutableListOf()
 
     /** A word at which generation fails, the way a backend fails halfway through an answer. */
     public var failOn: String? = null
 
-    override val info: EngineInfo = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"))
+    override val info: EngineInfo = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"), gpuOffload = gpuOffload)
 
     override fun estimateMemory(
         model: Path,

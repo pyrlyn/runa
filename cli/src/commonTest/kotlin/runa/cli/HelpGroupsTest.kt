@@ -50,7 +50,8 @@ class HelpGroupsTest {
             |  expose  Does expose
             |
             |Runtime:
-            |  survey  Does survey
+            |  runtime  Show what this machine and this build run models with
+            |  survey   Does survey
             |
             |Commands:
             |  version     Print the runa version

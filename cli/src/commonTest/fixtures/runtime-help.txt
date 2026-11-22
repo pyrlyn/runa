@@ -1,0 +1,9 @@
+Usage: runa runtime [<options>] <command> [<args>]...
+
+  Show what this machine and this build run models with
+
+Options:
+  -h, --help  Show this message and exit
+
+Commands:
+  survey  Show the CPU, the memory, the GPUs and what the engine computes on

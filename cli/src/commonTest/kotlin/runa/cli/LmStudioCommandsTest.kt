@@ -284,6 +284,7 @@ class LmStudioCommandsTest {
                 listOf("server", "stop"),
                 listOf("server", "status"),
                 listOf("log", "stream"),
+                listOf("runtime", "survey"),
             )
         for (command in commands) {
             val run = run(*command.toTypedArray())

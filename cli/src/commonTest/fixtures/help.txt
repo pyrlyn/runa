@@ -37,6 +37,9 @@ Serve:
   log     Watch what the daemon and its models do
   daemon  Start and stop the background process that keeps models loaded
 
+Runtime:
+  runtime  Show what this machine and this build run models with
+
 Commands:
   version     Print the runa version
   config      Show and change settings (config.json)

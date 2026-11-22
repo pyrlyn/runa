@@ -132,7 +132,7 @@ internal class DaemonApi(
             pid = pid,
             port = port(),
             uptimeSeconds = started.elapsedNow().inWholeSeconds,
-            engine = engine.info.let { EngineDescription(it.name, it.version, it.accelerators) },
+            engine = engine.info.let { EngineDescription(it.name, it.version, it.accelerators, it.gpuOffload) },
             loadedInstances = registry.instances().size,
             server = server.describe(),
             logFile = logFile?.toString(),
