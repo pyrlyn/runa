@@ -206,6 +206,7 @@ Kotlin Multiplatform project, Gradle Kotlin DSL, version catalog in `gradle/libs
 | `:engine` | backend-agnostic inference API: `Engine` (memory estimate, load) and `LoadedModel` (tokenize, generate as a `Flow<GenerationEvent>`, embeddings), request, sampling and stats types | `:core`, okio, kotlinx.coroutines |
 | `:engine-llama` | the llama.cpp implementation of `Engine`: load model, context, sampling, chat templates, grammars; the only module with cinterop | `:engine`, `:gguf`, `:platform`, cinterop `llama` |
 | `:engine-testing` | `FakeEngine`, an `Engine` without weights or llama.cpp, for the tests of every module that takes an engine | `:engine` |
+| `:testing` | `assertGolden`, the golden file check shared by the tests of `:cli` and `:daemon` | `:platform`, okio, kotlin.test |
 | `:daemon` | model registry (instances, TTL eviction, JIT load, parallel slots), HTTP server, SSE, log bus | `:engine` (interface only), `:store`, `:hub`, Ktor server |
 | `:client` | typed client for the daemon API; `LmStudioBackend` for LM Studio's REST API; backend selection | Ktor client |
 | `:cli` | clikt command tree, output formatting (tables, `--json`), progress bars, prompts, chat REPL | clikt, mordant, `:client` and local modules |
@@ -266,7 +267,9 @@ All of this lives in `:engine-llama`, behind the `Engine` and `LoadedModel` inte
 The native API mirrors the shapes of LM Studio's documented v1 REST API
 (`https://lmstudio.ai/docs/developer/rest`) so one client type serves both backends.
 All endpoints need `Authorization: Bearer <token>` from the discovery file, except
-`GET /api/v1/status` on loopback.
+`GET /api/v1/status` on the daemon's own loopback port. On the listener that `server start` opens,
+`/api/v1/*` needs that token without exception, and `/v1/*` is open, or takes the API key that
+`server start` was given; the key never opens `/api/v1/*`.
 
 | Endpoint | Purpose | Used by |
 |---|---|---|
@@ -277,7 +280,7 @@ All endpoints need `Authorization: Bearer <token>` from the discovery file, exce
 | `POST /api/v1/models/download` / `GET /api/v1/models/download/status/{job}` | daemon-side downloads (optional; the CLI downloads itself in 1.0) | `get` (later) |
 | `POST /api/v1/chat` | native chat, SSE stream with stats | `chat` |
 | `GET /api/v1/logs/stream?source=model\|server\|runtime` | SSE log stream | `log stream` |
-| `POST /api/v1/server` | start/stop the public listener `{bind, port, cors}` | `server start\|stop` |
+| `POST /api/v1/server` | start/stop the public listener `{running, bind, port, cors, api_key}` → `{running, bind, port, cors, api_key_required}`, which `status` carries as `server` | `server start\|stop` |
 | `POST /api/v1/shutdown` | graceful stop | `daemon down` |
 | `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/completions`, `POST /v1/embeddings` | OpenAI-compatible, streaming via SSE | third-party clients |
 
@@ -298,8 +301,8 @@ with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cann
 | `~/.runa/logs/daemon.log` | rotated daemon log |
 
 On Linux, `XDG_DATA_HOME`/`XDG_CONFIG_HOME`/`XDG_STATE_HOME` are honoured; `RUNA_HOME`
-overrides everything. Environment: `RUNA_HOME`, `RUNA_HOST`, `RUNA_PORT`, `RUNA_BACKEND`,
-`RUNA_LOG_LEVEL`, `HF_TOKEN`, `HF_ENDPOINT` (a Hub mirror; `https://`, or `http://` on localhost),
+overrides everything. Environment: `RUNA_HOME`, `RUNA_HOST`, `RUNA_PORT`, `RUNA_TOKEN`,
+`RUNA_BACKEND`, `RUNA_API_KEY`, `RUNA_LOG_LEVEL`, `HF_TOKEN`, `HF_ENDPOINT` (a Hub mirror; `https://`, or `http://` on localhost),
 `LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
 
 ## 8. Implementation phases
@@ -502,6 +505,43 @@ daemon leaves a stale file that the next command detects and replaces; `status` 
 daemon (asserted).
 
 ### Phase 6: OpenAI-compatible server and chat
+
+Status: in progress. Landed in [#150](https://github.com/pyrlyn/runa/pull/150): the `/v1/*`
+endpoints of step 1 without tools and `response_format`, and step 2. Verified on macOS arm64 with
+Qwen2.5 0.5B Q4_K_M: the unit tests (the endpoints against the fake engine with golden SSE
+streams, the public listener over real sockets, the `server` commands against a fake daemon) and
+`app/integration/server.sh`, which drives the real executable with `curl`; the unit tests also in
+an Ubuntu 24.04 arm64 container. CI runs the script on the release executable of each target.
+`mingwX64` only compiles.
+
+Left for the next pull requests: `/api/v1/chat` and `runa chat` (step 3); tools and
+`response_format` through grammars; the `docs/` examples for `curl` and the `openai` Python client
+with their CI smoke test. Embeddings are tested against the fake engine only: the test model is a
+chat model.
+
+What differs from the steps below:
+
+- A request's `model` is the identifier of a loaded instance, or the name of a stored model as
+  `load` takes it. A stored model that is not loaded is loaded by the request, with the configured
+  defaults and once however many requests arrive together. An unknown model is `404` with
+  `code: model_not_found` on `/v1/*`; the native API keeps `400`.
+- What does not exist yet is refused with `400` rather than ignored: `tools`, `functions`, a
+  `response_format` other than text, `n` above 1, `echo`, `suffix`, `dimensions`.
+- `top_k`, `min_p` and `repeat_penalty` are taken as llama.cpp's server takes them. `max_tokens`
+  below zero means no limit; `developer` is read as the system role; message content may be a
+  string or a list of text parts.
+- A streamed answer gets its status only when the engine has produced its first event, so a prompt
+  the model cannot take is still a `400`. A failure after that is a last `data:` event with the
+  error and no `[DONE]`.
+- `server start` takes `--api-key` or `RUNA_API_KEY` besides the warning the step asks for; the
+  access rules are in section 6. With other settings than the running server's it is an error that
+  names `server stop`, not a restart. The server cannot be stopped through its own port.
+- A port that is taken no longer ends the daemon: Ktor's native engine reports a failed bind as an
+  uncaught exception of its accept loop, and both listeners now start through one helper that
+  catches it. `server start` then exits with 2 and the reason; a daemon that cannot take its
+  `--port` logs the reason and stops, and the command that started it points at the log.
+- Requests to one instance are still decoded one after another; `--parallel` bounds how many may
+  wait. Decoding them in one batch is left for later.
 
 Steps:
 1. `/v1/models`, `/v1/chat/completions` (stream and non-stream, tools, `response_format` with JSON
