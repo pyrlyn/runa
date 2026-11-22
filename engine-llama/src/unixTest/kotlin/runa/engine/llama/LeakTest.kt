@@ -1,11 +1,5 @@
 package runa.engine.llama
 
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import platform.posix.RUSAGE_SELF
-import platform.posix.getrusage
-import platform.posix.rusage
 import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.LoadConfig
@@ -35,16 +29,11 @@ class LeakTest {
             assertTrue(after <= before * 1.05, "peak resident size grew from $before to $after over $CYCLES load cycles")
         }
 
-    // In bytes on macOS and kilobytes on Linux: only the ratio is used.
-    private fun peakResidentSize(): Long =
-        memScoped {
-            val usage = alloc<rusage>()
-            check(getrusage(RUSAGE_SELF, usage.ptr) == 0) { "getrusage failed" }
-            usage.ru_maxrss
-        }
-
     private companion object {
         const val WARM_UP = 5
         const val CYCLES = 50
     }
 }
+
+/** The largest resident size the process has had, in a unit of the platform's choice: only the ratio is used. */
+internal expect fun peakResidentSize(): Long
