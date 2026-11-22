@@ -90,7 +90,7 @@ class EngineContractTest {
 
     @Test
     fun tokensPerSecondComesFromGenerationTime() {
-        assertEquals(20.0, GenerationStats(5, 40, 100.milliseconds, 2.seconds).tokensPerSecond)
-        assertEquals(0.0, GenerationStats(5, 0, 100.milliseconds, 0.seconds).tokensPerSecond)
+        assertEquals(20.0, GenerationStats(5, 41, 100.milliseconds, 2.seconds).tokensPerSecond)
+        assertEquals(0.0, GenerationStats(5, 1, 100.milliseconds, 0.seconds).tokensPerSecond)
     }
 }

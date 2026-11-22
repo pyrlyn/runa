@@ -61,13 +61,14 @@ public data class GenerationStats(
     val promptTokens: Int,
     val completionTokens: Int,
     val timeToFirstToken: Duration,
-    /** Generation time after the first token; with [completionTokens] it gives the speed. */
+    /** The time from the first token to the last. */
     val generationTime: Duration,
 ) {
+    /** The speed after the first token, which is what [timeToFirstToken] already accounts for. */
     val tokensPerSecond: Double
         get() {
             val seconds = generationTime.toDouble(DurationUnit.SECONDS)
-            return if (seconds > 0) completionTokens / seconds else 0.0
+            return if (seconds > 0 && completionTokens > 1) (completionTokens - 1) / seconds else 0.0
         }
 }
 
