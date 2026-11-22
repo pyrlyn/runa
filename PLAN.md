@@ -292,6 +292,8 @@ on CI for all enabled targets.
 Status: done ([#142](https://github.com/pyrlyn/runa/pull/142)). ktlint, not detekt (detekt 1.23 does
 not support Kotlin 2.4; detekt 2 is alpha). SonarCloud is on; CodeQL Kotlin is off because CodeQL
 only traces Kotlin/JVM compilations. Release binaries: 2.6 MB macosArm64, 11 MB linuxX64.
+Not verified on CI: GitHub Actions started no run for the pull request (see section 13). Checked
+instead on macOS arm64 and, with the linuxArm64 test binaries, in an Ubuntu 24.04 arm64 container.
 
 Steps:
 1. Add the Gradle wrapper, `settings.gradle.kts`, `gradle/libs.versions.toml`, the module list
@@ -310,6 +312,9 @@ Acceptance: `./gradlew build` is green on macOS arm64 and Linux x64 runners; `ru
 runs from `build/bin/<target>/releaseExecutable`; the spike tests pass on every target.
 
 ### Phase 1: CLI framework, output and config
+
+Status: done ([#143](https://github.com/pyrlyn/runa/pull/143)). Verified like phase 0: macOS arm64
+and an Ubuntu 24.04 arm64 container, not CI.
 
 Steps:
 1. Root command with global options `--json`, `--log-level`, `--quiet`, `--verbose`, `--host`,
@@ -516,6 +521,15 @@ Risks:
   phase 0; split `runa __daemon` into its own executable target if needed.
 - **llama.cpp API churn.** Pin a tag, upgrade deliberately, keep `:engine` the only module that
   sees the C API.
+- **CI does not run.** GitHub Actions has started no run in this repository since 2026-10-26 and
+  most workflows are disabled by hand, so no phase has been verified on a runner and linuxX64
+  tests have never run. Until that is fixed, each phase is checked on macOS arm64 and in a Linux
+  arm64 container (`./gradlew linkDebugTestLinuxArm64`, then run each `test.kexe` from its module
+  directory).
+- **Linux system dependencies** (found in phases 0 and 1). The binary is dynamically linked to
+  glibc and needs `libcrypt.so.1` (Fedora: `libxcrypt-compat`), glibc's gconv modules for Ktor
+  (openSUSE minimal images: `glibc-locale-base`) and a system CA bundle for HTTPS (Debian and
+  Ubuntu minimal images: `ca-certificates`). Packaging (phase 10) must declare or remove them.
 
 Open questions for Ivan:
 
