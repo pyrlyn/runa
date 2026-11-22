@@ -23,7 +23,9 @@ public interface Engine {
 
     /**
      * Loads [model]. [onProgress] gets values from 0 to 1 and may be called from another thread.
-     * Cancelling the coroutine aborts the load and frees what was allocated.
+     * Cancelling the coroutine aborts the load and frees what was allocated. An engine may load
+     * with another context length than [config] asks for (no more than the model supports,
+     * rounded to what the backend allocates); [LoadedModel.contextLength] has the real one.
      *
      * @throws runa.core.UserInputError when the file is missing or is not a model this engine can run.
      */

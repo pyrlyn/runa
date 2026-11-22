@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
 import org.jetbrains.kotlin.konan.target.Architecture
 import org.jetbrains.kotlin.konan.target.Family
 import org.jetbrains.kotlin.konan.target.HostManager
@@ -147,10 +148,17 @@ kotlin {
             dependencies {
                 api(projects.engine)
                 implementation(projects.gguf)
+                implementation(projects.platform)
             }
         }
         commonTest.dependencies {
             implementation(libs.kotlinx.coroutines.test)
         }
     }
+}
+
+// Tests that need a real model read its path from this variable; without it they skip, so the
+// result of a run depends on it.
+tasks.withType<KotlinNativeTest>().configureEach {
+    inputs.property("runa.testModel", providers.environmentVariable("RUNA_TEST_MODEL").orElse(""))
 }
