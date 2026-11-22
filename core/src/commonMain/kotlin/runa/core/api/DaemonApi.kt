@@ -6,6 +6,8 @@ import kotlinx.serialization.json.Json
 
 // The JSON of the daemon's native API (PLAN.md, section 6). The daemon writes these types and the
 // client reads them, so the two cannot drift apart; `--json` output of `ps` and `status` is the same.
+// The client of LM Studio answers in these types too. The daemon fills every field; a field that
+// says "null when the service does not tell" is null only for LM Studio.
 
 /**
  * How both sides write and read the API: every field is written, defaults and nulls too, and a
@@ -48,12 +50,13 @@ public data class ModelList(
 public data class ModelDescription(
     /** `publisher/repo@variant`, as `runa ls` shows it. */
     val key: String,
-    /** `llm` or `embedding`. */
+    /** `llm` or `embedding`; LM Studio also has `decision`. */
     val type: String,
     @SerialName("display_name") val displayName: String?,
     val architecture: String?,
     val quantization: String?,
-    val params: Long,
+    /** The number of parameters; null when the service does not tell. */
+    val params: Long?,
     @SerialName("size_bytes") val sizeBytes: Long,
     @SerialName("max_context_length") val maxContextLength: Long?,
     @SerialName("loaded_instances") val loadedInstances: List<InstanceDescription>,
@@ -66,12 +69,14 @@ public data class InstanceDescription(
     /** The key of the model it was loaded from. */
     val model: String,
     @SerialName("context_length") val contextLength: Int,
-    /** `off`, `max` or a ratio, as asked for at load time. */
-    val gpu: String,
-    val parallel: Int,
-    /** Seconds of idleness after which it is unloaded; null for never. */
+    /** `off`, `max` or a ratio, as asked for at load time; null when the service does not tell. */
+    val gpu: String?,
+    /** Null when the service does not tell. */
+    val parallel: Int?,
+    /** Seconds of idleness after which it is unloaded; null for never, and when the service does not tell. */
     @SerialName("ttl_seconds") val ttlSeconds: Long?,
-    @SerialName("idle_seconds") val idleSeconds: Long,
+    /** Null when the service does not tell. */
+    @SerialName("idle_seconds") val idleSeconds: Long?,
     @SerialName("size_bytes") val sizeBytes: Long,
 )
 
@@ -95,7 +100,8 @@ public data class LoadRequest(
 public data class LoadResponse(
     /** [LOADED] or [ESTIMATED]. */
     val status: String,
-    val estimate: MemoryEstimateDescription,
+    /** Null when the service does not tell. */
+    val estimate: MemoryEstimateDescription?,
     /** Null when only an estimate was asked for. */
     val instance: InstanceDescription? = null,
     @SerialName("load_time_seconds") val loadTimeSeconds: Double? = null,

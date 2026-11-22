@@ -14,11 +14,15 @@ public fun assertGolden(
     name: String,
     actual: String,
 ) {
-    val file = "src/commonTest/fixtures".toPath() / name
+    val file = FIXTURES / name
     if (systemEnv("RUNA_UPDATE_GOLDEN") == "1") {
         FileSystem.SYSTEM.write(file) { writeUtf8(actual) }
         return
     }
-    val expected = FileSystem.SYSTEM.read(file) { readUtf8() }
-    assertEquals(expected, actual, "Output differs from $file; rerun with RUNA_UPDATE_GOLDEN=1 if the change is intended")
+    assertEquals(fixture(name), actual, "Output differs from $file; rerun with RUNA_UPDATE_GOLDEN=1 if the change is intended")
 }
+
+/** The text of `src/commonTest/fixtures/<name>` of the module under test: what a test feeds in rather than expects. */
+public fun fixture(name: String): String = FileSystem.SYSTEM.read(FIXTURES / name) { readUtf8() }
+
+private val FIXTURES = "src/commonTest/fixtures".toPath()

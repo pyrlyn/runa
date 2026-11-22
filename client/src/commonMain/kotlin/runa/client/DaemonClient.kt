@@ -41,7 +41,7 @@ public class DaemonClient(
     engine: HttpClientEngine? = null,
     private val baseUrl: String,
     token: String?,
-) : AutoCloseable {
+) : ModelBackend {
     private val api =
         object : ApiTransport(engine, baseUrl, token, DaemonJson) {
             override val service = "the runa daemon"
@@ -92,15 +92,15 @@ public class DaemonClient(
             api.read(it, DaemonStatus.serializer())
         }
 
-    public suspend fun models(): ModelList = api.get(DaemonRoutes.MODELS, ModelList.serializer())
+    override suspend fun models(): ModelList = api.get(DaemonRoutes.MODELS, ModelList.serializer())
 
     /**
      * Loads a model, or only estimates it when the request says so. Returns when the model is
      * ready; [onProgress] gets values from 0 to 1 on the way. Cancelling the call cancels the load.
      */
-    public suspend fun load(
+    override suspend fun load(
         request: LoadRequest,
-        onProgress: (Float) -> Unit = {},
+        onProgress: (Float) -> Unit,
     ): LoadResponse {
         if (request.estimateOnly) return api.post(DaemonRoutes.LOAD, LoadRequest.serializer(), request, LoadResponse.serializer())
         val streamed = api.encode(LoadRequest.serializer(), request.copy(stream = true))
@@ -117,16 +117,12 @@ public class DaemonClient(
         }
     }
 
-    /**
-     * Sends one turn of a conversation and returns the whole answer; [onText] gets its pieces as
-     * the model writes them. Cancelling the call ends the generation.
-     */
-    public suspend fun chat(
+    override suspend fun chat(
         request: ChatRequest,
-        onText: (String) -> Unit = {},
+        onText: (String) -> Unit,
     ): ChatResponse = api.chat(request, onText)
 
-    public suspend fun unload(request: UnloadRequest): UnloadResponse =
+    override suspend fun unload(request: UnloadRequest): UnloadResponse =
         api.post(DaemonRoutes.UNLOAD, UnloadRequest.serializer(), request, UnloadResponse.serializer())
 
     /** Opens or closes the listener for other programs, and returns what it is now. */

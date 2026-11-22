@@ -83,7 +83,7 @@ internal class LoadCommand : CliktCommand(name = "load") {
             }
         response.loadedNote()?.let { note -> globals.log.info { note } }
         globals.renderer(json).render(response, LoadResponse.serializer()) {
-            Text(it.instance?.id ?: "Estimated memory: ${it.estimate.describe()}")
+            Text(it.instance?.id ?: "Estimated memory: ${it.estimate?.describe() ?: "unknown"}")
         }
     }
 }

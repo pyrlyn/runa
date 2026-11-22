@@ -4,10 +4,11 @@ package runa.cli.output
 internal fun statsSummary(
     promptTokens: Int,
     answerTokens: Int,
-    /** `stop` or `length`. */
-    stopReason: String,
+    /** `stop` or `length`; null when the service does not tell. */
+    stopReason: String?,
     secondsToFirstToken: Double,
     tokensPerSecond: Double,
 ): String =
-    "prompt: $promptTokens tokens, answer: $answerTokens tokens ($stopReason), " +
-        "time to first token: $secondsToFirstToken s, $tokensPerSecond tokens/s"
+    // runa's own numbers arrive rounded; LM Studio's come with every digit of a double.
+    "prompt: $promptTokens tokens, answer: $answerTokens tokens${stopReason?.let { " ($it)" }.orEmpty()}, " +
+        "time to first token: ${hundredths(secondsToFirstToken)} s, ${hundredths(tokensPerSecond)} tokens/s"

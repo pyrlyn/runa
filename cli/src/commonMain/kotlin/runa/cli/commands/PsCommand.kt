@@ -45,10 +45,10 @@ internal class PsCommand : CliktCommand(name = "ps") {
                         it.id,
                         it.model,
                         it.contextLength.toString(),
-                        it.gpu,
-                        it.parallel.toString(),
+                        it.gpu.orEmpty(),
+                        it.parallel?.toString().orEmpty(),
                         formatBytes(it.sizeBytes),
-                        formatSeconds(it.idleSeconds),
+                        it.idleSeconds?.let(::formatSeconds).orEmpty(),
                         it.ttlSeconds?.let(::formatSeconds) ?: "never",
                     )
                 },

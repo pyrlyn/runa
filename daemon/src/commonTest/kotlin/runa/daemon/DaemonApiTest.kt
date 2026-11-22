@@ -70,7 +70,7 @@ class DaemonApiTest {
                 assertEquals(512, instance.contextLength)
                 assertEquals(2, instance.parallel)
                 assertEquals(60, instance.ttlSeconds)
-                assertEquals(1_000 + 2 * 512, loaded.estimate.totalBytes)
+                assertEquals(1_000 + 2 * 512, loaded.estimate?.totalBytes)
                 assertNotNull(loaded.loadTimeSeconds)
                 assertEquals(1f, progress.last())
 
@@ -115,7 +115,7 @@ class DaemonApiTest {
             client().use { client ->
                 val response = client.load(LoadRequest("alpha", contextLength = 100, estimateOnly = true))
                 assertEquals(LoadResponse.ESTIMATED, response.status)
-                assertEquals(1_200, response.estimate.totalBytes)
+                assertEquals(1_200, response.estimate?.totalBytes)
                 assertNull(response.instance)
                 assertEquals(0, engine.loads.size)
             }

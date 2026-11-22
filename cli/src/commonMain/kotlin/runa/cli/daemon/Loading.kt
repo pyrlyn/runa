@@ -11,7 +11,7 @@ import com.github.ajalt.mordant.widgets.progress.text
 import runa.cli.output.formatBytes
 import runa.cli.output.hundredths
 import runa.cli.output.pick
-import runa.client.DaemonClient
+import runa.client.ModelBackend
 import runa.core.UserInputError
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
@@ -40,7 +40,7 @@ internal fun Terminal.chooseModel(
 }
 
 /** Loads a model and returns when it is ready, with a progress bar meanwhile when [showProgress] and someone is watching. */
-internal suspend fun DaemonClient.load(
+internal suspend fun ModelBackend.load(
     terminal: Terminal,
     request: LoadRequest,
     showProgress: Boolean,
@@ -76,7 +76,9 @@ internal fun MemoryEstimateDescription.describe(): String =
 internal fun LoadResponse.loadedNote(): String? {
     val instance = instance ?: return null
     val seconds = hundredths(loadTimeSeconds ?: 0.0)
-    return "Loaded ${instance.model} in $seconds s: context ${instance.contextLength}, gpu ${instance.gpu}, about ${estimate.describe()}"
+    val details =
+        listOfNotNull("context ${instance.contextLength}", instance.gpu?.let { "gpu $it" }, estimate?.let { "about ${it.describe()}" })
+    return "Loaded ${instance.model} in $seconds s: ${details.joinToString(", ")}"
 }
 
 private const val PROGRESS_STEPS = 1_000L
