@@ -10,7 +10,6 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.mordant.animation.progress.MultiProgressBarAnimation
 import com.github.ajalt.mordant.animation.progress.addTask
 import com.github.ajalt.mordant.animation.progress.advance
-import com.github.ajalt.mordant.terminal.prompt
 import com.github.ajalt.mordant.widgets.Text
 import com.github.ajalt.mordant.widgets.progress.completed
 import com.github.ajalt.mordant.widgets.progress.percentage
@@ -29,7 +28,7 @@ import okio.Path
 import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.output.formatBytes
-import runa.cli.output.listing
+import runa.cli.output.pick
 import runa.core.UserInputError
 import runa.hub.HubClient
 import runa.hub.HubRepo
@@ -177,24 +176,19 @@ internal class GetCommand : CliktCommand(name = "get") {
         memory: Long?,
     ): HubVariant {
         val rows =
-            candidates.mapIndexed { index, variant ->
+            candidates.map { variant ->
                 val note =
                     when {
                         variant === default -> "default"
                         memory != null && !fits(variant, memory) -> "may not fit in memory"
                         else -> ""
                     }
-                listOf("${index + 1}", variant.label, formatBytes(variant.sizeBytes), note)
+                listOf(variant.label, formatBytes(variant.sizeBytes), note)
             }
-        terminal.println(listing(listOf("#", "VARIANT", "SIZE", ""), rows))
-        val answer =
-            terminal.prompt(
-                "Variant",
-                default = "${candidates.indexOf(default) + 1}",
-                showChoices = false,
-                choices = candidates.indices.map { "${it + 1}" },
-            ) ?: throw UserInputError("No variant chosen")
-        return candidates[answer.toInt() - 1]
+        val chosen =
+            terminal.pick("Variant", listOf("VARIANT", "SIZE", ""), rows, candidates.indexOf(default))
+                ?: throw UserInputError("No variant chosen")
+        return candidates[chosen]
     }
 
     private suspend fun download(
