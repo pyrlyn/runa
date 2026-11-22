@@ -110,6 +110,14 @@ jobs:
         name: Smoke test
         run: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe --version
 
+      # Integration (PLAN.md, phase 10): archives packed the way release.yml packs them, installed
+      # by scripts/install.sh and named by scripts/formula.sh.
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        name: Install script and formula test
+        env:
+          RUNA: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe
+        run: app/integration/install.sh "$RUNA"
+
       # Integration (PLAN.md, phase 4): the engine tests skip without real weights, so one small
       # public model is fetched with runa itself, which checks its SHA-256, and kept in a cache.
       - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
