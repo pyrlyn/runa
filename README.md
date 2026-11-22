@@ -16,6 +16,16 @@ of a running LM Studio through the same commands is in [`docs/lmstudio.md`](docs
 What `runa runtime survey` tells about a machine, and how `runa load --auto` chooses by it, is in
 [`docs/hardware.md`](docs/hardware.md).
 
+## Install
+
+```sh
+curl -fsSL https://github.com/pyrlyn/runa/releases/latest/download/install.sh | sh
+```
+
+for macOS on Apple Silicon and Linux on x86-64 and arm64, once the first release is out. The
+Homebrew formula, the archives, what Linux must have and how a release is made are in
+[`docs/install.md`](docs/install.md).
+
 ## Build
 
 ```sh
