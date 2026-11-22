@@ -55,6 +55,24 @@ echo "a text completion"
 answer="$(api "$base/v1/completions" -d "$(printf '{"model":"%s","prompt":"The capital of France is","max_tokens":4}' "$model")")"
 grep -q '"object":"text_completion".*"text":"' <<<"$answer" || fail "not a text completion: $answer"
 
+echo "a tool call"
+tools=',"temperature":0,"tool_choice":"required","tools":[{"type":"function","function":{"name":"get_weather","description":"The weather in a city","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]'
+answer="$(api "$base/v1/chat/completions" -d "$(chat "What is the weather in Paris?" 64 "$tools")")"
+grep -q '"content":null,"tool_calls":\[{"id":"call_[^"]*","type":"function","function":{"name":"get_weather","arguments":"{.*city.*}"}}\]},"finish_reason":"tool_calls"' <<<"$answer" ||
+  fail "not a tool call: $answer"
+
+echo "a streamed tool call"
+stream="$(api -N "$base/v1/chat/completions" -d "$(chat "What is the weather in Paris?" 64 "$tools,\"stream\":true")")"
+grep -q '"delta":{"tool_calls":\[{"index":0,"id":"call_[^"]*","type":"function","function":{"name":"get_weather","arguments":""}}\]}' <<<"$stream" ||
+  fail "the stream does not announce the call: $stream"
+grep -q '"delta":{"tool_calls":\[{"index":0,"function":{"arguments":"[^"]' <<<"$stream" || fail "the stream has no arguments: $stream"
+grep -q '"delta":{},"finish_reason":"tool_calls"' <<<"$stream" || fail "the stream does not end with tool_calls: $stream"
+
+echo "an answer of a JSON schema"
+schema=',"temperature":0,"response_format":{"type":"json_schema","json_schema":{"name":"city","schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"],"additionalProperties":false}}}'
+answer="$(api "$base/v1/chat/completions" -d "$(chat "Name a city." 48 "$schema")")"
+grep -q '"content":"{\\"city\\": *\\"[^"]*\\"}"},"finish_reason":"stop"' <<<"$answer" || fail "not an answer of the schema: $answer"
+
 echo "mistakes get the status codes of OpenAI"
 [ "$(status_of "$base/v1/chat/completions" -d '{"model":"no-such-model","messages":[{"role":"user","content":"Hi"}]}')" = 404 ] ||
   fail "an unknown model is not a 404"
