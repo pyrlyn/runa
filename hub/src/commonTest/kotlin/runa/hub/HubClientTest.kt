@@ -297,6 +297,27 @@ class HubClientTest {
     }
 
     @Test
+    fun anEndpointMustNotCarryTheTokenInClearText() {
+        val engine =
+            MockEngine {
+                requests += it
+                respond("[]")
+            }
+        listOf("http://mirror.example.com", "mirror.example.com", "ftp://mirror.example.com", "").forEach {
+            assertFailsWith<UserInputError>(it) { HubClient(engine, endpoint = it) }
+        }
+        HubClient(engine, endpoint = "http://127.0.0.1:8080").run { listFiles(repo) }
+        HubClient(engine, endpoint = "https://mirror.example.com/").run { listFiles(repo) }
+        assertEquals(
+            listOf(
+                "http://127.0.0.1:8080/api/models/acme/tiny-GGUF/tree/main?recursive=true",
+                "https://mirror.example.com/api/models/acme/tiny-GGUF/tree/main?recursive=true",
+            ),
+            requests.map { it.url.toString() },
+        )
+    }
+
+    @Test
     fun downloadsEveryPartOfASplitModel() {
         val parts =
             listOf(0 to 120_000, 120_000 to 200_000).mapIndexed { index, (from, to) ->

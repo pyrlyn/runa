@@ -12,6 +12,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
+import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import io.ktor.http.appendPathSegments
 import io.ktor.http.takeFrom
@@ -47,7 +48,7 @@ public class HubClient(
     endpoint: String = DEFAULT_ENDPOINT,
     private val token: String? = null,
 ) : AutoCloseable {
-    private val endpoint = Url(endpoint)
+    private val endpoint = parseEndpoint(endpoint)
     private val http = if (engine != null) HttpClient(engine) { configure() } else HttpClient { configure() }
 
     private fun HttpClientConfig<*>.configure() {
@@ -382,11 +383,21 @@ public class HubClient(
         private const val CONNECT_TIMEOUT_MILLIS = 30_000L
         private const val SOCKET_TIMEOUT_MILLIS = 60_000L
         private const val ERROR_CODE = "X-Error-Code"
+        private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "[::1]", "::1")
         private val REDIRECT_STATUSES = setOf(301, 302, 303, 307, 308)
         private val NOT_VISIBLE_STATUSES = setOf(401, 403, 404)
         private val SHA256 = Regex("[0-9a-f]{64}")
         private val NEXT_LINK = Regex("<([^>]+)>\\s*;\\s*rel=\"next\"")
         private val json = Json { ignoreUnknownKeys = true }
+
+        // A token must not travel in clear text, and Ktor reads a string without a scheme as a path on localhost.
+        private fun parseEndpoint(text: String): Url {
+            val url = if (text.startsWith("https://") || text.startsWith("http://")) runCatching { Url(text) }.getOrNull() else null
+            if (url == null || (url.protocol != URLProtocol.HTTPS && url.host !in LOOPBACK_HOSTS)) {
+                throw UserInputError("HF_ENDPOINT must be an https:// URL (http:// only for localhost), not '$text'")
+            }
+            return url
+        }
 
         private fun isSafeFileName(name: String): Boolean =
             name.isNotEmpty() && !name.startsWith(".") && name.none { it == '\\' || it == ':' || it.isISOControl() }
