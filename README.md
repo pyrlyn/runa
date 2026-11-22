@@ -9,6 +9,9 @@ through llama.cpp and does not need LM Studio.
 
 The implementation plan, phases and acceptance criteria are in [`PLAN.md`](PLAN.md).
 
+How to use the OpenAI-compatible API, with `curl` and the `openai` Python client, is in
+[`docs/openai.md`](docs/openai.md).
+
 ## Build
 
 ```sh
