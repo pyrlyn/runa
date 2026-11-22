@@ -43,6 +43,7 @@ class HelpGroupsTest {
             |
             |Serve:
             |  status  Show whether the daemon runs and what it has loaded
+            |  server  Serve the OpenAI-compatible API to other programs
             |  daemon  Start and stop the background process that keeps models loaded
             |  expose  Does expose
             |

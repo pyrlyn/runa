@@ -1,0 +1,17 @@
+Usage: runa server [<options>] <command> [<args>]...
+
+  Serve the OpenAI-compatible API to other programs
+
+  `server start` opens the daemon's API on an address and port of your
+  choosing, by default 127.0.0.1:7862. A program that speaks the OpenAI API
+  takes `http://127.0.0.1:7862/v1` as its base URL; a model is loaded when a
+  request first names it. `server stop` closes the port again and leaves the
+  daemon and its models alone.
+
+Options:
+  -h, --help  Show this message and exit
+
+Commands:
+  start   Open the API on a port for other programs, unless it is open already
+  stop    Close the port; the daemon keeps running and keeps its models
+  status  Show whether the server runs and where

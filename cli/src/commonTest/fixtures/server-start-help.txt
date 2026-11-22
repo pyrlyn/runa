@@ -1,0 +1,13 @@
+Usage: runa server start [<options>]
+
+  Open the API on a port for other programs, unless it is open already
+
+Options:
+  -p, --port=<port>   Port to listen on (config: server.port)
+  --bind=<address>    Address to listen on; 0.0.0.0 is every network interface
+                      (config: server.bind)
+  --cors / --no-cors  Let pages in a browser call the API (config: server.cors)
+  --api-key=<key>     Ask the callers of /v1 for this bearer key (env:
+                      RUNA_API_KEY)
+  --json              Print JSON
+  -h, --help          Show this message and exit

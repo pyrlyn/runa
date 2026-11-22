@@ -28,6 +28,8 @@ import runa.core.api.LoadResponse
 import runa.core.api.MemoryEstimateDescription
 import runa.core.api.ModelDescription
 import runa.core.api.ModelList
+import runa.core.api.ServerDescription
+import runa.core.api.ServerRequest
 import runa.core.api.ShutdownResponse
 import runa.core.api.UnloadRequest
 import runa.core.api.UnloadResponse
@@ -56,6 +58,10 @@ internal class FakeDaemon(
     /** Every request that passed the token check: `POST /api/v1/models/load {...}`. */
     val requests = mutableListOf<String>()
     val instances = mutableListOf<InstanceDescription>()
+
+    /** What `server start` opened. */
+    var server = ServerDescription()
+        private set
 
     val discovery = DiscoveryFile(FileSystem.SYSTEM, home / "run" / "daemon.json")
 
@@ -113,8 +119,13 @@ internal class FakeDaemon(
                 unload(DaemonJson.decodeFromString(UnloadRequest.serializer(), body))
             }
 
+            DaemonRoutes.SERVER -> {
+                serve(DaemonJson.decodeFromString(ServerRequest.serializer(), body))
+            }
+
             DaemonRoutes.SHUTDOWN -> {
                 running = false
+                server = ServerDescription()
                 discovery.delete()
                 json(ShutdownResponse.serializer(), ShutdownResponse("stopping"))
             }
@@ -126,7 +137,16 @@ internal class FakeDaemon(
     }
 
     private fun status() =
-        DaemonStatus(version, PID, port, uptimeSeconds = 125, EngineDescription("fake", "0", listOf("cpu")), instances.size)
+        DaemonStatus(version, PID, port, uptimeSeconds = 125, EngineDescription("fake", "0", listOf("cpu")), instances.size, server)
+
+    private fun MockRequestHandleScope.serve(request: ServerRequest): HttpResponseData {
+        val asked = ServerDescription(request.running, request.bind, request.port, request.cors, request.apiKey != null)
+        if (request.running && server.running && server != asked) {
+            return invalid("The server already runs on ${server.bind}:${server.port}; stop it first with `runa server stop`")
+        }
+        server = if (request.running) asked else ServerDescription()
+        return json(ServerDescription.serializer(), server)
+    }
 
     private fun MockRequestHandleScope.load(request: LoadRequest): HttpResponseData {
         val model =
