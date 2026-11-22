@@ -1,0 +1,3 @@
+MODEL        TYPE       PARAMS  ARCH        VARIANTS      SIZE
+acme/tiny    llm        1.24M   llama       q4_k_m, q8_0  519 B
+Nomic/embed  embedding  137M    nomic-bert  f16           156 B

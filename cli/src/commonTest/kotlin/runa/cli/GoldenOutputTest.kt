@@ -26,6 +26,12 @@ class GoldenOutputTest {
     fun configGetHelp() = golden("config-get-help.txt", "config", "get", "--help")
 
     @Test
+    fun lsHelp() = golden("ls-help.txt", "ls", "--help")
+
+    @Test
+    fun importHelp() = golden("import-help.txt", "import", "--help")
+
+    @Test
     fun versionJson() = golden("version.json", "version", "--json")
 
     @Test

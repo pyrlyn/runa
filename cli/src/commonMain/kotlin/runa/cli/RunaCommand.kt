@@ -14,6 +14,8 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.mordant.terminal.Terminal
 import runa.cli.commands.ConfigCommand
+import runa.cli.commands.ImportCommand
+import runa.cli.commands.LsCommand
 import runa.cli.commands.VersionCommand
 import runa.config.ConfigKey
 
@@ -40,6 +42,8 @@ internal class RunaCommand(
         }
         subcommands(
             listOf(
+                LsCommand(),
+                ImportCommand(),
                 VersionCommand(),
                 ConfigCommand(),
                 CompletionCommand(name = "completion", help = "Print a completion script for bash, zsh or fish"),
