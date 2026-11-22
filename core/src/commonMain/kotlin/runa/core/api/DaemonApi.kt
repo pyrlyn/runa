@@ -192,10 +192,21 @@ public object DaemonRoutes {
     public const val MODELS: String = "/api/v1/models"
     public const val LOAD: String = "/api/v1/models/load"
     public const val UNLOAD: String = "/api/v1/models/unload"
+    public const val CHAT: String = "/api/v1/chat"
     public const val SERVER: String = "/api/v1/server"
     public const val SHUTDOWN: String = "/api/v1/shutdown"
 
+    // Of a streamed load.
     public const val EVENT_PROGRESS: String = "progress"
     public const val EVENT_LOADED: String = "loaded"
+
+    // Of a streamed chat, in the order they are sent.
+    public const val EVENT_CHAT_START: String = "chat.start"
+    public const val EVENT_MESSAGE_START: String = "message.start"
+    public const val EVENT_MESSAGE_DELTA: String = "message.delta"
+    public const val EVENT_MESSAGE_END: String = "message.end"
+    public const val EVENT_CHAT_END: String = "chat.end"
+
+    /** Instead of the last event of either stream, when it failed. */
     public const val EVENT_ERROR: String = "error"
 }
