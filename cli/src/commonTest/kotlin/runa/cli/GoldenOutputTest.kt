@@ -39,6 +39,9 @@ class GoldenOutputTest {
     fun runHelp() = golden("run-help.txt", "run", "--help")
 
     @Test
+    fun chatHelp() = golden("chat-help.txt", "chat", "--help")
+
+    @Test
     fun loadHelp() = golden("load-help.txt", "load", "--help")
 
     @Test

@@ -21,6 +21,7 @@ Local models:
   ls      List the models on this machine
   import  Add a GGUF file to the model store
   run     Ask a model one question
+  chat    Talk to a model
   load    Load a model into the daemon
   unload  Unload a model from the daemon and free its memory
   ps      List the models the daemon has loaded

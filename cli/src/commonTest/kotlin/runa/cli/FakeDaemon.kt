@@ -11,12 +11,21 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.json.JsonPrimitive
 import okio.FileSystem
 import okio.IOException
 import okio.Path
 import runa.config.DaemonInfo
 import runa.config.DiscoveryFile
 import runa.core.api.ApiError
+import runa.core.api.ChatDelta
+import runa.core.api.ChatEnded
+import runa.core.api.ChatFailed
+import runa.core.api.ChatMark
+import runa.core.api.ChatRequest
+import runa.core.api.ChatResponse
+import runa.core.api.ChatStarted
+import runa.core.api.ChatStats
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.core.api.DaemonStatus
@@ -58,6 +67,9 @@ internal class FakeDaemon(
     /** Every request that passed the token check: `POST /api/v1/models/load {...}`. */
     val requests = mutableListOf<String>()
     val instances = mutableListOf<InstanceDescription>()
+
+    /** How many answers it stored, which is what their ids count. */
+    private var answers = 0
 
     /** What `server start` opened. */
     var server = ServerDescription()
@@ -117,6 +129,10 @@ internal class FakeDaemon(
 
             DaemonRoutes.UNLOAD -> {
                 unload(DaemonJson.decodeFromString(UnloadRequest.serializer(), body))
+            }
+
+            DaemonRoutes.CHAT -> {
+                chat(DaemonJson.decodeFromString(ChatRequest.serializer(), body))
             }
 
             DaemonRoutes.SERVER -> {
@@ -179,6 +195,55 @@ internal class FakeDaemon(
         return respond(events, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
     }
 
+    /**
+     * Answers with what it was asked, and with what the request carried besides: `[system prompt]`
+     * in front, and the answer it continues behind. [FAILING] as the input fails halfway.
+     */
+    private fun MockRequestHandleScope.chat(request: ChatRequest): HttpResponseData {
+        check(request.stream) { "the CLI always streams" }
+        if (instances.none { it.id == request.model }) {
+            val error = ApiError.Detail("No model is called '${request.model}'", ApiError.INVALID_REQUEST, code = ApiError.MODEL_NOT_FOUND)
+            return json(ApiError.serializer(), ApiError(error), HttpStatusCode.NotFound)
+        }
+        val input = (request.input as JsonPrimitive).content
+        val opening =
+            event(DaemonRoutes.EVENT_CHAT_START, ChatStarted.serializer(), ChatStarted(modelInstanceId = request.model)) +
+                event(DaemonRoutes.EVENT_MESSAGE_START, ChatMark.serializer(), ChatMark(DaemonRoutes.EVENT_MESSAGE_START))
+
+        fun delta(text: String) = event(DaemonRoutes.EVENT_MESSAGE_DELTA, ChatDelta.serializer(), ChatDelta(content = text))
+
+        fun stream(events: String) = respond(opening + events, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
+        if (input == FAILING) {
+            val error = ApiError.Detail("The model fell over", ApiError.SERVER_ERROR)
+            return stream(delta("Half an") + event(DaemonRoutes.EVENT_ERROR, ChatFailed.serializer(), ChatFailed(error = error)))
+        }
+        val head =
+            request.systemPrompt
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { "[$it] " }
+                .orEmpty() + "echo:"
+        val tail = " $input" + request.previousResponseId?.let { " (after $it)" }.orEmpty()
+        val result =
+            ChatResponse(
+                modelInstanceId = request.model,
+                output = listOf(ChatResponse.Output(ChatResponse.MESSAGE, head + tail)),
+                stats =
+                    ChatStats(
+                        inputTokens = 7,
+                        totalOutputTokens = 3,
+                        tokensPerSecond = 12.5,
+                        timeToFirstTokenSeconds = 0.25,
+                        stopReason = "stop",
+                    ),
+                responseId = if (request.store) "resp_${++answers}" else null,
+            )
+        return stream(
+            delta(head) + delta(tail) +
+                event(DaemonRoutes.EVENT_MESSAGE_END, ChatMark.serializer(), ChatMark(DaemonRoutes.EVENT_MESSAGE_END)) +
+                event(DaemonRoutes.EVENT_CHAT_END, ChatEnded.serializer(), ChatEnded(result = result)),
+        )
+    }
+
     private fun MockRequestHandleScope.unload(request: UnloadRequest): HttpResponseData {
         val gone =
             if (request.all) {
@@ -213,6 +278,9 @@ internal class FakeDaemon(
         const val TOKEN = "secret-token"
         const val ALPHA = "acme/alpha@Q4_K_M"
         const val BETA = "acme/beta@Q8_0"
+
+        /** The message that makes the model fail halfway through its answer. */
+        const val FAILING = "fail"
 
         private fun model(
             key: String,
