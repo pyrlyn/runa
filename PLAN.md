@@ -753,8 +753,9 @@ estimate fits the reported memory in unit tests.
 
 Status: implemented ([#159](https://github.com/pyrlyn/runa/pull/159)), and the acceptance run is
 still to come: it is the first release, which only Ivan starts (`scripts/release.sh`, see
-[`docs/install.md`](docs/install.md)). Verified without a release: the build with the version of a tag on macOS arm64 and Linux arm64
-(`scripts/build-release.sh`); the install script and the formula against archives packed the way
+[`docs/install.md`](docs/install.md)). Verified without a release: the build with the version of
+a tag on macOS arm64 and Linux arm64 (`scripts/build-release.sh`); the install script and the
+formula against archives packed the way
 the release packs them (`app/integration/install.sh`, a CI step), on macOS and under `dash`; the
 install script on Linux arm64 in a Fedora container, up to the missing `libcrypt.so.1` it then
 names. Not verified, because each needs the workflows on `main` or a release: a run of `bump.yml`
