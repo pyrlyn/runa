@@ -334,9 +334,9 @@ config precedence tests (flag > env > file > default).
 ### Phase 2: local model store, `ls`, `import`
 
 Status: done ([#146](https://github.com/pyrlyn/runa/pull/146)). Verified on macOS arm64 and in an
-Ubuntu 24.04 arm64 container; warm `ls` on 200 models takes 36 ms with the release binary. Not yet
-tried on a GGUF file written by llama.cpp: tests use synthetic headers, and the first real model
-file arrives with `runa get` in phase 3. `import` derives `publisher/repo` as
+Ubuntu 24.04 arm64 container; warm `ls` on 200 models takes 36 ms with the release binary. Tests use
+synthetic headers; the parser was also run on a GGUF file written by llama.cpp in phase 3
+(Qwen2.5 0.5B: `qwen2`, 494M parameters, context 32768, Q4_K_M). `import` derives `publisher/repo` as
 `<general.organization or "local">/<file name without the quantization>`; a variant is named by its
 quantization (`@q4_k_m`), or by its file name when two files of a repo share one.
 
@@ -357,14 +357,15 @@ dir; `ls` on 200 models finishes under 200 ms with a warm index.
 
 ### Phase 3: Hugging Face download, `get`
 
-Status: code complete ([#147](https://github.com/pyrlyn/runa/pull/147)); the manual download of a
-real model from huggingface.co is still to do. Verified on macOS arm64 and in an Ubuntu 24.04 arm64
-container, with tests on Ktor's `MockEngine` and with the real binaries against a local stand-in for
-the Hub (interrupt, resume, split model). The default variant is the largest quantized one whose
-files take at most 70 % of physical memory: `runtime survey` does not exist yet, and the engine's
-own estimate comes with phase 4. `mmproj` files are listed but not downloaded; pairing a projector
-with a vision model belongs to the phase that loads one. `HF_TOKEN` goes to the Hub's own origin
-only, never to the CDN host a download redirects to.
+Status: done ([#147](https://github.com/pyrlyn/runa/pull/147)). Verified on macOS arm64 and in an
+Ubuntu 24.04 arm64 container, with tests on Ktor's `MockEngine`, with the real binaries against a
+local stand-in for the Hub (interrupt, resume, split model), and with one real download:
+`runa get bartowski/Qwen2.5-0.5B-Instruct-GGUF@Q4_K_M` (398 MB), interrupted once and resumed.
+The default variant is the largest quantized one whose files take at most 70 % of physical memory:
+`runtime survey` does not exist yet, and the engine's own estimate comes with phase 4. `mmproj`
+files are listed but not downloaded; pairing a projector with a vision model belongs to the phase
+that loads one. `HF_TOKEN` goes to the Hub's own origin only, never to the CDN host a download
+redirects to.
 
 Steps:
 1. `:hub`: resolve `owner/repo`, `owner/repo@quant`, or a full `https://huggingface.co/...` URL;
