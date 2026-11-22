@@ -273,6 +273,7 @@ with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cann
 | Path | Content |
 |---|---|
 | `~/.runa/models/<publisher>/<repo>/<file>.gguf` | model store (same layout as LM Studio so `runa import --symlink` can reuse `~/.lmstudio/models`) |
+| `~/.runa/models/.index.json` | cache of parsed GGUF headers, keyed by path, size and mtime; safe to delete |
 | `~/.runa/config.json` | defaults: models dir, server port/bind/cors, default context, gpu, ttl, backend |
 | `~/.runa/cli-pref.json` | last loaded models, one-time warnings |
 | `~/.runa/run/daemon.json` | discovery: `{pid, port, token, version}`, mode 0600 |
@@ -330,6 +331,13 @@ Acceptance: golden-file tests for help output and `--json` output of `version`; 
 config precedence tests (flag > env > file > default).
 
 ### Phase 2: local model store, `ls`, `import`
+
+Status: done ([#146](https://github.com/pyrlyn/runa/pull/146)). Verified on macOS arm64 and in an
+Ubuntu 24.04 arm64 container; warm `ls` on 200 models takes 36 ms with the release binary. Not yet
+tried on a GGUF file written by llama.cpp: tests use synthetic headers, and the first real model
+file arrives with `runa get` in phase 3. `import` derives `publisher/repo` as
+`<general.organization or "local">/<file name without the quantization>`; a variant is named by its
+quantization (`@q4_k_m`), or by its file name when two files of a repo share one.
 
 Steps:
 1. `:gguf` parser: header, metadata key/values, tensor infos; reads only the header (never maps
