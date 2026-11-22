@@ -276,18 +276,18 @@ class DaemonCommandsTest {
 
     @Test
     fun aDaemonGivenByAddressIsNeverStarted() {
-        val noPort = run("--host", "10.0.0.5", "ps")
+        val noPort = run("--host", "192.0.2.5", "ps")
         assertEquals(2, noPort.exitCode)
-        assertContains(noPort.stderr, "--host 10.0.0.5 needs the daemon's port")
+        assertContains(noPort.stderr, "--host 192.0.2.5 needs the daemon's port")
 
-        val noToken = run("--host", "10.0.0.5", "--port", "41234", "ps")
+        val noToken = run("--host", "192.0.2.5", "--port", "41234", "ps")
         assertEquals(2, noToken.exitCode)
         assertContains(noToken.stderr, "needs its token: --token or RUNA_TOKEN")
 
-        val down = run("--host", "10.0.0.5", "--port", "41234", "--token", FakeDaemon.TOKEN, "ps")
+        val down = run("--host", "192.0.2.5", "--port", "41234", "--token", FakeDaemon.TOKEN, "ps")
         assertEquals(3, down.exitCode)
-        assertContains(down.stderr, "Error: No runa daemon answers at 10.0.0.5:41234")
-        assertEquals("The runa daemon is not running\n", run("--host", "10.0.0.5", "--port", "41234", "--token", "x", "status").stdout)
+        assertContains(down.stderr, "Error: No runa daemon answers at 192.0.2.5:41234")
+        assertEquals("The runa daemon is not running\n", run("--host", "192.0.2.5", "--port", "41234", "--token", "x", "status").stdout)
         assertEquals(emptyList(), daemon.starts)
     }
 
@@ -296,7 +296,7 @@ class DaemonCommandsTest {
         daemon.start()
         // No discovery file on this machine: all the CLI knows is the address and the token.
         daemon.discovery.delete()
-        val address = arrayOf("--host", "10.0.0.5", "--port", "41234")
+        val address = arrayOf("--host", "192.0.2.5", "--port", "41234")
         assertEquals("$ALPHA\n", run(*address, "load", "alpha", env = mapOf("RUNA_TOKEN" to FakeDaemon.TOKEN)).stdout)
         assertContains(run(*address, "--token", FakeDaemon.TOKEN, "ps").stdout, ALPHA)
 
