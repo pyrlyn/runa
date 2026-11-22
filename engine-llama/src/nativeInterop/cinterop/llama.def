@@ -1,7 +1,8 @@
-# The C API of the vendored llama.cpp (third_party/llama.cpp). The include directories and the
-# static libraries come from build.gradle.kts, which builds them with CMake for each target.
-headers = llama.h
-headerFilter = llama.h ggml.h ggml-*.h gguf.h
+# The C API of the vendored llama.cpp (third_party/llama.cpp) and runa's own over the part of it
+# that has none (../shim). The include directories and the static libraries come from
+# build.gradle.kts, which builds them with CMake for each target.
+headers = llama.h runa_llama.h
+headerFilter = llama.h ggml.h ggml-*.h gguf.h runa_llama.h
 package = runa.engine.llama.cinterop
 
 # llama.cpp is C++: libc++ on macOS, plus the frameworks of its Metal and Accelerate backends.
