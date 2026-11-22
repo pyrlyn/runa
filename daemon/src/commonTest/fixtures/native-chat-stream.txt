@@ -1,0 +1,27 @@
+event: chat.start
+data: {"type":"chat.start","model_instance_id":"acme/alpha@Q4_K_M"}
+
+event: message.start
+data: {"type":"message.start"}
+
+event: message.delta
+data: {"type":"message.delta","content":"system:"}
+
+event: message.delta
+data: {"type":"message.delta","content":" Be"}
+
+event: message.delta
+data: {"type":"message.delta","content":" brief"}
+
+event: message.delta
+data: {"type":"message.delta","content":" user:"}
+
+event: message.delta
+data: {"type":"message.delta","content":" Hi"}
+
+event: message.end
+data: {"type":"message.end"}
+
+event: chat.end
+data: {"type":"chat.end","result":{"model_instance_id":"acme/alpha@Q4_K_M","output":[{"type":"message","content":"system: Be brief user: Hi"}],"stats":{"input_tokens":5,"total_output_tokens":5,"tokens_per_second":8.0,"time_to_first_token_seconds":0.01,"stop_reason":"stop"},"response_id":"resp_1"}}
+

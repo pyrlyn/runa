@@ -19,6 +19,7 @@ import kotlinx.serialization.SerializationStrategy
 import runa.core.GpuOffload
 import runa.core.UserInputError
 import runa.core.api.ApiError
+import runa.core.api.ChatRequest
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.core.api.DaemonStatus
@@ -51,6 +52,7 @@ internal class DaemonApi(
     private val access: Access,
     private val failures: Failures,
     private val openAi: OpenAiApi,
+    private val chat: ChatApi,
     private val server: PublicServer,
     private val version: String,
     private val pid: Int,
@@ -79,6 +81,7 @@ internal class DaemonApi(
             post(
                 DaemonRoutes.UNLOAD,
             ) { guarded { call.respond(UnloadResponse.serializer(), unload(call.receive(UnloadRequest.serializer()))) } }
+            post(DaemonRoutes.CHAT) { guarded { chat.answer(call, call.receive(ChatRequest.serializer())) } }
             post(DaemonRoutes.SERVER) {
                 guarded { call.respond(ServerDescription.serializer(), serve(call.receive(ServerRequest.serializer()), listener)) }
             }

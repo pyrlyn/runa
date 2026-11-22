@@ -54,6 +54,25 @@ internal class TestDaemon(
 
         /** What the `created` fields say. */
         const val NOW = 1_700_000_000L
+
+        /** How many conversations this daemon remembers: few, so a test can make it forget one. */
+        const val CONVERSATIONS = 3
+    }
+}
+
+internal const val LOOPBACK = "127.0.0.1"
+
+/** A port that was free a moment ago. */
+internal suspend fun freePort(): Int {
+    val probe = embeddedServer(CIO, port = 0, host = LOOPBACK) {}
+    probe.startSuspend(wait = false)
+    try {
+        return probe.engine
+            .resolvedConnectors()
+            .first()
+            .port
+    } finally {
+        probe.stopSuspend(gracePeriodMillis = 0, timeoutMillis = 1_000)
     }
 }
 
@@ -80,6 +99,7 @@ internal fun withDaemon(
             access = access,
             failures = failures,
             openAi = OpenAiApi(registry, { models }, access, failures, log, now = { TestDaemon.NOW }, newId = { "${++ids}" }),
+            chat = ChatApi(registry, failures, log, Conversations(TestDaemon.CONVERSATIONS), newId = { "${++ids}" }),
             server = public,
             version = "1.2.3",
             pid = 42,
@@ -88,7 +108,7 @@ internal fun withDaemon(
             log = log,
             requestShutdown = { shutdown = true },
         )
-    val server = embeddedServer(CIO, port = 0, host = "127.0.0.1") { api.install(this, Listener.PRIVATE) }
+    val server = embeddedServer(CIO, port = 0, host = LOOPBACK) { api.install(this, Listener.PRIVATE) }
     server.startSuspend(wait = false)
     val http = HttpClient(ClientCIO)
     try {
@@ -97,7 +117,7 @@ internal fun withDaemon(
                 .resolvedConnectors()
                 .first()
                 .port
-        TestDaemon("http://127.0.0.1:$port", engine, registry, public, http, lines) { shutdown }.block()
+        TestDaemon("http://$LOOPBACK:$port", engine, registry, public, http, lines) { shutdown }.block()
     } finally {
         http.close()
         public.stop()
