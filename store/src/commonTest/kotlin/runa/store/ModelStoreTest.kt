@@ -8,6 +8,7 @@ import runa.core.ModelKey
 import runa.core.ModelKind
 import runa.core.UserInputError
 import runa.gguf.GgufWriter
+import runa.gguf.isGgufFileName
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -25,7 +26,7 @@ class ModelStoreTest {
         var modelsOpened = 0
 
         override fun source(file: Path): Source {
-            if (isGgufName(file.name)) modelsOpened++
+            if (isGgufFileName(file.name)) modelsOpened++
             return super.source(file)
         }
     }
