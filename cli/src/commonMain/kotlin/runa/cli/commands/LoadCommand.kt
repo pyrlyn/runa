@@ -12,28 +12,19 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import com.github.ajalt.clikt.parameters.types.restrictTo
-import com.github.ajalt.mordant.animation.progress.MultiProgressBarAnimation
-import com.github.ajalt.mordant.animation.progress.addTask
-import com.github.ajalt.mordant.animation.progress.advance
 import com.github.ajalt.mordant.widgets.Text
-import com.github.ajalt.mordant.widgets.progress.percentage
-import com.github.ajalt.mordant.widgets.progress.progressBar
-import com.github.ajalt.mordant.widgets.progress.progressBarLayout
-import com.github.ajalt.mordant.widgets.progress.text
 import kotlinx.coroutines.runBlocking
 import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.daemon.DaemonConnector
-import runa.cli.output.formatBytes
-import runa.cli.output.pick
-import runa.client.DaemonClient
+import runa.cli.daemon.chooseModel
+import runa.cli.daemon.describe
+import runa.cli.daemon.load
+import runa.cli.daemon.loadedNote
 import runa.core.GpuOffload
 import runa.core.LoadConfig
-import runa.core.UserInputError
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
-import runa.core.api.ModelDescription
-import kotlin.math.roundToLong
 
 internal class LoadCommand : CliktCommand(name = "load") {
     private val globals by requireObject<Globals>()
@@ -73,12 +64,13 @@ internal class LoadCommand : CliktCommand(name = "load") {
         """.trimIndent()
 
     override fun run() {
+        val forProgram = globals.wantsJson(json)
         val response =
             runBlocking {
                 DaemonConnector(globals).require().use { daemon ->
                     val request =
                         LoadRequest(
-                            model = model ?: choose(daemon.client.models().models),
+                            model = model ?: terminal.chooseModel(daemon.client.models().models, mayAsk = !globals.yes && !forProgram),
                             contextLength = contextLength,
                             gpu = gpu?.id,
                             parallel = parallel,
@@ -86,63 +78,12 @@ internal class LoadCommand : CliktCommand(name = "load") {
                             identifier = identifier,
                             estimateOnly = estimateOnly,
                         )
-                    load(daemon.client, request)
+                    daemon.client.load(terminal, request, showProgress = !forProgram)
                 }
             }
-        val estimate = response.estimate
-        val memory = "${formatBytes(
-            estimate.totalBytes,
-        )} (weights ${formatBytes(estimate.weightsBytes)}, context ${formatBytes(estimate.contextBytes)})"
-        val instance = response.instance
-        if (instance != null) {
-            val seconds = ((response.loadTimeSeconds ?: 0.0) * 100).roundToLong() / 100.0
-            globals.log.info {
-                "Loaded ${instance.model} in $seconds s: context ${instance.contextLength}, gpu ${instance.gpu}, about $memory"
-            }
+        response.loadedNote()?.let { note -> globals.log.info { note } }
+        globals.renderer(json).render(response, LoadResponse.serializer()) {
+            Text(it.instance?.id ?: "Estimated memory: ${it.estimate.describe()}")
         }
-        globals.renderer(json).render(response, LoadResponse.serializer()) { Text(instance?.id ?: "Estimated memory: $memory") }
-    }
-
-    /** With nobody to ask, only a store with one model has an answer. */
-    private fun choose(models: List<ModelDescription>): String {
-        if (models.isEmpty()) throw UserInputError("There are no models to load; download one with `runa get`")
-        if (models.size == 1) return models.single().key
-        if (globals.yes || globals.wantsJson(json) || !terminal.terminalInfo.inputInteractive) {
-            throw UserInputError("Name the model to load: ${models.joinToString(", ") { it.key }}")
-        }
-        val rows = models.map { listOf(it.key, it.type, formatBytes(it.sizeBytes), if (it.loadedInstances.isEmpty()) "" else "loaded") }
-        val chosen = terminal.pick("Model", listOf("KEY", "TYPE", "SIZE", ""), rows) ?: throw UserInputError("No model chosen")
-        return models[chosen].key
-    }
-
-    private suspend fun load(
-        client: DaemonClient,
-        request: LoadRequest,
-    ): LoadResponse {
-        if (request.estimateOnly || globals.wantsJson(json) || !terminal.terminalInfo.outputInteractive) return client.load(request)
-        val layout =
-            progressBarLayout {
-                text(request.model)
-                percentage()
-                progressBar()
-            }
-        // Drawn by hand, as in `get`: Mordant's animator hides the cursor and Ctrl-C would leave it hidden.
-        val animation = MultiProgressBarAnimation(terminal)
-        val task = animation.addTask(layout, total = PROGRESS_STEPS)
-        var drawn = 0L
-        try {
-            return client.load(request) { progress ->
-                val now = (progress * PROGRESS_STEPS).toLong()
-                task.advance(now - drawn)
-                drawn = now
-                animation.refresh()
-            }
-        } finally {
-            animation.clear()
-        }
-    }
-
-    private companion object {
-        const val PROGRESS_STEPS = 1_000L
     }
 }

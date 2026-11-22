@@ -21,12 +21,12 @@ import okio.Path
 import okio.Path.Companion.toPath
 import runa.cli.CommandGroup
 import runa.cli.Globals
+import runa.cli.output.statsSummary
 import runa.config.ConfigKey
 import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.GpuOffload
 import runa.core.LoadConfig
-import runa.engine.FinishReason
 import runa.engine.GenerationEvent
 import runa.engine.GenerationRequest
 import runa.engine.GenerationStats
@@ -146,7 +146,19 @@ internal class RunCommand : CliktCommand(name = "run") {
         } else {
             globals.renderer(json).render(result, RunResult.serializer()) { Text(it.text) }
         }
-        if (stats) terminal.println(terminal.theme.muted(summary(result.stats, finished.reason)), stderr = true)
+        if (stats) {
+            val summary =
+                with(result.stats) {
+                    statsSummary(
+                        promptTokens,
+                        completionTokens,
+                        result.finishReason,
+                        timeToFirstTokenMs / MILLIS_PER_SECOND,
+                        tokensPerSecond,
+                    )
+                }
+            terminal.println(terminal.theme.muted(summary), stderr = true)
+        }
     }
 
     /** The name to report and the file to load. */
@@ -155,15 +167,6 @@ internal class RunCommand : CliktCommand(name = "run") {
         if (model.endsWith(GGUF_EXTENSION, ignoreCase = true) && globals.environment.fileSystem.exists(file)) return model to file
         val store = globals.store
         return store.list().find(model, store.modelsDir).let { it.key.toString() to it.path }
-    }
-
-    private fun summary(
-        stats: RunStats,
-        reason: FinishReason,
-    ): String {
-        val toFirst = stats.timeToFirstTokenMs / MILLIS_PER_SECOND
-        return "prompt: ${stats.promptTokens} tokens, answer: ${stats.completionTokens} tokens (${reason.id}), " +
-            "time to first token: $toFirst s, ${stats.tokensPerSecond} tokens/s"
     }
 
     private companion object {
