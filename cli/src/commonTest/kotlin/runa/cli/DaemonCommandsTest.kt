@@ -145,7 +145,7 @@ class DaemonCommandsTest {
         )
         assertEquals(
             """POST /api/v1/models/load {"model":"alpha","context_length":512,"gpu":"off","parallel":2,"ttl":60,""" +
-                """"identifier":"mine","estimate_only":false,"stream":true}""",
+                """"identifier":"mine","estimate_only":false,"auto":false,"stream":true}""",
             daemon.requests.single(),
         )
     }
@@ -166,6 +166,25 @@ class DaemonCommandsTest {
         assertEquals("Estimated memory: 400 MB (weights 398 MB, context 2.00 MB)\n", run.stdout)
         assertGolden("load-estimate.json", run("load", "alpha", "--estimate-only", "--json").stdout)
         assertEquals(emptyList(), daemon.instances)
+    }
+
+    @Test
+    fun loadWithAutoLeavesTheChoiceToTheDaemonAndTellsIt() {
+        val run = run("load", "alpha", "--auto")
+        assertEquals(0, run.exitCode)
+        assertEquals("$ALPHA\n", run.stdout)
+        assertContains(run.stderr, "Loaded $ALPHA in 1.5 s: context 8192, gpu max, about 406 MB (weights 398 MB, context 8.19 MB)\n")
+        assertContains(daemon.requests.single(), """"context_length":null,"gpu":null,""")
+        assertContains(daemon.requests.single(), """"estimate_only":false,"auto":true,""")
+
+        // What is given is kept, and an estimate says what the rest would be.
+        val estimate = run("load", "alpha", "--auto", "--gpu", "0.5", "--estimate-only")
+        assertEquals("Estimated memory: 406 MB (weights 398 MB, context 8.19 MB) with context 8192, gpu 0.5\n", estimate.stdout)
+        assertContains(daemon.requests.last(), """"gpu":"0.5",""")
+        assertEquals(
+            """"auto":{"context_length":8192,"gpu":"max"}}""" + "\n",
+            run("load", "alpha", "--auto", "--estimate-only", "--json").stdout.substringAfter("\"load_time_seconds\":null,"),
+        )
     }
 
     @Test

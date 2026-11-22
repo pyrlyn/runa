@@ -16,6 +16,7 @@ import runa.engine.Engine
 import runa.platform.FileLock
 import runa.platform.catchTermination
 import runa.platform.currentProcessId
+import runa.platform.surveyHardware
 import runa.platform.terminationRequested
 import runa.store.ModelStore
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -77,6 +78,7 @@ private suspend fun serve(
             modelsDir = settings.modelsDir,
             scope = timers,
             defaults = LoadDefaults(settings.contextLength, settings.gpu, settings.ttl),
+            memory = { machineMemory(surveyHardware(), engine.info) },
             onLoaded = { log.info("Loaded ${it.instance.model} as '${it.instance.id}' in ${it.loadTime.inWholeMilliseconds} ms") },
             onEvicted = { log.info("Unloaded '$it': idle for longer than its ttl") },
         )

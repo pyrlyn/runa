@@ -33,6 +33,14 @@ id="$("$runa" load "$model")"
 "$runa" unload "$id" >/dev/null
 [ "$("$runa" ps --json)" = "[]" ] || fail "ps --json lists a model after unload"
 
+echo "load --auto chooses the settings and tells them"
+"$runa" load "$model" --auto --estimate-only --json | grep -q '"auto":{"context_length":[0-9]*,"gpu":"' ||
+  fail "an estimate with --auto does not tell what was chosen"
+[ "$("$runa" ps --json)" = "[]" ] || fail "an estimate with --auto loaded the model"
+"$runa" load "$model" --auto --gpu off -c 2048 >/dev/null
+"$runa" ps --json | grep -q '"context_length":2048,"gpu":"off"' || fail "--auto did not keep the settings it was given"
+"$runa" unload --all >/dev/null
+
 echo "a model is unloaded after its ttl"
 "$runa" load "$model" --ttl 2 >/dev/null
 "$runa" ps --json | grep -q '"ttl_seconds":2' || fail "ps --json does not show the ttl"

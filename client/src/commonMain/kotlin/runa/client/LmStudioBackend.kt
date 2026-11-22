@@ -87,6 +87,7 @@ public class LmStudioBackend(
                 "ttl".takeIf { request.ttl != null },
                 "identifier".takeIf { request.identifier != null },
                 "estimate_only".takeIf { request.estimateOnly },
+                "auto".takeIf { request.auto },
             )
         if (refused.isNotEmpty()) {
             throw UserInputError(

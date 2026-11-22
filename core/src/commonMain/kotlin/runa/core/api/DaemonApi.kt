@@ -94,6 +94,11 @@ public data class LoadRequest(
     val identifier: String? = null,
     /** Answer with the memory estimate and load nothing. */
     @SerialName("estimate_only") val estimateOnly: Boolean = false,
+    /**
+     * Let the daemon choose [gpu] and [contextLength] by the memory of its machine, so that the
+     * model fits. Either one that is given is kept, and only the other is chosen.
+     */
+    val auto: Boolean = false,
     /** Answer with server-sent events: `progress` while loading, then `loaded` or `error`. */
     val stream: Boolean = false,
 )
@@ -107,12 +112,22 @@ public data class LoadResponse(
     /** Null when only an estimate was asked for. */
     val instance: InstanceDescription? = null,
     @SerialName("load_time_seconds") val loadTimeSeconds: Double? = null,
+    /** What the daemon chose; null when the request did not ask it to. */
+    val auto: AutoChoice? = null,
 ) {
     public companion object {
         public const val LOADED: String = "loaded"
         public const val ESTIMATED: String = "estimated"
     }
 }
+
+/** The settings a load with `auto` settled on. */
+@Serializable
+public data class AutoChoice(
+    /** No more than the model was trained with. */
+    @SerialName("context_length") val contextLength: Int,
+    val gpu: String,
+)
 
 @Serializable
 public data class MemoryEstimateDescription(
