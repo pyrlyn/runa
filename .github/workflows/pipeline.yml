@@ -1,6 +1,6 @@
 # Scans from pyrlyn/ci's config-driven ci.yml (.github/infra.yml): CodeQL, Semgrep, Snyk,
-# SonarCloud and actionlint in parallel behind `pipeline / gate`. Rust CI is not repeated here:
-# ci.yml runs it on the same pushes and pull requests (its job names are the required checks).
+# SonarCloud and actionlint in parallel behind `pipeline / gate`, the required check on
+# pull requests to main.
 # Draft pull requests skip every job, the gate included, until marked ready. Secrets are passed
 # explicitly by name, not with `secrets: inherit`.
 # Shared workflows: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md

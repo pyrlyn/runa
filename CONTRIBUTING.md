@@ -1,20 +1,8 @@
 # Contributing
 
-Repository prose is English (except the `docs/ru/` and `docs/uk/` translations). Read
-[`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) before changing code:
-claim protocol, Zig vs C kernels, and workspace layout.
+runa is being rewritten as a Kotlin/Native CLI. Read [`PLAN.md`](PLAN.md) first: it lists the
+phases, their acceptance criteria and the checks each pull request must pass.
 
-## Checks
-
-```sh
-mise install
-moon run root:test-fast
-moon run :test
-moon run root:lint-tasks
-```
-
-`moon run root:test-fast` is the cheap path. `moon run :test` is the full gate.
-
-Use the pinned toolchain via mise. Do not invent public APIs in docs — document
-what the tree already ships. User guides live under [`docs/`](docs/). English docs are the source; a change to one
-updates its `docs/ru/` and `docs/uk/` translations in the same change (see `AGENTS.md` §13).
+- Repository prose is English.
+- Every change goes through a pull request; CI must be green before merge.
+- Toolchain: `mise install` (JDK, CMake, lint tools), then the Gradle wrapper once phase 0 lands.
