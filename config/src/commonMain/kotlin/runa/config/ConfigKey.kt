@@ -39,11 +39,11 @@ public enum class ConfigKey(
     SERVER_BIND("server.bind", ConfigKind.STRING, default = "127.0.0.1", check = ::hostName),
     SERVER_CORS("server.cors", ConfigKind.BOOL, default = "false", check = oneOf(listOf("true", "false"))),
 
-    /** Unset means: the model's own context length. */
+    /** Unset means: `LoadConfig.DEFAULT_CONTEXT_LENGTH`, or the model's own when that is less. */
     CONTEXT_LENGTH("context_length", ConfigKind.INT, check = { intAtLeast(it, 1) }),
     GPU("gpu", ConfigKind.STRING, default = "max", check = ::gpuOffload),
 
-    /** Seconds of idleness before a model is unloaded; unset means never. */
+    /** Seconds of idleness before a model is unloaded; unset or 0 means never. */
     TTL("ttl", ConfigKind.INT, check = { intAtLeast(it, 0) }),
     ;
 

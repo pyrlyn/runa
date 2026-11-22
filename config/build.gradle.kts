@@ -1,5 +1,6 @@
 plugins {
     id("runa.library")
+    id("runa.serialization")
 }
 
 kotlin {
