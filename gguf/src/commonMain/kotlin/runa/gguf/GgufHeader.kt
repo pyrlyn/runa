@@ -43,13 +43,16 @@ public class GgufHeader(
 
     private fun architectureLong(key: String): Long? = architecture?.let { long("$it.$key") }
 
-    private companion object {
+    public companion object {
+        /** The [type] of a file that holds a whole model. */
+        public const val TYPE_MODEL: String = "model"
+
         // Set by llama.cpp when it had to guess the file type from the tensors.
-        const val GUESSED_FLAG: Long = 1024
+        private const val GUESSED_FLAG: Long = 1024
 
         // `enum llama_ftype` in llama.cpp's include/llama.h (checked at v1.0.0), without the
         // LLAMA_FTYPE_ and MOSTLY_ prefixes. An id missing here only costs the QUANT column.
-        val FILE_TYPES: Map<Long, String> =
+        private val FILE_TYPES: Map<Long, String> =
             mapOf(
                 0L to "F32",
                 1L to "F16",

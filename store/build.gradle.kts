@@ -1,5 +1,6 @@
 plugins {
     id("runa.library")
+    id("runa.serialization")
 }
 
 kotlin {
@@ -7,6 +8,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.gguf)
             api(projects.config)
+            implementation(libs.kotlinx.serialization.json)
         }
     }
 }
