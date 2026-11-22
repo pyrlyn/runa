@@ -9,12 +9,18 @@ through llama.cpp and does not need LM Studio.
 
 The implementation plan, phases and acceptance criteria are in [`PLAN.md`](PLAN.md).
 
-How to use the OpenAI-compatible API, with `curl` and the `openai` Python client, is in
-[`docs/openai.md`](docs/openai.md). How to watch what the daemon and its models do, and what its
-log file holds, is in [`docs/logs.md`](docs/logs.md). How to list, load and chat with the models
-of a running LM Studio through the same commands is in [`docs/lmstudio.md`](docs/lmstudio.md).
-What `runa runtime survey` tells about a machine, and how `runa load --auto` chooses by it, is in
-[`docs/hardware.md`](docs/hardware.md).
+## Documentation
+
+- [`docs/getting-started.md`](docs/getting-started.md): from nothing to a model that answers.
+- [`docs/commands.md`](docs/commands.md): every command and its options, written from `--help`.
+- [`docs/openai.md`](docs/openai.md): the OpenAI-compatible API, with `curl` and the `openai`
+  Python client.
+- [`docs/logs.md`](docs/logs.md): what the daemon and its models do, and what its log file holds.
+- [`docs/lmstudio.md`](docs/lmstudio.md): the models of a running LM Studio through the same
+  commands.
+- [`docs/hardware.md`](docs/hardware.md): what `runa runtime survey` tells about a machine, and
+  how `runa load --auto` chooses by it.
+- [`docs/install.md`](docs/install.md): installation, and how a release is made.
 
 ## Install
 
