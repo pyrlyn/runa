@@ -171,11 +171,3 @@ internal class RunCommand : CliktCommand(name = "run") {
         const val MILLIS_PER_SECOND = 1000.0
     }
 }
-
-/** The word for a [FinishReason] in `--json` output and in `--stats`; the OpenAI API uses the same two. */
-private val FinishReason.id: String
-    get() =
-        when (this) {
-            FinishReason.STOP -> "stop"
-            FinishReason.LENGTH -> "length"
-        }

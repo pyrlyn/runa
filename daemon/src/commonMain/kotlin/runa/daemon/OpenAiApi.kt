@@ -410,13 +410,6 @@ internal class OpenAiApi(
     private companion object {
         const val DONE = "[DONE]"
 
-        val FinishReason.id: String
-            get() =
-                when (this) {
-                    FinishReason.STOP -> "stop"
-                    FinishReason.LENGTH -> "length"
-                }
-
         fun usageOf(stats: GenerationStats) = Usage(stats.promptTokens, stats.completionTokens, stats.promptTokens + stats.completionTokens)
     }
 }
