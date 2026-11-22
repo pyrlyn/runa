@@ -1,0 +1,171 @@
+# The release build (PLAN.md, section 11). bump.yml tags the merged version commit, creates the
+# draft release and dispatches this workflow with `--ref <tag> -f tag=<tag>`; nothing here tags.
+#
+#   build    pyrlyn/ci release.yml: per target scripts/build-release.sh, codesign and
+#            notarization on macOS, `runa --version` against the tag on the targets the runner
+#            executes, `runa-<tag>-<target>.tar.gz` with runa and LICENSE, and SHA256SUMS,
+#            uploaded to bump's draft
+#   assets   installs from the built archives with scripts/install.sh, attaches install.sh and the
+#            Homebrew formula (runa.rb) and publishes the release
+#   verify   installs the published release on each target's own runner, with the release's
+#            install.sh and, on macOS, with its formula
+#
+# `dry-run: true` builds and packs on any ref and uploads nothing. A test release
+# (vX.Y.Z-test.N) needs no bump: tag the commit by hand, create a draft release for the tag and
+# dispatch this workflow on it.
+# Inputs and permissions: https://github.com/pyrlyn/ci/blob/main/docs/reusable-workflows.md
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z), made by bump.yml; run with --ref <tag>
+        required: true
+        type: string
+      dry-run:
+        description: Build and pack only; upload and publish nothing
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: pyrlyn/ci/.github/workflows/release.yml@9675ff42a0e3785beabccb68b0e4fa65910de453 # main
+    permissions:
+      contents: write # the assets of bump's draft release
+      checks: read
+      actions: write # cancel the run when a job fails
+      issues: write # notify-failure: a failed release opens a release-failure issue
+    with:
+      tag: ${{ inputs.tag }}
+      dry-run: ${{ inputs.dry-run }}
+      prerelease: false
+      # Left a draft: `assets` adds install.sh and runa.rb before anyone can see the release.
+      draft: true
+      # Kotlin/Native has no compiler for a Linux arm64 host, and its toolchain cross-compiles,
+      # so both Linux targets are built on x64.
+      build-matrix: >-
+        [
+        {"os": "xcode-27", "target": "aarch64-apple-darwin"},
+        {"os": "ubuntu-24.04", "target": "x86_64-unknown-linux-gnu"},
+        {"os": "ubuntu-24.04", "target": "aarch64-unknown-linux-gnu"}
+        ]
+      # The shared workflow checks out without submodules, and llama.cpp is one.
+      setup-command: git submodule update --init --recursive --depth 1
+      build-command: scripts/build-release.sh
+      bin-dir: build/release/$TARGET
+      bins: runa
+      extra-files: LICENSE
+      smoke-command: test "$("$BIN_DIR/runa" --version | cut -d' ' -f2)" = "${TAG#v}"
+      macos-sign: true
+    secrets:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+      APPSTORE_CONNECT_KEY: ${{ secrets.APPSTORE_CONNECT_KEY }}
+      APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+      APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+
+  assets:
+    needs: build
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # attach install.sh and runa.rb, publish the release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the archives of the draft
+        run: gh release download "$TAG" --dir dist --pattern '*.tar.gz' --pattern SHA256SUMS
+
+      - name: Install from the archives
+        run: |
+          RUNA_VERSION="$TAG" RUNA_DOWNLOAD_BASE="file://$PWD/dist" RUNA_INSTALL_DIR="$RUNNER_TEMP/bin" sh scripts/install.sh
+          test "$("$RUNNER_TEMP/bin/runa" --version | cut -d' ' -f2)" = "${TAG#v}"
+
+      - name: Homebrew formula
+        run: |
+          scripts/formula.sh "$TAG" dist/SHA256SUMS > runa.rb
+          ruby -c runa.rb
+          cat runa.rb
+
+      - name: Attach install.sh and runa.rb, publish the release
+        run: |
+          gh release upload "$TAG" --clobber scripts/install.sh runa.rb
+          gh release edit "$TAG" --draft=false
+
+  # Which runner the macOS job uses: pyrlyn/ci's macos-runner action reads the MACOS_RUNNER
+  # variable (unset or `hosted` = the hosted label, `xcode-27-local` = the dedicated Mac).
+  macos-runner:
+    needs: assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.r.outputs.value }}
+    steps:
+      - id: r
+        uses: pyrlyn/ci/.github/actions/macos-runner@9675ff42a0e3785beabccb68b0e4fa65910de453 # main
+        with:
+          runner: ${{ vars.MACOS_RUNNER }}
+          value: '["xcode-27"]'
+
+  # After the release is out: what a user runs, on every target. A failure here does not take
+  # the release back; it says that the release needs a look.
+  verify:
+    name: verify (${{ matrix.target }})
+    needs: [assets, macos-runner]
+    runs-on: ${{ startsWith(matrix.os, 'xcode') && fromJSON(needs.macos-runner.outputs.value)[0] || matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: xcode-27
+            target: aarch64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    env:
+      TAG: ${{ inputs.tag }}
+      RELEASE: https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The attached script is the one of the tag, and it is read from a pipe as the
+      # one-line install reads it.
+      - name: Install with the install.sh of the release
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/install.sh" "$RELEASE/install.sh"
+          cmp "$RUNNER_TEMP/install.sh" scripts/install.sh
+          RUNA_VERSION="$TAG" RUNA_INSTALL_DIR="$RUNNER_TEMP/bin" sh <"$RUNNER_TEMP/install.sh"
+          test "$("$RUNNER_TEMP/bin/runa" --version | cut -d' ' -f2)" = "${TAG#v}"
+
+      # A formula is installed from a tap, so the release's runa.rb goes into a local one.
+      - if: runner.os == 'macOS'
+        name: Install with the Homebrew formula
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_FROM_API: "1"
+        run: |
+          brew tap-new --no-git runa/release
+          curl -fsSL -o "$(brew --repository runa/release)/Formula/runa.rb" "$RELEASE/runa.rb"
+          brew install runa/release/runa
+          test "$("$(brew --prefix)/bin/runa" --version | cut -d' ' -f2)" = "${TAG#v}"
+          brew test runa/release/runa
+          brew uninstall runa
+          brew untap runa/release
