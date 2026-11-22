@@ -26,13 +26,13 @@ import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.GpuOffload
 import runa.core.LoadConfig
-import runa.core.UserInputError
 import runa.engine.FinishReason
 import runa.engine.GenerationEvent
 import runa.engine.GenerationRequest
 import runa.engine.GenerationStats
 import runa.engine.Prompt
 import runa.engine.Sampling
+import runa.store.find
 import kotlin.math.roundToLong
 import kotlin.time.DurationUnit
 
@@ -83,7 +83,7 @@ internal class RunCommand : CliktCommand(name = "run") {
         "-c",
         "--context-length",
         metavar = "n",
-        help = "Tokens of context (default: context_length in config.json, else $DEFAULT_CONTEXT_LENGTH)",
+        help = "Tokens of context (default: context_length in config.json, else ${LoadConfig.DEFAULT_CONTEXT_LENGTH})",
     ).int().restrictTo(min = 1)
     private val stats by option("--stats", help = "Print token counts, time to first token and tokens per second").flag()
     private val json by option("--json", help = "Print one JSON object when the answer is complete").flag()
@@ -103,7 +103,8 @@ internal class RunCommand : CliktCommand(name = "run") {
         val config = globals.config
         val load =
             LoadConfig(
-                contextLength = contextLength ?: config.resolve(ConfigKey.CONTEXT_LENGTH).value?.toInt() ?: DEFAULT_CONTEXT_LENGTH,
+                contextLength =
+                    contextLength ?: config.resolve(ConfigKey.CONTEXT_LENGTH).value?.toInt() ?: LoadConfig.DEFAULT_CONTEXT_LENGTH,
                 gpu = gpu ?: GpuOffload.parse(config.resolve(ConfigKey.GPU).value.orEmpty()) ?: GpuOffload.Max,
             )
         val messages = listOfNotNull(system?.let { ChatMessage(ChatRole.SYSTEM, it) }, ChatMessage(ChatRole.USER, prompt))
@@ -153,24 +154,7 @@ internal class RunCommand : CliktCommand(name = "run") {
         val file = model.toPath()
         if (model.endsWith(GGUF_EXTENSION, ignoreCase = true) && globals.environment.fileSystem.exists(file)) return model to file
         val store = globals.store
-        val matches = store.list().models.filter { it.isNamed(model) }
-        return when (matches.size) {
-            1 -> {
-                matches.single().let { it.key.toString() to it.path }
-            }
-
-            0 -> {
-                throw UserInputError(
-                    "No model matches '$model' in ${store.modelsDir}. `runa ls` lists the models, `runa get` downloads one",
-                )
-            }
-
-            else -> {
-                throw UserInputError(
-                    "'$model' matches ${matches.size} models, name one of them: ${matches.joinToString(", ") { it.key.toString() }}",
-                )
-            }
-        }
+        return store.list().find(model, store.modelsDir).let { it.key.toString() to it.path }
     }
 
     private fun summary(
@@ -183,8 +167,6 @@ internal class RunCommand : CliktCommand(name = "run") {
     }
 
     private companion object {
-        /** Enough for a one-shot question, and small enough that no model's cache is a surprise. */
-        const val DEFAULT_CONTEXT_LENGTH = 4096
         const val GGUF_EXTENSION = ".gguf"
         const val MILLIS_PER_SECOND = 1000.0
     }
