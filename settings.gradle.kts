@@ -26,6 +26,7 @@ include(
     ":store",
     ":hub",
     ":engine",
+    ":engine-llama",
     ":daemon",
     ":client",
     ":cli",
