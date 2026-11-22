@@ -1,5 +1,6 @@
 package runa.cli
 
+import runa.testing.assertGolden
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

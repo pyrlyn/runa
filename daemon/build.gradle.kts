@@ -15,6 +15,7 @@ kotlin {
         commonTest.dependencies {
             implementation(projects.client)
             implementation(projects.engineTesting)
+            implementation(projects.testing)
             implementation(projects.gguf)
             implementation(libs.kotlinx.coroutines.test)
             // Plain HTTP on loopback, so the CIO client is enough here.

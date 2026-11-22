@@ -13,9 +13,7 @@ import runa.engine.Engine
 import runa.engine.testing.FakeEngine
 import runa.gguf.GgufWriter
 import runa.platform.HostOs
-import runa.platform.systemEnv
 import kotlin.random.Random
-import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
 
 internal class CliRun(
@@ -72,23 +70,6 @@ internal class TestCli(
         fun temporaryHome(): Path =
             FileSystem.SYSTEM.canonicalize(FileSystem.SYSTEM_TEMPORARY_DIRECTORY) / "runa-cli-test-${Random.nextLong().toULong()}"
     }
-}
-
-/**
- * Compares [actual] with `src/commonTest/fixtures/<name>` (Gradle runs native tests from the
- * module directory). `RUNA_UPDATE_GOLDEN=1 ./gradlew :cli:allTests` rewrites the files instead.
- */
-internal fun assertGolden(
-    name: String,
-    actual: String,
-) {
-    val file = "src/commonTest/fixtures".toPath() / name
-    if (systemEnv("RUNA_UPDATE_GOLDEN") == "1") {
-        FileSystem.SYSTEM.write(file) { writeUtf8(actual) }
-        return
-    }
-    val expected = FileSystem.SYSTEM.read(file) { readUtf8() }
-    assertEquals(expected, actual, "Output differs from $file; rerun with RUNA_UPDATE_GOLDEN=1 if the change is intended")
 }
 
 /** A header-only language model: all that `ls` and `import` ever read of a model file. */

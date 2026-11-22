@@ -28,6 +28,7 @@ include(
     ":engine",
     ":engine-testing",
     ":engine-llama",
+    ":testing",
     ":daemon",
     ":client",
     ":cli",
