@@ -1,31 +1,22 @@
-# Build artifacts (never commit; Cargo.lock IS committed — binaries + D16 pins).
-/target
+# Gradle / Kotlin
+.gradle/
+build/
+.kotlin/
+local.properties
+# Keep the wrapper jar once the Gradle wrapper is added.
+!gradle/wrapper/gradle-wrapper.jar
+
+# Native toolchain caches and vendored build output
+/third_party/*/build/
+
+# IDE / OS
+.idea/
+*.iml
 .DS_Store
 
-# moon generated cache (keep .moon/workspace.yml, toolchains.yml, tasks/).
-.moon/cache/
-.moon/docker/
+# Local model weights and caches (never committed)
+*.gguf
+/models/
 
-# cargo-dist packaged apps (P6.3).
-/dist/
-
-# Serve dashboard toolchain (P14.4). The Vite build under dashboard/dist
-# is committed so `include_str!` compiles without node.
-/dashboard/node_modules/
-/web/node_modules/
-
-# LMDB prompt-cache / test DBs if they land in-tree.
-*.mdb
-
-# Python fixture scripts.
-__pycache__/
-*.pyc
-
-# Real GGUF weights: tracked via Git LFS (see .gitattributes). Header-only
-# synthetics stay as normal git blobs; large weights use LFS. Until the LFS
-# objects are committed, keep local downloads untracked with:
-#   git status --ignored
-# To add a new weight: ensure the *.gguf LFS pattern matches, then git add -f.
-# (Previously ignored entirely because GitHub rejects >100MB blobs.)
-# tests/fixtures/*.gguf
-# !tests/fixtures/synthetic-*.gguf
+# brand tooling
+/brand/node_modules/

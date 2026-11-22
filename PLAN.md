@@ -1,0 +1,523 @@
+# runa: Kotlin/Native rewrite plan
+
+Status: plan only. No code has been written yet; the Rust implementation was removed in the
+same pull request that added this file (see [Repository reset](#12-repository-reset)).
+
+## Contents
+
+1. [Goal](#1-goal)
+2. [Scope and non-goals](#2-scope-and-non-goals)
+3. [Analysis of lmstudio-ai/lms](#3-analysis-of-lmstudio-ailms)
+4. [Feature mapping: lms to runa](#4-feature-mapping-lms-to-runa)
+5. [Architecture](#5-architecture)
+6. [Daemon API (what the CLI talks to)](#6-daemon-api-what-the-cli-talks-to)
+7. [Files, configuration and environment](#7-files-configuration-and-environment)
+8. [Implementation phases](#8-implementation-phases)
+9. [Testing strategy](#9-testing-strategy)
+10. [CI](#10-ci)
+11. [Packaging and release](#11-packaging-and-release)
+12. [Repository reset](#12-repository-reset)
+13. [Risks and open questions](#13-risks-and-open-questions)
+
+## 1. Goal
+
+`runa` is a single native binary, written in Kotlin/Native, that does for local models what
+[`lms`](https://github.com/lmstudio-ai/lms) does for LM Studio, without needing LM Studio:
+
+- find and download GGUF models (`runa get`), list and import them (`runa ls`, `runa import`);
+- load and unload them in a background daemon (`runa load`, `runa unload`, `runa ps`);
+- serve them over an OpenAI-compatible HTTP API (`runa server start|stop|status`);
+- chat with them in the terminal (`runa chat`, `runa chat -p "..."`);
+- stream logs (`runa log stream`) and report status (`runa status`);
+- optionally drive a running LM Studio through its documented REST API (`--backend lmstudio`).
+
+Inference runs in-process in the daemon through [llama.cpp](https://github.com/ggml-org/llama.cpp),
+linked as a static C library through Kotlin/Native cinterop.
+
+Targets, in priority order: `macosArm64` (primary, Metal), `linuxX64`, `linuxArm64`; `mingwX64`
+is optional and comes last.
+
+## 2. Scope and non-goals
+
+In scope for 1.0:
+
+- the commands in [section 4](#4-feature-mapping-lms-to-runa) marked 1.0;
+- GGUF models only, via llama.cpp (CPU everywhere, Metal on macOS; CUDA/Vulkan builds later);
+- LLM text chat and embeddings; tool calls and JSON-schema output through llama.cpp grammars;
+- one machine, plus `--host` to reach a daemon on another machine over the HTTP API.
+
+Not in scope (explicitly dropped from lms):
+
+- LM Studio Hub publishing (`clone`, `push`, `login`, `logout`, `whoami`), plugins (`dev`,
+  `create`), LM Link (`link *`), experiment flags (`flags`), MLX models.
+- A GUI. The `brand/` assets are kept for the website, icons and the terminal colour palette.
+- Re-implementing LM Studio's private WebSocket RPC (lmstudio-js); only its public REST API is
+  supported in the compatibility backend.
+
+## 3. Analysis of lmstudio-ai/lms
+
+Snapshot analysed: `lmstudio-ai/lms` at commit `138dcff` (2026-11-10), package
+`@lmstudio/lms-cli` 0.4.1, MIT licence, about 17 000 lines of TypeScript in `src/`.
+
+### 3.1 What it is
+
+`lms` is a thin client. It holds no models and runs no inference: every command connects to a
+running LM Studio app (or the headless `llmster` daemon, or Bionic) and calls it through the
+`@lmstudio/sdk` (lmstudio-js) over a WebSocket at `ws://<host>:<port>`. It ships inside LM Studio
+and is put on `PATH` by `lms bootstrap` / `npx lmstudio install-cli`. It cannot be built on its
+own: it lives as a submodule of the lmstudio-js monorepo (Node >= 25).
+
+### 3.2 Command surface
+
+Grouped as in `src/index.ts`:
+
+| Group | Commands | Notes |
+|---|---|---|
+| Local models | `chat`, `get`, `load`, `unload`, `ls`, `ps`, `import` | the core of the tool |
+| Serve | `server start\|stop\|status`, `log stream` | REST server inside the app; log tail over the SDK |
+| Remote instances | `link status\|enable\|disable\|agent\|set-device-name\|set-preferred-device` | LM Link, a paid networking feature |
+| Runtime | `runtime ls\|get\|update\|remove\|select\|survey` | engine "extension packs" (llama.cpp CPU/CUDA/Vulkan/Metal, MLX) |
+| Develop and publish | `clone`, `push`, `dev`, `login`, `logout`, `whoami` | LM Studio Hub and plugins |
+| Hidden | `create`, `bootstrap`, `daemon up\|down\|status\|update`, `flags`, `status`, `version` | |
+
+Notable options worth copying:
+
+- `load [model-key]`: interactive picker when no key; `--gpu off|max|0..1`; `-c/--context-length`;
+  `--parallel`; `--ttl <s>` (auto-unload when idle); `--identifier` (instance id used by the API);
+  `--estimate-only` (memory estimate, no load); `--auto` (placement and context chosen for you);
+  speculative decoding (`--speculative-draft-model`, min/max draft tokens); `-y/--yes`.
+- `get [name]`: `owner/model`, `owner/model@quant`, or a full Hugging Face URL; `--gguf`/`--mlx`
+  filters; `--select` to pick a variant; picks a quantization that fits the hardware by default.
+- `ls [modelKey]`: `--llm`, `--embedding`, `--variants`, `--json`. `ps --json`.
+- `unload [id]` / `unload --all`.
+- `import <file>`: move by default, or `--copy`, `--hard-link`, `--symbolic-link`; `--user-repo`;
+  `--dry-run`.
+- `server start -p <port> --bind <addr> --cors`; `server status --json`.
+- `log stream --source model|server|runtime --filter input|output --json --stats`.
+- `chat [model] -p <prompt> -s <system> --stats --ttl --reasoning`; slash commands `/help`,
+  `/exit`, `/model`, `/clear`, `/system-prompt`, `/stats`, `/reasoning`, `/download`.
+- Global hidden options: `--host`, `--port`, `--log-level`, `--quiet`, `--verbose`; `-v/--version`.
+
+### 3.3 How it finds and talks to the backend
+
+From `src/createClient.ts` and `src/localAPIServer.ts`:
+
+1. Discovery reads `~/.lmstudio/.internal/http-server.json` (`{port, pid}`), checks the pid is
+   alive, then probes the port; falls back to scanning a fixed list of legacy ports; then tries
+   Bionic's own folder. `LMS_API_SERVER_INFO_PATH` pins one exact instance.
+2. If nothing runs, it starts the app recorded in `*-install-location.json`
+   (`llmster`, then LM Studio with `--run-as-service`, then Bionic), detached, and polls for up to
+   60 s until the API appears; a process that exits early is a failed launch.
+3. It authenticates with a client identifier (`lms-cli`) and a passkey built from a key compiled
+   into the binary plus `~/.lmstudio/.internal/lms-key-2`; remote hosts get a random,
+   unprivileged identifier.
+4. Everything else is SDK calls: `client.system.listDownloadedModels()`,
+   `client.llm.listLoaded()`, `client.repository.createModelDownloadPlanner()`,
+   `client.system.startHttpServer()`, `client.runtime.surveyHardware()`, and so on.
+
+`status`, `server status` and `server stop` never start an app. That rule is worth keeping.
+
+### 3.4 Configuration and state
+
+- Home: `~/.lmstudio` (overridable), models in `~/.lmstudio/models/<publisher>/<repo>/<file>`.
+- CLI preferences: `~/.lmstudio/.internal/cli-pref.json` (zod-validated, defaults filled in):
+  last loaded models, auto-start server, catalog fetching, one-time warnings.
+- Environment: `LMS_API_SERVER_INFO_PATH`, `LMS_SERVER_HOST`, `LMS_FORCE_PROD`, plugin variables.
+
+### 3.5 UX and engineering patterns worth keeping
+
+- Every listing command has `--json`; human output is a coloured table (`columnify`, `chalk`).
+- Progress bars and spinners for downloads and loads; Ctrl-C cancels a download or load cleanly.
+- Interactive pickers (fuzzy search) when an argument is missing, and `-y` to make every prompt
+  non-interactive for scripts.
+- `UserInputError` prints a one-line message without a stack trace; anything else prints the stack.
+- The chat UI is an Ink (React for terminals) app with an input reducer that has 1 300 lines of
+  unit tests. runa's REPL gets the same treatment: a pure, tested input state machine.
+
+### 3.6 What not to copy
+
+- The dependency on a private, versioned WebSocket RPC and an embedded passkey.
+- Hidden global options (`--host`, `--port` are hidden in lms; runa documents them).
+- Node as a runtime: start-up cost and a large install. runa is one static-ish binary.
+
+## 4. Feature mapping: lms to runa
+
+| lms | runa | Phase | Release |
+|---|---|---|---|
+| `lms version`, `-v` | `runa version [--json]`, `--version` | 1 | 1.0 |
+| `lms status` | `runa status [--json]` | 5 | 1.0 |
+| `lms ls [key] --json --llm --embedding --variants` | `runa ls [key] [--json] [--llm\|--embedding] [--variants]` | 2 | 1.0 |
+| `lms import <file> -c -L -l --user-repo --dry-run` | `runa import <file> [--copy\|--hard-link\|--symlink] [--user-repo] [--dry-run]` | 2 | 1.0 |
+| `lms get <name>[@quant] --select -y` | `runa get <hf-repo\|url>[@quant] [--select] [-y]` (Hugging Face) | 3 | 1.0 |
+| (none: needs a daemon) | `runa run <model> "<prompt>"` one-shot, in-process | 4 | 1.0 |
+| `lms daemon up\|down\|status` | `runa daemon up\|down\|status [--json]` | 5 | 1.0 |
+| `lms load <key> --gpu -c --parallel --ttl --identifier --estimate-only -y` | `runa load` with the same flags | 5 | 1.0 |
+| `lms unload [id] --all` | `runa unload [id] [--all]` | 5 | 1.0 |
+| `lms ps --json` | `runa ps [--json]` | 5 | 1.0 |
+| `lms server start -p --bind --cors`, `stop`, `status` | `runa server start\|stop\|status` | 6 | 1.0 |
+| `lms chat [model] -p -s --stats --ttl` | `runa chat [model] [-p] [-s] [--stats] [--ttl]` | 6 | 1.0 |
+| `lms log stream --source --filter --json --stats` | `runa log stream [...]` | 7 | 1.0 |
+| `lms runtime survey` | `runa runtime survey [--json]` (CPU, RAM, GPU, Metal/CUDA) | 9 | 1.0 |
+| `lms runtime ls\|get\|update\|select\|remove` | `runa runtime ls` (compiled-in backends only) | 9 | later |
+| `lms load --auto`, speculative decoding | `runa load --auto`, `--draft-model` | 9 | later |
+| `lms chat --reasoning` | `runa chat --reasoning off\|on\|<budget>` | 6 | later |
+| `--host`, `--port` | documented global options, plus `--backend runa\|lmstudio` | 5, 8 | 1.0 |
+| `lms bootstrap` | install script / Homebrew put `runa` on `PATH` | 10 | 1.0 |
+| `link *`, `clone`, `push`, `dev`, `create`, `login`, `logout`, `whoami`, `flags` | not planned | - | - |
+
+## 5. Architecture
+
+### 5.1 Process model
+
+```
+runa (CLI process)                         runa daemon (background process, same binary)
+  clikt commands                              Ktor server (CIO) on 127.0.0.1:<port>
+  RunaClient (Ktor client) ---- HTTP/SSE ---> /api/v1/*  native API (LM Studio-shaped)
+     |                                        /v1/*      OpenAI-compatible API
+     |                                        ModelRegistry: loaded instances, TTL, JIT load
+     |                                        Engine (llama.cpp via cinterop, Metal on macOS)
+     +-- local-only commands (ls, import, get, run, runtime survey) work without the daemon
+```
+
+- One binary. `runa daemon up` re-executes itself as `runa __daemon` detached
+  (`posix_spawn` + `setsid` on Unix; `CreateProcess` with `DETACHED_PROCESS` on Windows) and
+  writes `~/.runa/run/daemon.json` with `{pid, port, token, version}`.
+- Commands that need the daemon (`load`, `unload`, `ps`, `chat`, `server`, `log stream`) start
+  it on demand, like lms starts LM Studio, and poll up to 30 s for the discovery file and
+  `GET /api/v1/status`. `status`, `daemon status`, `server status` and `server stop` never start it.
+- The "local server" of lms (`server start`) maps to exposing the daemon's HTTP API on a
+  user-chosen bind address and port. With `server stop` the daemon keeps running on its private
+  loopback port so `load`/`ps` keep working.
+
+### 5.2 Gradle modules
+
+Kotlin Multiplatform project, Gradle Kotlin DSL, version catalog in `gradle/libs.versions.toml`.
+
+| Module | Responsibility | Depends on |
+|---|---|---|
+| `:core` | domain types (`ModelKey`, `ModelInfo`, `LoadConfig`, `LoadedInstance`, `HardwareInfo`), error types (`UserInputError`), `Result` helpers | kotlinx.serialization |
+| `:platform` | paths (`~/.runa`, XDG on Linux, `%LOCALAPPDATA%` on Windows), process spawn/detach, pid liveness, signals, terminal size, file locking; `expect/actual` per OS | okio, platform.posix |
+| `:config` | config file (`config.json`), env overrides, CLI preferences, discovery file read/write | `:core`, `:platform` |
+| `:gguf` | pure-Kotlin GGUF header and metadata parser (architecture, parameter count, context length, quantization, tensor sizes) | okio |
+| `:store` | on-disk model store: layout, index, `ls`, `import` (move/copy/hard link/symlink), integrity | `:gguf`, `:config` |
+| `:hub` | Hugging Face client: repo info, file list, GGUF variant selection, resumable downloads with SHA-256 check, auth token | Ktor client |
+| `:engine` | llama.cpp binding: load model, context, tokenize, sample, stream tokens, embeddings, chat templates, grammars; memory estimate | cinterop `llama` |
+| `:daemon` | model registry (instances, TTL eviction, JIT load, parallel slots), HTTP server, SSE, log bus | `:engine`, `:store`, `:hub`, Ktor server |
+| `:client` | typed client for the daemon API; `LmStudioBackend` for LM Studio's REST API; backend selection | Ktor client |
+| `:cli` | clikt command tree, output formatting (tables, `--json`), progress bars, prompts, chat REPL | clikt, mordant, `:client` and local modules |
+| `:app` | `main()`, the `runa` executable for every target | `:cli`, `:daemon` |
+
+Rule: `:cli` never touches `:engine` directly except through `runa run`, which embeds the engine
+for one-shot use without a daemon.
+
+### 5.3 Libraries
+
+Exact versions are pinned in phase 0 in `gradle/libs.versions.toml` (latest stable at that time).
+
+| Need | Library | Native note |
+|---|---|---|
+| CLI parsing, help, completion | [Clikt](https://github.com/ajalt/clikt) | supports Kotlin/Native; chosen over kotlinx-cli (unmaintained, no subcommand ergonomics) |
+| Terminal colours, tables, progress, prompts | [Mordant](https://github.com/ajalt/mordant) | Clikt's own renderer, native targets supported |
+| HTTP client | Ktor client: `Darwin` engine on macOS, `Curl` on Linux, `WinHttp` on Windows | CIO client on native lacks TLS for HTTPS to Hugging Face; verify in phase 0 |
+| HTTP server | Ktor server `CIO` engine, SSE plugin, ContentNegotiation | native-capable; plain HTTP on loopback, TLS left to a reverse proxy |
+| JSON | kotlinx.serialization (json) | |
+| Concurrency | kotlinx.coroutines | `Dispatchers.IO` exists on native; inference runs on a dedicated single-thread dispatcher per instance |
+| Files | Okio (`FileSystem.SYSTEM`) | |
+| Time | kotlinx-datetime | |
+| Logging | small own logger over a `SharedFlow` log bus (feeds `log stream`) | avoid JVM-only logging libs |
+| Inference | llama.cpp (C API `llama.h`), static libs per target, Metal on macOS | built with CMake, consumed with cinterop `.def` |
+| Tests | kotlin.test, kotlinx-coroutines-test, Ktor `MockEngine` and `testApplication` | |
+
+### 5.4 Native interop (llama.cpp)
+
+- Vendor llama.cpp as a git submodule at `third_party/llama.cpp`, pinned to a release tag.
+- A Gradle task per target runs CMake (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`, Metal on for
+  macOS with the shader library embedded, OpenMP off) and produces `libllama.a`, `libggml*.a`.
+- `src/nativeInterop/cinterop/llama.def` declares the headers (`llama.h`) and `staticLibraries`;
+  link the C++ runtime (`-lc++` on macOS, `-lstdc++` on Linux) and the Metal/Foundation frameworks.
+- Kotlin wrapper classes own every native pointer (`LlamaModel`, `LlamaContext`, `LlamaSampler`)
+  and free them in `close()`; use them with `use {}`. No raw pointer leaves `:engine`.
+- Token streaming: generation runs on the instance's dispatcher and emits into a `Flow<Token>`;
+  cancellation checks between decode steps.
+- Model loading progress uses llama.cpp's progress callback through `staticCFunction` and a
+  `StableRef`.
+
+## 6. Daemon API (what the CLI talks to)
+
+The native API mirrors the shapes of LM Studio's documented v1 REST API
+(`https://lmstudio.ai/docs/developer/rest`) so one client type serves both backends.
+All endpoints need `Authorization: Bearer <token>` from the discovery file, except
+`GET /api/v1/status` on loopback.
+
+| Endpoint | Purpose | Used by |
+|---|---|---|
+| `GET /api/v1/status` | version, pid, uptime, server bind/port, loaded count | `status`, `daemon status`, discovery probe |
+| `GET /api/v1/models` | downloaded models with metadata and `loaded_instances` | `ls`, `ps` |
+| `POST /api/v1/models/load` | `{model, context_length, gpu, parallel, ttl, identifier, estimate_only}` → instance; progress as SSE when `stream=true` | `load` |
+| `POST /api/v1/models/unload` | `{instance_id}` or `{all: true}` | `unload` |
+| `POST /api/v1/models/download` / `GET /api/v1/models/download/status/{job}` | daemon-side downloads (optional; the CLI downloads itself in 1.0) | `get` (later) |
+| `POST /api/v1/chat` | native chat, SSE stream with stats | `chat` |
+| `GET /api/v1/logs/stream?source=model\|server\|runtime` | SSE log stream | `log stream` |
+| `POST /api/v1/server` | start/stop the public listener `{bind, port, cors}` | `server start\|stop` |
+| `POST /api/v1/shutdown` | graceful stop | `daemon down` |
+| `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/completions`, `POST /v1/embeddings` | OpenAI-compatible, streaming via SSE | third-party clients |
+
+The LM Studio backend (`--backend lmstudio`, phase 8) maps `ls`, `ps`, `load`, `unload`, `chat`
+and `get` onto LM Studio's `/api/v1/*` endpoints at `http://localhost:1234` (or `--host/--port`)
+with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cannot serve
+(`log stream`, `server start`) print a clear "not supported by this backend" error.
+
+## 7. Files, configuration and environment
+
+| Path | Content |
+|---|---|
+| `~/.runa/models/<publisher>/<repo>/<file>.gguf` | model store (same layout as LM Studio so `runa import --symlink` can reuse `~/.lmstudio/models`) |
+| `~/.runa/config.json` | defaults: models dir, server port/bind/cors, default context, gpu, ttl, backend |
+| `~/.runa/cli-pref.json` | last loaded models, one-time warnings |
+| `~/.runa/run/daemon.json` | discovery: `{pid, port, token, version}`, mode 0600 |
+| `~/.runa/logs/daemon.log` | rotated daemon log |
+
+On Linux, `XDG_DATA_HOME`/`XDG_CONFIG_HOME`/`XDG_STATE_HOME` are honoured; `RUNA_HOME`
+overrides everything. Environment: `RUNA_HOME`, `RUNA_HOST`, `RUNA_PORT`, `RUNA_BACKEND`,
+`RUNA_LOG_LEVEL`, `HF_TOKEN`, `LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
+
+## 8. Implementation phases
+
+Each phase is one or more pull requests. A phase is done when every acceptance criterion holds
+on CI for all enabled targets.
+
+### Phase 0: toolchain and skeleton
+
+Steps:
+1. Add the Gradle wrapper, `settings.gradle.kts`, `gradle/libs.versions.toml`, the module list
+   from 5.2 as empty modules, and a convention plugin (`build-logic/`) that applies Kotlin
+   Multiplatform with targets `macosArm64`, `linuxX64`, `linuxArm64` (and `mingwX64` behind a
+   Gradle property).
+2. `:app` builds an executable `runa` that prints `runa <version> (<git sha>)`; the version comes
+   from `gradle.properties`, the sha from a generated `BuildInfo.kt`.
+3. Spike, kept as tests: Ktor client GET over HTTPS on each target; Ktor CIO server on native
+   answering a request; Clikt + Mordant rendering a table; Okio reading a file.
+4. Add ktlint or detekt (formatting and static checks) and `explicitApi()` in library modules.
+5. CI workflow `ci.yml` (section 10); turn on CodeQL for Kotlin and SonarCloud in `.github/infra.yml`
+   if they support the Kotlin/Native build, otherwise record why not.
+
+Acceptance: `./gradlew build` is green on macOS arm64 and Linux x64 runners; `runa --version`
+runs from `build/bin/<target>/releaseExecutable`; the spike tests pass on every target.
+
+### Phase 1: CLI framework, output and config
+
+Steps:
+1. Root command with global options `--json`, `--log-level`, `--quiet`, `--verbose`, `--host`,
+   `--port`, `--backend`, `--yes`; help layout grouped like lms (Local models, Serve, Runtime).
+2. Output layer: one `Renderer` for human output (Mordant tables, colours off when not a TTY or
+   `NO_COLOR` is set) and one for `--json` (kotlinx.serialization, stable field names, no colours).
+3. Error handling: `UserInputError` → one line on stderr, exit 2; network/daemon errors → exit 3;
+   unexpected → stack trace, exit 1; Ctrl-C → exit 130.
+4. `:config` with the precedence rule from section 7, `runa config get|set|path` (small, useful
+   for tests), shell completion (`runa completion bash|zsh|fish`).
+
+Acceptance: golden-file tests for help output and `--json` output of `version`; exit-code tests;
+config precedence tests (flag > env > file > default).
+
+### Phase 2: local model store, `ls`, `import`
+
+Steps:
+1. `:gguf` parser: header, metadata key/values, tensor infos; reads only the header (never maps
+   the whole file); derives architecture, parameter count, quantization, context length,
+   chat template, embedding vs LLM.
+2. `:store` scans the models dir, caches metadata in `~/.runa/models/.index.json` keyed by path,
+   size and mtime.
+3. `runa ls [key] [--llm|--embedding] [--variants] [--json]`: groups quantizations of one repo as
+   variants, shows size, params, arch, quant, and whether loaded (once the daemon exists).
+4. `runa import <file>`: infer `publisher/repo` from the file name or ask (`--user-repo`, `-y`);
+   move by default, `--copy`, `--hard-link`, `--symlink`, `--dry-run`; refuse non-GGUF files.
+
+Acceptance: parser tests on synthetic GGUF headers generated in tests (no weights in git) plus a
+corrupt/truncated-file test; `ls --json` schema test; import tests for all four modes in a temp
+dir; `ls` on 200 models finishes under 200 ms with a warm index.
+
+### Phase 3: Hugging Face download, `get`
+
+Steps:
+1. `:hub`: resolve `owner/repo`, `owner/repo@quant`, or a full `https://huggingface.co/...` URL;
+   list `.gguf` files (including split `-00001-of-0000N` shards and `mmproj` files).
+2. Variant choice: default to the largest quantization that fits the memory estimate from
+   phase 2 metadata and `runtime survey`; `--select` opens a picker; `-y` takes the default.
+3. Downloads: `.part` file, HTTP range resume, parallel shard downloads, SHA-256 against the
+   Hub's LFS oid, atomic rename into the store, progress bar with speed and ETA, Ctrl-C keeps
+   the `.part` for resume. `HF_TOKEN` for gated repos.
+
+Acceptance: tests with Ktor `MockEngine` for resolution, resume after a cut connection, checksum
+mismatch, gated repo without token (clear error); one manual end-to-end download of a small
+model (for example a 0.5B Q4 GGUF) recorded in the PR.
+
+### Phase 4: inference engine, `runa run`
+
+Steps:
+1. Submodule llama.cpp, CMake build task per target, `llama.def`, link flags (section 5.4).
+2. `:engine` wrappers: load with `n_gpu_layers` from `--gpu off|max|0..1`, context length,
+   threads; tokenize; apply the model's chat template; sample (temperature, top-p, top-k, min-p,
+   repeat penalty, seed); stream tokens as a `Flow`; stop strings; embeddings.
+3. Memory estimate (weights + KV cache for the requested context) used by `--estimate-only` and by
+   variant selection.
+4. `runa run <model> "<prompt>" [--system] [--max-tokens] [--temp] [--json]` loads in-process,
+   streams to stdout, prints stats (time to first token, tokens/s) with `--stats`.
+
+Acceptance: a CI job downloads a tiny GGUF (cached between runs) and checks that `runa run` with a
+fixed seed and temperature 0 produces deterministic output; leak check (load/unload 50 times,
+RSS stable within 5 %); tokens/s on macOS arm64 within 10 % of `llama-cli` from the same
+llama.cpp tag on the same model (measured, recorded in the PR).
+
+### Phase 5: daemon, `load`, `unload`, `ps`, `status`
+
+Steps:
+1. `runa daemon up|down|status`: detach, discovery file with a random token, single-instance lock,
+   graceful shutdown on SIGTERM/`/api/v1/shutdown`, stale discovery file detection (dead pid).
+2. Ktor server on loopback with the endpoints in section 6 needed here (`status`, `models`,
+   `load`, `unload`, `shutdown`).
+3. Model registry: several instances, `--identifier`, `--parallel` slots, `--ttl` idle eviction,
+   JIT load on first request when enabled, unload frees native memory.
+4. CLI: `load` (interactive picker when no key, `-y`, progress over SSE), `unload [id] [--all]`,
+   `ps [--json]`, `status [--json]`; auto-start rules from 5.1.
+5. `--host/--port` reach a remote daemon; a remote daemon needs `--token` or `RUNA_TOKEN`.
+
+Acceptance: integration tests that start the real daemon binary on a random port, load the tiny
+model, see it in `ps --json`, unload it, and stop the daemon; TTL test with a 2 s TTL; a killed
+daemon leaves a stale file that the next command detects and replaces; `status` never starts the
+daemon (asserted).
+
+### Phase 6: OpenAI-compatible server and chat
+
+Steps:
+1. `/v1/models`, `/v1/chat/completions` (stream and non-stream, tools, `response_format` with JSON
+   schema through grammars), `/v1/completions`, `/v1/embeddings`; `/api/v1/chat` with stats.
+2. `runa server start [-p] [--bind] [--cors]`, `stop`, `status [--json]`; warn when binding to a
+   non-loopback address without a token.
+3. `runa chat [model]`: REPL with history, multi-line input, slash commands `/help`, `/exit`,
+   `/model`, `/clear`, `/system-prompt`, `/stats`; `-p` for one prompt to stdout; `-s` system
+   prompt; `--ttl`. The input handling is a pure state machine with its own unit tests.
+
+Acceptance: the official `openai` Python client and `curl` examples in `docs/` work against
+`runa server` (CI smoke test); streaming chunks follow the OpenAI SSE format (golden tests);
+chat REPL state-machine tests; `chat -p` usable in pipes (no colours, no spinner when not a TTY).
+
+### Phase 7: logs and observability
+
+Steps:
+1. Log bus in the daemon with sources `model` (prompts and outputs), `server` (requests),
+   `runtime` (llama.cpp log callback).
+2. `runa log stream [--source] [--filter input|output] [--json] [--stats]` over SSE.
+3. Daemon log file with rotation; `runa daemon status` shows its path.
+
+Acceptance: integration test that sends a chat request and sees the input and output events in
+`log stream --json`; prompts are never written to the log file unless `--log-prompts` is set.
+
+### Phase 8: LM Studio backend
+
+Steps:
+1. `LmStudioBackend` in `:client` over `http://<host>:1234/api/v1/*` with `LM_API_TOKEN`.
+2. `--backend lmstudio` (or `RUNA_BACKEND`) for `ls`, `ps`, `load`, `unload`, `chat`, `get`;
+   unsupported commands fail with a clear message.
+3. Optional: `runa import --from-lmstudio` symlinks `~/.lmstudio/models` into runa's store.
+
+Acceptance: contract tests against recorded LM Studio responses (fixtures from the documented
+examples); a manual run against a real LM Studio 0.4.x recorded in the PR.
+
+### Phase 9: hardware survey and smarter loading
+
+Steps:
+1. `runa runtime survey [--json]`: CPU model and cores, RAM, GPU and VRAM (Metal
+   `MTLDevice.recommendedMaxWorkingSetSize` on macOS; `nvidia-smi`/sysfs on Linux), compiled-in
+   backends.
+2. `runa load --auto`: choose GPU offload and context length from the survey and the estimate.
+3. Later: speculative decoding with `--draft-model`, `--reasoning` controls, CUDA and Vulkan
+   builds as separate release variants (`runa runtime ls` lists what the binary was built with).
+
+Acceptance: survey snapshot tests with faked system sources; `--auto` picks a config whose
+estimate fits the reported memory in unit tests.
+
+### Phase 10: packaging and release (section 11)
+
+Acceptance: a tagged release produces signed archives for every enabled target, the install
+script and Homebrew formula install a working `runa`, and `runa --version` matches the tag.
+
+### Phase 11: hardening
+
+- Windows (`mingwX64`) support if still wanted; fuzz-style property tests for the GGUF parser and
+  the argument parser; performance pass on start-up time (target: `runa --version` < 20 ms,
+  `runa ls` < 100 ms warm); documentation in `docs/` (getting started, commands, API).
+
+## 9. Testing strategy
+
+- Unit tests in `commonTest` wherever possible; native-only code in `nativeTest`/`<target>Test`.
+- Golden files for help text and every `--json` output, so output changes are explicit in review.
+- No model weights in git: tests generate synthetic GGUF headers; the integration job downloads one
+  tiny public GGUF into a CI cache.
+- Integration tests run the built binary as a subprocess (daemon start/stop, server, chat `-p`).
+- Each phase adds its tests in the same pull request; coverage is reported once SonarCloud runs.
+
+## 10. CI
+
+- Keep `pipeline.yml` (pyrlyn/ci reusable `ci.yml`: scans, licence check, actionlint behind
+  `pipeline / gate`) and `coderabbit-issues.yml`, `release-ci-alert.yml` from pyrlyn/ci.
+- New `ci.yml` in phase 0: matrix `macos-14` (macosArm64) and `ubuntu-24.04` (linuxX64), later
+  `ubuntu-24.04-arm` (linuxArm64); steps: checkout with submodules, `mise install`, Gradle cache,
+  cache of the llama.cpp CMake build keyed by submodule sha and target, `./gradlew check`,
+  `./gradlew :app:linkReleaseExecutable<Target>`, upload the binary as an artifact.
+- Integration job (phase 4 onward) with the cached tiny model; draft PRs skip CI as today.
+- macOS jobs can use pyrlyn/ci's `macos-runner` action (`MACOS_RUNNER` variable) as before.
+
+## 11. Packaging and release
+
+- Archives: `runa-<version>-<target>.tar.gz` (`.zip` for Windows) with the binary, LICENSE and a
+  SHA-256 file; macOS binaries codesigned and notarized when the signing identity is available.
+- Release workflow on tag `v*`: build per target on native runners (cinterop with C++ needs the
+  target toolchain), create the GitHub release, attach archives and checksums.
+- Install: `curl -fsSL https://github.com/pyrlyn/runa/releases/latest/download/install.sh | sh`
+  and a Homebrew formula (tap or the release's `runa.rb`); re-add `ketch.toml` for the pyrlyn ketch
+  registry once releases exist.
+- Changelog from conventional commits (git-cliff) once there is a first release.
+
+## 12. Repository reset
+
+This pull request removes the Rust implementation and everything tied to it:
+`crates/`, `fuzz/`, `tests/`, `docs/` (Rust-era guides and translations), `dashboard/`, `web/`,
+`scripts/`, `.cargo/`, `.moon/`, `moon.yml`, `.serena/`, `Cargo.toml`, `Cargo.lock`,
+`rust-toolchain.toml`, `dist-workspace.toml`, `cliff.toml`, `ketch.toml`,
+`sonar-project.properties`, `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`, the old planning notes
+(`plan.md`, `done.md`, `research.md`, `report.html`, `roadmap.md`, `todo.md`, `ideas.md`,
+`toolchain.md`), `.github/build-setup.yml` and the Rust workflows (`ci.yml`, `perf.yml`,
+`release.yml`, `release-variants.yml`, `release-failure.yml`, `review.yml`, `bump.yml`,
+`sync-docs.yml`). The history stays in git.
+
+Kept: `LICENSE` and `PRICING.md` (licensing), `brand/` (logos and colour tokens),
+`.coderabbit.yaml` and `renovate.json` (org-wide configuration), `.github/FUNDING.yml`,
+`pipeline.yml`, `coderabbit-issues.yml`, `release-ci-alert.yml` with `.github/infra.yml` reduced to
+workflow and licence checks, `hk.pkl` and the jactionlint configuration, `.editorconfig`.
+Rewritten: `README.md`, `CONTRIBUTING.md`, `mise.toml`, `.gitignore`, `.gitattributes`.
+
+## 13. Risks and open questions
+
+Risks:
+
+- **cinterop with C++ llama.cpp per target.** Static linking of the C++ runtime and Metal differs
+  per OS; cross-compiling Linux from macOS will not work with the native C++ build. Mitigation:
+  build each target on its own runner; spike in phase 0/4 before anything else depends on it.
+- **Ktor on native.** Engine coverage differs by OS (TLS in CIO client, Curl availability on
+  Linux, WinHttp on Windows). Mitigation: phase 0 spike tests on every target.
+- **Kotlin/Native memory and threads.** Native pointers must never be touched from two threads;
+  every instance gets its own single-thread dispatcher and all llama.cpp calls go through it.
+- **Binary size and start-up time** with Ktor server + client in one executable. Measure in
+  phase 0; split `runa __daemon` into its own executable target if needed.
+- **llama.cpp API churn.** Pin a tag, upgrade deliberately, keep `:engine` the only module that
+  sees the C API.
+
+Open questions for Ivan:
+
+1. Product shape: own engine with daemon (this plan) first, or the LM Studio client
+   (`--backend lmstudio`, phase 8) first as a quick win? The plan keeps both; the order can swap.
+2. Is Windows (`mingwX64`) needed for 1.0, or later?
+3. GPU backends beyond Metal and CPU for 1.0 (CUDA, Vulkan)?
+4. Should features from the Rust version come back after 1.0 (`fit` forecasting, cloud
+   OpenAI/Anthropic providers, media/ASR, adaptive memory, MCP tool loop)?
+5. Licence stays GPL-3.0 with the commercial option in `PRICING.md`?

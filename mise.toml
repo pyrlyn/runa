@@ -1,52 +1,10 @@
-# Tool pins for mise users (https://mise.jdx.dev/). Task P0.3, plan D16.
-# rust-toolchain.toml remains the source of truth for the exact rustc patch
-# version; this file exists so `mise install` bootstraps a matching toolchain
-# for contributors who manage tools with mise. Keep the two files in sync.
+# Tool pins for mise users (https://mise.jdx.dev/). The Kotlin/Native toolchain itself comes from
+# the Gradle wrapper and the Kotlin Gradle plugin (see PLAN.md, phase 0); mise only provides the
+# JDK that runs Gradle and the repository lint tools.
 [tools]
-uv = "0.13.0" # installs the pipx: ptools tool
-"pipx:git+https://github.com/pyrlyn/tools.git" = "d6eb6452cbb7ec4b350de87194548915c2648c27" # `mise run sweep`, `just cache`, `just swarfr` (ptools, Python; pyrlyn/tools#8, repin to a tag once merged)
-"cargo:cargo-sweep" = "0.8.0" # `mise run sweep`: drops build artifacts unused for 1 day (ptools sweep)
-mold = { version = "2.42.1", os = ["linux"] } # linker, Linux only; opt in with `cargo --config .cargo/mold.toml`
-# rust-toolchain.toml stays the rustup source of truth for direct rustup runs;
-# mise only reads its components when the pin itself comes from that file, so
-# the components are mirrored here (CI runs under RUSTUP_TOOLCHAIN, which
-# overrides rust-toolchain.toml; without this, cargo fmt/clippy are missing).
-rust = { version = "1.99", components = "rustfmt,clippy" }
-# moon monorepo runner (plan D22, task K1). Pin ↔ `.moon/workspace.yml`
-# versionConstraint ↔ `docs/versions.md`. Installed via the aqua backend
-# (no core mise plugin for moon as of 2026-09-08).
-"aqua:moonrepo/moon" = "2.6.1"
-# video pipeline (P4.5) — ffmpeg binary on PATH, not linked and not downloaded
-ffmpeg = "9.0.1"
-# fixtures & SDK smoke tests (P0.7, P3.9, P6.2)
-# 3.11.9 lacks GitHub artifact attestations (fatal on mise >= 2026.9.6,
-# CI run 34778192909); 3.13.x verifies clean.
-python = "3.15.0"
-node = "24.21.0"
-# packaging (P6.3) — prebuilt binary via aqua (same 0.33.0 release.yml was
-# generated with). The `cargo:` backend compiled from source and raced
-# rustup component downloads against the second `cargo:` install
-# (CI run 34778192909: rename/.partial conflicts, premature eof).
-"aqua:axodotdev/cargo-dist" = "0.33.0"
-# developer utility (not a crate dep): report/autoclean $CARGO_HOME
-# Left as the only `cargo:`-backend tool so concurrent `cargo install`
-# processes can no longer race the same rustup downloads directory.
-"cargo:cargo-cache" = "0.8.3"
-# own kernels (D23) — Zig where better than new C
-zig = "0.16.0"
-# changelog for releases (P13.3): CHANGELOG.md is generated from git history,
-# config in cliff.toml. Same pin style as the rest of this file (D16).
-git-cliff = "2.14.2"
+java = "temurin-21" # runs Gradle and the Kotlin/Native compiler
+cmake = "4" # builds the vendored llama.cpp static libraries for cinterop (PLAN.md, phase 4)
 # Workflow lint (hk.pkl); CI lints through pyrlyn/ci (pipeline.yml).
 "github:jdx/jactionlint" = "2.1.0" # the pre-push hook and local `mise x -- jactionlint`
 hk = "2.5.0" # runs jactionlint as a pre-push hook (hk.pkl); `mise x -- hk install --mise`
 shellcheck = "0.11.0" # used by jactionlint for run: scripts; CI uses the runner image's copy
-
-
-[tasks.sweep]
-description = "Remove cargo build artifacts unused for 1 day (cargo-sweep, via ptools)"
-run = "ptools sweep --days 1"
-
-[tasks.sweep-dry]
-description = "Preview what sweep would remove; deletes nothing"
-run = "ptools sweep --days 1 --dry-run"
