@@ -169,6 +169,14 @@ jobs:
           MODELS: ${{ runner.temp }}/runa/models
         run: app/integration/chat.sh "$RUNA" "$MODELS" "$TEST_MODEL"
 
+      # Integration (PLAN.md, phase 7): `runa log stream` and the daemon's log file.
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        name: Log integration test
+        env:
+          RUNA: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe
+          MODELS: ${{ runner.temp }}/runa/models
+        run: app/integration/logs.sh "$RUNA" "$MODELS" "$TEST_MODEL"
+
       # Integration (PLAN.md, phase 6): the example of docs/openai.md, with the official `openai`
       # Python client from PyPI (docs/examples/requirements.txt) as the server's client.
       - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
