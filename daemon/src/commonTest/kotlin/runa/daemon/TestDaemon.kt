@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import okio.Path.Companion.toPath
 import runa.client.DaemonClient
 import runa.core.LogLevel
 import runa.engine.testing.FakeEngine
@@ -57,6 +58,8 @@ internal class TestDaemon(
         /** What the `created` fields say, and the time of every line of the log: [TIME]. */
         const val NOW = 1_700_000_000L
         const val TIME = "2023-11-14T22:13:20Z"
+
+        const val LOG_FILE = "/state/logs/daemon.log"
 
         /** How many conversations this daemon remembers: few, so a test can make it forget one. */
         const val CONVERSATIONS = 3
@@ -111,6 +114,7 @@ internal fun withDaemon(
             port = { port },
             started = TimeSource.Monotonic.markNow(),
             log = log,
+            logFile = TestDaemon.LOG_FILE.toPath(),
             requestShutdown = { shutdown = true },
         )
     val server = embeddedServer(CIO, port = 0, host = LOOPBACK) { api.install(this, Listener.PRIVATE) }

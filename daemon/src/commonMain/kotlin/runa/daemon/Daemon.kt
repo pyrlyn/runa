@@ -47,10 +47,13 @@ public fun runDaemon(
         return ExitCode.BACKEND
     }
     return lock.use {
-        val log = DaemonLog(settings.logLevel, settings.logPrompts)
+        // Only now: a second daemon that rotated the file would move it away from under the first.
+        val file = LogFile.ofStandardOutput(paths.daemonLogFile, fileSystem)
+        val log = DaemonLog(settings.logLevel, settings.logPrompts, write = file?.let { it::write } ?: ::println)
+        file?.onFailure = { log.at(LogLevel.WARN, it) }
         // Whatever an earlier daemon left behind describes a process that no longer exists.
         DiscoveryFile(fileSystem, paths.discoveryFile).delete()
-        runBlocking { serve(settings, engine(log::runtime), fileSystem, log) }
+        runBlocking { serve(settings, engine(log::runtime), fileSystem, log, file != null) }
         ExitCode.OK
     }
 }
@@ -61,6 +64,8 @@ private suspend fun serve(
     engine: Engine,
     fileSystem: FileSystem,
     log: DaemonLog,
+    /** Whether the log goes to the log file, and not to a terminal. */
+    logsToFile: Boolean,
 ) {
     val pid = currentProcessId()
     val store = ModelStore(fileSystem, settings.modelsDir)
@@ -96,6 +101,7 @@ private suspend fun serve(
             port = { port },
             started = TimeSource.Monotonic.markNow(),
             log = log,
+            logFile = settings.paths.daemonLogFile.takeIf { logsToFile },
             requestShutdown = { stopRequested.store(true) },
         )
     val discovery = DiscoveryFile(fileSystem, settings.paths.discoveryFile)

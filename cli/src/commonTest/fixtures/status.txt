@@ -2,3 +2,4 @@ The runa daemon is running on 127.0.0.1:41234 (pid 4242, runa 1.2.3, up 2m)
 Engine: fake 0 (cpu)
 Loaded models: 0
 Server: not running
+Log: /state/logs/daemon.log

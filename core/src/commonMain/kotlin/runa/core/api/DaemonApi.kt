@@ -27,6 +27,8 @@ public data class DaemonStatus(
     val engine: EngineDescription,
     @SerialName("loaded_instances") val loadedInstances: Int,
     val server: ServerDescription = ServerDescription(),
+    /** The file the daemon's log goes to; null when it goes elsewhere, for example to a terminal. */
+    @SerialName("log_file") val logFile: String? = null,
 )
 
 @Serializable

@@ -158,7 +158,16 @@ internal class FakeDaemon(
     }
 
     private fun status() =
-        DaemonStatus(version, PID, port, uptimeSeconds = 125, EngineDescription("fake", "0", listOf("cpu")), instances.size, server)
+        DaemonStatus(
+            version,
+            PID,
+            port,
+            uptimeSeconds = 125,
+            EngineDescription("fake", "0", listOf("cpu")),
+            instances.size,
+            server,
+            logFile = LOG_FILE,
+        )
 
     /** A log that has [LOG] in it and then ends, as the log of a daemon that stops. */
     private fun MockRequestHandleScope.logs(
@@ -307,6 +316,9 @@ internal class FakeDaemon(
         ) = ModelDescription(key, "llm", "Tiny", "llama", key.substringAfter('@'), 494_000_000, size, 32_768, emptyList())
 
         val MODELS = listOf(model(ALPHA, 398_000_000), model(BETA, 676_000_000))
+
+        /** Not under the test's own directory, which has another name in every run. */
+        const val LOG_FILE = "/state/logs/daemon.log"
 
         private const val TIME = "2026-01-02T03:04:05Z"
 

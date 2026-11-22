@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
+import okio.Path
 import runa.core.GpuOffload
 import runa.core.UserInputError
 import runa.core.api.ApiError
@@ -75,6 +76,8 @@ internal class DaemonApi(
     private val port: () -> Int,
     private val started: TimeMark,
     private val log: DaemonLog,
+    /** Where the log goes when it goes to a file. */
+    private val logFile: Path? = null,
     private val requestShutdown: () -> Unit,
 ) {
     fun install(
@@ -132,6 +135,7 @@ internal class DaemonApi(
             engine = engine.info.let { EngineDescription(it.name, it.version, it.accelerators) },
             loadedInstances = registry.instances().size,
             server = server.describe(),
+            logFile = logFile?.toString(),
         )
 
     /**
