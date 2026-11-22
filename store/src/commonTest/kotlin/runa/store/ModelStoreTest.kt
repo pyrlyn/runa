@@ -139,7 +139,7 @@ class ModelStoreTest {
         assertEquals(
             listOf(
                 StoreProblem(cut, "The file ends inside its GGUF header"),
-                StoreProblem(dangling, "is a broken link"),
+                StoreProblem(dangling, "broken link"),
                 StoreProblem(zip, "Not a GGUF file"),
             ),
             listing.problems,
@@ -171,7 +171,7 @@ class ModelStoreTest {
         assertEquals(parts, model.files)
         assertEquals(3000, model.parameterCount)
         assertEquals(parts.sumOf { fileSystem.metadata(it).size!! }, model.sizeBytes)
-        assertEquals(listOf(StoreProblem(lonely, "is a split model with 1 of 2 parts")), listing.problems)
+        assertEquals(listOf(StoreProblem(lonely, "split model with 1 of 2 parts")), listing.problems)
     }
 
     @Test

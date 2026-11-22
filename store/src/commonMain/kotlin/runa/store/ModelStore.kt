@@ -164,7 +164,7 @@ public class ModelStore(
         file: Path,
         cached: IndexEntry?,
     ): IndexEntry {
-        val metadata = resolved(file) ?: throw IOException("is a broken link")
+        val metadata = resolved(file) ?: throw IOException("broken link")
         val size = metadata.size ?: 0
         val mtime = metadata.lastModifiedAtMillis ?: 0
         if (cached != null && cached.size == size && cached.mtime == mtime) return cached
@@ -184,7 +184,7 @@ public class ModelStore(
                 .mapNotNull { parts ->
                     val total = SplitPart.parse(parts.first().first.name)?.total ?: 1
                     if (parts.size == total) return@mapNotNull parts
-                    problems += StoreProblem(parts.first().first, "is a split model with ${parts.size} of $total parts")
+                    problems += StoreProblem(parts.first().first, "split model with ${parts.size} of $total parts")
                     null
                 }
         // The quantization is the natural variant name; file stems take over when two files share one.
