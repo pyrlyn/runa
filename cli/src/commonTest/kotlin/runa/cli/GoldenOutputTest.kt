@@ -26,6 +26,9 @@ class GoldenOutputTest {
     fun configGetHelp() = golden("config-get-help.txt", "config", "get", "--help")
 
     @Test
+    fun getHelp() = golden("get-help.txt", "get", "--help")
+
+    @Test
     fun lsHelp() = golden("ls-help.txt", "ls", "--help")
 
     @Test

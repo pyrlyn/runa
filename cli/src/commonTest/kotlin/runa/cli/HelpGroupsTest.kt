@@ -32,6 +32,7 @@ class HelpGroupsTest {
         assertEquals(
             """
             |Local models:
+            |  get     Download a GGUF model from Hugging Face
             |  ls      List the models on this machine
             |  import  Add a GGUF file to the model store
             |  load    Does load

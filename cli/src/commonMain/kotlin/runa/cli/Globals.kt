@@ -10,6 +10,7 @@ import runa.config.ConfigFile
 import runa.config.ConfigKey
 import runa.config.ConfigResolver
 import runa.core.LogLevel
+import runa.hub.HubClient
 import runa.platform.RunaPaths
 import runa.platform.resolveRunaPaths
 import runa.store.ModelStore
@@ -45,6 +46,12 @@ internal class Globals(
     /** The model store at the configured `models_dir`. */
     val store: ModelStore by lazy {
         ModelStore(environment.fileSystem, checkNotNull(config.resolve(ConfigKey.MODELS_DIR).value).toPath())
+    }
+
+    /** A client for Hugging Face, or for the mirror named by `HF_ENDPOINT`; the caller closes it. */
+    fun hub(): HubClient {
+        fun env(name: String) = environment.env(name)?.takeIf { it.isNotBlank() }
+        return HubClient(environment.httpEngine, env("HF_ENDPOINT") ?: HubClient.DEFAULT_ENDPOINT, env("HF_TOKEN"))
     }
 
     /** [jsonHere] is a command's own `--json`, so both `runa --json ls` and `runa ls --json` work. */

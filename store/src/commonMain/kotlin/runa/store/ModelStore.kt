@@ -7,9 +7,15 @@ import okio.Path
 import runa.core.ModelKey
 import runa.core.ModelKind
 import runa.core.UserInputError
+import runa.gguf.GGUF_EXTENSION
 import runa.gguf.GgufFormatException
 import runa.gguf.GgufHeader
+import runa.gguf.GgufSplitPart
+import runa.gguf.ggufStem
+import runa.gguf.isGgufFileName
+import runa.gguf.quantizationInName
 import runa.gguf.readGgufHeader
+import runa.gguf.withoutQuantization
 import runa.platform.createHardLink
 
 /**
@@ -35,7 +41,7 @@ public class ModelStore(
         for (publisher in directoriesIn(modelsDir)) {
             for (repo in directoriesIn(publisher)) {
                 val files =
-                    children(repo).filter { isGgufName(it.name) }.mapNotNull { file ->
+                    children(repo).filter { isGgufFileName(it.name) }.mapNotNull { file ->
                         val relative = file.relativeTo(modelsDir).toString()
                         try {
                             entry(file, cached.files[relative]).also { entries[relative] = it }.let { file to it }
@@ -68,7 +74,7 @@ public class ModelStore(
                 throw UserInputError("$source does not exist")
             }
         if (fileSystem.metadataOrNull(file)?.isRegularFile != true) throw UserInputError("$source is not a file")
-        if (!isGgufName(file.name)) throw UserInputError("$source is not a GGUF model: its name must end with $EXTENSION")
+        if (!isGgufFileName(file.name)) throw UserInputError("$source is not a GGUF model: its name must end with $GGUF_EXTENSION")
         val header =
             try {
                 readGgufHeader(fileSystem, file)
@@ -77,7 +83,7 @@ public class ModelStore(
             } catch (e: IOException) {
                 throw UserInputError("Cannot read $source: ${e.message}")
             }
-        val split = SplitPart.parse(file.name)
+        val split = GgufSplitPart.parse(file.name)
         val files =
             if (split == null) {
                 listOf(file)
@@ -88,7 +94,7 @@ public class ModelStore(
                 }
             }
         val publisher = header.organization?.let(ModelKey::toValidName) ?: DEFAULT_PUBLISHER
-        val repo = ModelKey.toValidName(withoutQuantization(modelStem(file.name))) ?: DEFAULT_REPO
+        val repo = ModelKey.toValidName(withoutQuantization(ggufStem(file.name))) ?: DEFAULT_REPO
         return ImportSource(files, ModelKey(publisher, repo))
     }
 
@@ -179,10 +185,10 @@ public class ModelStore(
         val groups =
             files
                 .filter { (_, entry) -> entry.type == null || entry.type == GgufHeader.TYPE_MODEL }
-                .groupBy { (file, _) -> SplitPart.parse(file.name)?.let { "${it.stem}/${it.total}" } ?: file.name }
+                .groupBy { (file, _) -> GgufSplitPart.parse(file.name)?.let { "${it.stem}/${it.total}" } ?: file.name }
                 .values
                 .mapNotNull { parts ->
-                    val total = SplitPart.parse(parts.first().first.name)?.total ?: 1
+                    val total = GgufSplitPart.parse(parts.first().first.name)?.total ?: 1
                     if (parts.size == total) return@mapNotNull parts
                     problems += StoreProblem(parts.first().first, "split model with ${parts.size} of $total parts")
                     null
@@ -191,7 +197,7 @@ public class ModelStore(
         val names = groups.map { parts -> quantization(parts.first())?.lowercase() }
         return groups.mapIndexed { index, parts ->
             val (file, entry) = parts.first()
-            val stem = modelStem(file.name)
+            val stem = ggufStem(file.name)
             val unique = names[index]?.takeIf { name -> names.count { it == name } == 1 }
             StoredModel(
                 key = model.copy(variant = unique ?: stem.lowercase()),
@@ -207,7 +213,8 @@ public class ModelStore(
         }
     }
 
-    private fun quantization(file: Pair<Path, IndexEntry>): String? = file.second.quantization ?: quantizationOf(modelStem(file.first.name))
+    private fun quantization(file: Pair<Path, IndexEntry>): String? =
+        file.second.quantization ?: quantizationInName(ggufStem(file.first.name))
 
     private fun directoriesIn(directory: Path): List<Path> =
         children(directory).filter { !it.name.startsWith(".") && resolved(it)?.isDirectory == true }
