@@ -20,6 +20,25 @@ reviews:
   related_prs: false
   suggested_labels: false
   suggested_reviewers: false
+  request_changes_workflow: false
+  auto_assign_reviewers: false
+  auto_apply_labels: false
+  auto_title_placeholder: ""
+  commit_status: true
+  fail_commit_status: false
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
 chat:
   auto_reply: false
   art: false
+  integrations:
+    jira:
+      usage: disabled
+    linear:
+      usage: disabled
+issue_enrichment:
+  auto_enrich:
+    enabled: false
