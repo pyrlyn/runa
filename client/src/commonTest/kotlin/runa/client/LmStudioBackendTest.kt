@@ -245,7 +245,7 @@ class LmStudioBackendTest {
         assertEquals("", response.output.first().content)
         assertContains(response.text, "Top Trending Model on Hugging Face")
         assertEquals(646, response.stats.inputTokens)
-        assertEquals(29.753900615398926, response.stats.tokensPerSecond)
+        assertEquals(29.75, response.stats.tokensPerSecond)
     }
 
     @Test
