@@ -10,6 +10,7 @@ kotlin {
             implementation(projects.store)
             implementation(projects.hub)
             api(projects.config)
+            api(projects.engine)
             implementation(libs.clikt)
             implementation(libs.mordant)
             implementation(libs.kotlinx.serialization.json)
@@ -17,6 +18,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.ktor.client.mock)
+            implementation(projects.engineTesting)
         }
     }
 }

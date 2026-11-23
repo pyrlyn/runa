@@ -1,0 +1,10 @@
+# The C API of the vendored llama.cpp (third_party/llama.cpp). The include directories and the
+# static libraries come from build.gradle.kts, which builds them with CMake for each target.
+headers = llama.h
+headerFilter = llama.h ggml.h ggml-*.h gguf.h
+package = runa.engine.llama.cinterop
+
+# llama.cpp is C++: libc++ on macOS, plus the frameworks of its Metal and Accelerate backends.
+linkerOpts.osx = -lc++ -framework Foundation -framework Metal -framework MetalKit -framework Accelerate
+# Kotlin/Native links GCC 8's libstdc++ itself; there std::filesystem lives in a separate archive.
+linkerOpts.linux = -lstdc++fs

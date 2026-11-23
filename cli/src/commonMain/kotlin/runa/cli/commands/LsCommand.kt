@@ -53,6 +53,10 @@ internal data class ModelEntry(
     )
 }
 
+/** True when [name] is this model's key, its `publisher/repo` or its repo alone; case does not matter. */
+internal fun StoredModel.isNamed(name: String): Boolean =
+    listOf(key.toString(), key.model, key.repo).any { it.equals(name, ignoreCase = true) }
+
 internal class LsCommand : CliktCommand(name = "ls") {
     private val globals by requireObject<Globals>()
     private val key by argument("key", help = "Show the variants of one model, for example publisher/repo").optional()
@@ -80,12 +84,8 @@ internal class LsCommand : CliktCommand(name = "ls") {
             } else {
                 null
             }
-        val wanted = key?.lowercase()
-        val models =
-            listing.models.filter { model ->
-                (kind == null || model.kind == kind) &&
-                    (wanted == null || wanted in listOf(model.key.toString(), model.key.model, model.key.repo).map { it.lowercase() })
-            }
+        val wanted = key
+        val models = listing.models.filter { model -> (kind == null || model.kind == kind) && (wanted == null || model.isNamed(wanted)) }
         if (wanted != null && models.isEmpty()) throw UserInputError("No model matches '$key' in ${store.modelsDir}")
         if (models.isEmpty() && !globals.wantsJson(json)) {
             globals.log.info { "No models in ${store.modelsDir}. Add one with: runa import <file.gguf>" }

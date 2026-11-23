@@ -1,0 +1,1 @@
+{"model":"acme/tiny@q4_k_m","text":"user: one two","finish_reason":"length","stats":{"prompt_tokens":4,"completion_tokens":3,"time_to_first_token_ms":10,"generation_time_ms":300,"tokens_per_second":6.67}}

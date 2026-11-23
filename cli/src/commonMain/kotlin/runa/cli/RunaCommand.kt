@@ -17,6 +17,7 @@ import runa.cli.commands.ConfigCommand
 import runa.cli.commands.GetCommand
 import runa.cli.commands.ImportCommand
 import runa.cli.commands.LsCommand
+import runa.cli.commands.RunCommand
 import runa.cli.commands.VersionCommand
 import runa.config.ConfigKey
 
@@ -46,6 +47,7 @@ internal class RunaCommand(
                 GetCommand(),
                 LsCommand(),
                 ImportCommand(),
+                RunCommand(),
                 VersionCommand(),
                 ConfigCommand(),
                 CompletionCommand(name = "completion", help = "Print a completion script for bash, zsh or fish"),

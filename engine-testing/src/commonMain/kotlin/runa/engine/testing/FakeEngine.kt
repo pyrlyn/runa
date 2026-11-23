@@ -1,24 +1,34 @@
-package runa.engine
+package runa.engine.testing
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import okio.Path
 import runa.core.LoadConfig
+import runa.engine.Engine
+import runa.engine.EngineInfo
+import runa.engine.FinishReason
+import runa.engine.GenerationEvent
+import runa.engine.GenerationRequest
+import runa.engine.GenerationStats
+import runa.engine.LoadedModel
+import runa.engine.MemoryEstimate
+import runa.engine.Prompt
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * An [Engine] without a model: a token is a word and the completion echoes the prompt. It shows
- * that the interface can be implemented and used without llama.cpp.
+ * An [Engine] without a model, for the tests of everything that uses one: a token is a word and
+ * the completion echoes the prompt. It also shows that the interface does not need llama.cpp.
  */
-internal class FakeEngine : Engine {
-    val loaded = mutableListOf<FakeModel>()
+public class FakeEngine : Engine {
+    /** Every load so far, in order. */
+    public val loads: MutableList<FakeLoad> = mutableListOf()
 
-    override val info = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"))
+    override val info: EngineInfo = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"))
 
     override fun estimateMemory(
         model: Path,
         config: LoadConfig,
-    ) = MemoryEstimate(weightsBytes = 1_000, contextBytes = (config.contextLength ?: DEFAULT_CONTEXT) * 2L)
+    ): MemoryEstimate = MemoryEstimate(weightsBytes = 1_000, contextBytes = (config.contextLength ?: DEFAULT_CONTEXT) * 2L)
 
     override suspend fun load(
         model: Path,
@@ -27,7 +37,7 @@ internal class FakeEngine : Engine {
     ): LoadedModel {
         onProgress(0f)
         onProgress(1f)
-        return FakeModel(config.contextLength ?: DEFAULT_CONTEXT).also(loaded::add)
+        return FakeModel(config.contextLength ?: DEFAULT_CONTEXT).also { loads += FakeLoad(model, config, it) }
     }
 
     private companion object {
@@ -35,15 +45,21 @@ internal class FakeEngine : Engine {
     }
 }
 
-internal class FakeModel(
+public class FakeLoad(
+    public val path: Path,
+    public val config: LoadConfig,
+    public val model: FakeModel,
+)
+
+public class FakeModel(
     override val contextLength: Int,
 ) : LoadedModel {
-    var closed = false
+    public var closed: Boolean = false
         private set
-    var generatedTokens = 0
+    public var generatedTokens: Int = 0
         private set
 
-    override val supportsEmbeddings = true
+    override val supportsEmbeddings: Boolean = true
 
     override suspend fun tokenize(text: String): List<Int> = words(text).map { it.hashCode() }
 

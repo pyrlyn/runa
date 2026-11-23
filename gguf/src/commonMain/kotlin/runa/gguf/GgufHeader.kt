@@ -41,7 +41,8 @@ public class GgufHeader(
     public val isEmbeddingModel: Boolean
         get() = (architectureLong("pooling_type") ?: 0L) > 0L || architecture.orEmpty().contains("bert")
 
-    private fun architectureLong(key: String): Long? = architecture?.let { long("$it.$key") }
+    /** An integer the architecture keeps under its own prefix, for example `block_count` for `llama.block_count`. */
+    public fun architectureLong(key: String): Long? = architecture?.let { long("$it.$key") }
 
     public companion object {
         /** The [type] of a file that holds a whole model. */

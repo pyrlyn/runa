@@ -1,6 +1,6 @@
 # Gradle build of the Kotlin/Native CLI (PLAN.md, section 10): `./gradlew check` and the release
-# executable on each target's own runner, since cinterop with C++ (llama.cpp, phase 4) cannot be
-# cross-built. Job names `<os> (<target>)` are the checks to require on main.
+# executable on each target's own runner, since a target's tests run only on its own OS. Job
+# names `<os> (<target>)` are the checks to require on main.
 name: ci
 
 on:
@@ -69,6 +69,8 @@ jobs:
     env:
       RUN: ${{ needs.config.outputs.docs-only != 'true' && !(vars.MACOS_CI_DISABLED == 'true' && startsWith(matrix.os, 'macos')) }}
       SKIP_TESTS: ${{ vars.SKIP_CI_TESTS == 'true' }}
+      TEST_MODEL: bartowski/Qwen2.5-0.5B-Instruct-GGUF@Q4_K_M
+      TEST_MODEL_FILE: bartowski/Qwen2.5-0.5B-Instruct-GGUF/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
     steps:
       - if: env.RUN == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,6 +109,41 @@ jobs:
       - if: env.RUN == 'true'
         name: Smoke test
         run: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe --version
+
+      # Integration (PLAN.md, phase 4): the engine tests skip without real weights, so one small
+      # public model is fetched with runa itself, which checks its SHA-256, and kept in a cache.
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        id: model
+        name: Cache the test model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/runa/models
+          key: test-model-qwen2.5-0.5b-instruct-q4_k_m
+
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true' && steps.model.outputs.cache-hit != 'true'
+        name: Download the test model
+        env:
+          RUNA_HOME: ${{ runner.temp }}/runa
+        run: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe --yes get "$TEST_MODEL"
+
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        name: Engine tests on the test model
+        env:
+          RUNA_TEST_MODEL: ${{ runner.temp }}/runa/models/${{ env.TEST_MODEL_FILE }}
+        run: ./gradlew :engine-llama:${{ matrix.target }}Test --console=plain
+
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        name: The same seed gives the same answer
+        env:
+          RUNA_HOME: ${{ runner.temp }}/runa
+          RUNA: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe
+        run: |
+          ask() { "$RUNA" run "$TEST_MODEL" "Name three colours." --temp 0 --seed 1 --max-tokens 32; }
+          first="$(ask)"
+          second="$(ask)"
+          printf '%s\n' "$first"
+          test -n "$first"
+          test "$first" = "$second"
 
       - if: env.RUN == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
