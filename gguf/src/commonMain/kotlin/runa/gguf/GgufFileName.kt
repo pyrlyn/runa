@@ -10,6 +10,9 @@ public data class GgufSplitPart(
     val index: Int,
     val total: Int,
 ) {
+    /** True when [index] is one of the [total] parts; `-00000-of-00000` or `-00003-of-00002` is not. */
+    public val isValid: Boolean get() = total >= 1 && index in 1..total
+
     /** The file name of part [index] of the same model. */
     public fun fileName(index: Int): String = "$stem-${pad(index)}-of-${pad(total)}$GGUF_EXTENSION"
 
@@ -21,6 +24,15 @@ public data class GgufSplitPart(
         /** Null when [fileName] is not a part of a split model. */
         public fun parse(fileName: String): GgufSplitPart? =
             PATTERN.matchEntire(fileName)?.destructured?.let { (stem, index, total) -> GgufSplitPart(stem, index.toInt(), total.toInt()) }
+
+        /**
+         * True when [indices], the part numbers of files that share a stem and a total, are
+         * exactly 1 to [total]: a set like 1 and 3 of 2 is the right size and still incomplete.
+         */
+        public fun isComplete(
+            indices: Collection<Int>,
+            total: Int,
+        ): Boolean = total >= 1 && indices.size == total && indices.toSet() == (1..total).toSet()
     }
 }
 

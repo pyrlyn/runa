@@ -42,8 +42,9 @@ public fun variantsOf(files: List<HubFile>): List<HubVariant> =
         }.values
         .mapNotNull { parts ->
             val sorted = parts.sortedBy { it.name }
-            val total = GgufSplitPart.parse(sorted.first().name)?.total ?: 1
-            if (sorted.size == total) HubVariant(quantizationInName(ggufStem(sorted.first().name)), sorted) else null
+            val split = sorted.mapNotNull { GgufSplitPart.parse(it.name) }
+            val complete = split.isEmpty() || GgufSplitPart.isComplete(split.map { it.index }, split.first().total)
+            if (complete) HubVariant(quantizationInName(ggufStem(sorted.first().name)), sorted) else null
         }.sortedBy { it.sizeBytes }
 
 /**

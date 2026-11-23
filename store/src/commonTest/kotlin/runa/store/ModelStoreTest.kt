@@ -176,6 +176,25 @@ class ModelStoreTest {
     }
 
     @Test
+    fun partsThatDoNotCoverOneToTheirTotalAreAProblemNotAModel() {
+        val repo = modelsDir / "acme" / "gappy"
+        val first = write(repo / "gappy-Q4_K_M-00001-of-00002.gguf")
+        write(repo / "gappy-Q4_K_M-00003-of-00002.gguf")
+
+        val listing = store.list()
+        assertEquals(emptyList(), listing.models)
+        assertEquals(listOf(StoreProblem(first, "split model with 1 of 2 parts")), listing.problems)
+    }
+
+    @Test
+    fun inspectRefusesAPartNumberOutsideItsTotal() {
+        for (name in listOf("big-00000-of-00000.gguf", "big-00001-of-00000.gguf", "big-00003-of-00002.gguf")) {
+            val message = assertFailsWith<UserInputError> { store.inspect(write(root / name)) }.message.orEmpty()
+            assertContains(message, "is not a part of a split model", message = name)
+        }
+    }
+
+    @Test
     fun variantNamesFallBackToTheFileName() {
         val repo = modelsDir / "acme" / "mix"
         write(repo / "story-Q4_K_M.gguf")

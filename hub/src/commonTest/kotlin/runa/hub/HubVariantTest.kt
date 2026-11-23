@@ -27,6 +27,13 @@ class HubVariantTest {
         )
 
     @Test
+    fun aSplitWithAPartOutsideItsTotalIsNotAVariant() {
+        val gappy = listOf(file("gappy-Q4_K_M-00001-of-00002.gguf", gb), file("gappy-Q4_K_M-00003-of-00002.gguf", gb))
+        assertEquals(emptyList(), variantsOf(gappy))
+        assertEquals(emptyList(), variantsOf(listOf(file("none-Q4_K_M-00000-of-00000.gguf", gb))))
+    }
+
+    @Test
     fun groupsGgufFilesIntoVariantsSmallestFirst() {
         val variants = variantsOf(files)
         assertEquals(listOf("Q4_K_M", "Q8_0", "Q6_K", "F16"), variants.map { it.label })

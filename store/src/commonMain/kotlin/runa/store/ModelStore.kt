@@ -84,6 +84,9 @@ public class ModelStore(
                 throw UserInputError("Cannot read $source: ${e.message}")
             }
         val split = GgufSplitPart.parse(file.name)
+        if (split != null && !split.isValid) {
+            throw UserInputError("$source is not a part of a split model: there is no part ${split.index} of ${split.total}")
+        }
         val files =
             if (split == null) {
                 listOf(file)
@@ -188,9 +191,13 @@ public class ModelStore(
                 .groupBy { (file, _) -> GgufSplitPart.parse(file.name)?.let { "${it.stem}/${it.total}" } ?: file.name }
                 .values
                 .mapNotNull { parts ->
-                    val total = GgufSplitPart.parse(parts.first().first.name)?.total ?: 1
-                    if (parts.size == total) return@mapNotNull parts
-                    problems += StoreProblem(parts.first().first, "split model with ${parts.size} of $total parts")
+                    val split = parts.mapNotNull { (file, _) -> GgufSplitPart.parse(file.name) }
+                    if (split.isEmpty()) return@mapNotNull parts
+                    val total = split.first().total
+                    val indices = split.map { it.index }
+                    if (GgufSplitPart.isComplete(indices, total)) return@mapNotNull parts
+                    val present = indices.toSet().count { it in 1..total }
+                    problems += StoreProblem(parts.first().first, "split model with $present of $total parts")
                     null
                 }
         // The quantization is the natural variant name; file stems take over when two files share one.
