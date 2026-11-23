@@ -11,6 +11,9 @@ Usage: runa chat [<options>] [<model>]
   With -p, or with the question on standard input, the one answer goes to
   standard output and nothing else does.
 
+  With --backend lmstudio the model is one of a running LM Studio, which then
+  also keeps the conversation.
+
 Options:
   -p, --prompt=<text>  Ask this one question, print the answer and exit
   -s, --system=<text>  System prompt

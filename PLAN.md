@@ -666,6 +666,43 @@ Acceptance: integration test that sends a chat request and sees the input and ou
 
 ### Phase 8: LM Studio backend
 
+Status: done ([#154](https://github.com/pyrlyn/runa/pull/154)). Verified on macOS arm64: contract
+tests of `LmStudioBackend` against the documented example responses of LM Studio's v1 REST API,
+kept verbatim in `client/src/commonTest/fixtures/lmstudio/` with the page each one came from, and
+against four error answers recorded from LM Studio 0.4.28; tests of the commands against a fake LM
+Studio that is as strict about unknown keys as the real one, with golden output; both also in an
+Ubuntu 24.04 arm64 container. By hand against LM Studio 0.4.28 with an MLX model and a GGUF
+embedding model: `ls`, `ps`, `load`, `unload`, `chat` with one prompt and as a conversation of two
+turns, and the refusals; the transcript is in the pull request. Not run against the real LM
+Studio: `get`, because it downloads a model, and `import --from-lmstudio` on real GGUF files,
+because that machine's folder had an MLX model only; both are covered by tests. How to use it is
+in [`docs/lmstudio.md`](docs/lmstudio.md).
+
+What differs from the steps below:
+
+- There is one interface, `ModelBackend`, for what the model commands need: list, load, chat and
+  unload. `DaemonClient` and `LmStudioBackend` both implement it and answer in the types of
+  runa's API; what LM Studio does not tell is null there, so the parameters, the GPU share, the
+  parallel slots, the idle time, the estimate and the stop reason became nullable. The HTTP
+  plumbing of both is `ApiTransport`.
+- LM Studio is never started by runa. `--host` and `--port` name it, with port 1234 when none is
+  given. Its token is `--token` or `LM_API_TOKEN`; `RUNA_TOKEN` is never sent to it.
+- `load` passes `--context-length` and refuses the other settings before anything is sent: the
+  REST API of LM Studio 0.4 takes no GPU share, slots, TTL or identifier. `ps` leaves out the GPU,
+  IDLE and TTL columns, which LM Studio has nothing for.
+- A model can be named without its publisher, as with runa's own models. LM Studio answers such a
+  name with an internal error, so the name is looked up in its list first.
+- `get` starts LM Studio's own download job and follows it until it ends. `--select` and the other
+  options of runa's downloader are refused.
+- A model that reasons first begins its answer with empty lines; `chat` does not print them, and
+  `--json` keeps the text as it came.
+- The commands that need runa's own daemon, engine or store (`run`, `import`, `status`, `daemon`,
+  `server`, `log stream`) end with exit code 2 and a line that names `--backend runa`.
+- The optional step is done: `runa import --from-lmstudio[=<dir>]` adds every GGUF model of the
+  folder under the publisher and name it has there, as symlinks unless `--copy` or `--hard-link`
+  is given. A model the store already has is left alone; MLX models and projector files are
+  passed over.
+
 Steps:
 1. `LmStudioBackend` in `:client` over `http://<host>:1234/api/v1/*` with `LM_API_TOKEN`.
 2. `--backend lmstudio` (or `RUNA_BACKEND`) for `ls`, `ps`, `load`, `unload`, `chat`, `get`;

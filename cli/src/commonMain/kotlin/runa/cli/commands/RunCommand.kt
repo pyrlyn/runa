@@ -21,6 +21,8 @@ import okio.Path
 import okio.Path.Companion.toPath
 import runa.cli.CommandGroup
 import runa.cli.Globals
+import runa.cli.daemon.requireRunaBackend
+import runa.cli.output.hundredths
 import runa.cli.output.statsSummary
 import runa.config.ConfigKey
 import runa.core.ChatMessage
@@ -33,7 +35,6 @@ import runa.engine.GenerationStats
 import runa.engine.Prompt
 import runa.engine.Sampling
 import runa.store.find
-import kotlin.math.roundToLong
 import kotlin.time.DurationUnit
 
 @Serializable
@@ -58,8 +59,7 @@ internal data class RunStats(
         stats.completionTokens,
         stats.timeToFirstToken.inWholeMilliseconds,
         stats.generationTime.inWholeMilliseconds,
-        // Two decimals: more is noise, and it keeps the JSON readable.
-        (stats.tokensPerSecond * 100).roundToLong() / 100.0,
+        hundredths(stats.tokensPerSecond),
     )
 }
 
@@ -99,6 +99,7 @@ internal class RunCommand : CliktCommand(name = "run") {
         """.trimIndent()
 
     override fun run() {
+        requireRunaBackend(globals)
         val (name, path) = resolve()
         val config = globals.config
         val load =

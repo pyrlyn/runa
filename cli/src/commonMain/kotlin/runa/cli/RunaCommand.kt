@@ -44,10 +44,18 @@ internal class RunaCommand(
     ).flag()
     private val quiet by option("--quiet", help = "Print errors only").flag()
     private val verbose by option("--verbose", help = "Print debug detail").flag()
-    private val host by option("--host", metavar = "host", help = "Daemon host (env: RUNA_HOST)")
-    private val port by option("--port", metavar = "port", help = "Daemon port (env: RUNA_PORT)")
-    private val token by option("--token", metavar = "token", help = "API token of a daemon on another machine (env: RUNA_TOKEN)")
-    private val backend by option("--backend", metavar = "name", help = "runa or lmstudio (env: RUNA_BACKEND)")
+    private val host by option("--host", metavar = "host", help = "Host of the daemon, or of LM Studio (env: RUNA_HOST)")
+    private val port by option("--port", metavar = "port", help = "Port of the daemon, or of LM Studio instead of 1234 (env: RUNA_PORT)")
+    private val token by option(
+        "--token",
+        metavar = "token",
+        help = "API token of a daemon on another machine (env: RUNA_TOKEN), or of LM Studio (env: LM_API_TOKEN)",
+    )
+    private val backend by option(
+        "--backend",
+        metavar = "name",
+        help = "runa, or lmstudio to list, load and chat with the models of a running LM Studio (env: RUNA_BACKEND)",
+    )
     private val yes by option("-y", "--yes", help = "Take the default answer for every prompt").flag()
 
     init {

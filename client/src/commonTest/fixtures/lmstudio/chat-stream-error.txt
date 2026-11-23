@@ -1,0 +1,6 @@
+event: chat.start
+data: { "type": "chat.start", "model_instance_id": "openai/gpt-oss-20b" }
+
+event: error
+data: { "type": "error", "error": { "type": "invalid_request", "message": "\"model\" is required", "code": "missing_required_parameter", "param": "model" } }
+

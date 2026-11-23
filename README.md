@@ -11,7 +11,8 @@ The implementation plan, phases and acceptance criteria are in [`PLAN.md`](PLAN.
 
 How to use the OpenAI-compatible API, with `curl` and the `openai` Python client, is in
 [`docs/openai.md`](docs/openai.md). How to watch what the daemon and its models do, and what its
-log file holds, is in [`docs/logs.md`](docs/logs.md).
+log file holds, is in [`docs/logs.md`](docs/logs.md). How to list, load and chat with the models
+of a running LM Studio through the same commands is in [`docs/lmstudio.md`](docs/lmstudio.md).
 
 ## Build
 

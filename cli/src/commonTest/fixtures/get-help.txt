@@ -7,6 +7,10 @@ Usage: runa get [<options>] <model>
   An interrupted download continues where it stopped when the command is run
   again.
 
+  With --backend lmstudio a running LM Studio downloads the model into its own
+  folder: a name from its catalog, or owner/repo@quantization and URLs as
+  above. It goes on when this command is interrupted.
+
 Options:
   --select    Choose the variant from a list instead of taking the default
   --json      Print JSON

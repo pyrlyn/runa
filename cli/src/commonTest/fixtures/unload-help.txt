@@ -1,6 +1,6 @@
 Usage: runa unload [<options>] [<id>]
 
-  Unload a model from the daemon and free its memory
+  Unload a model and free its memory
 
 Options:
   --all       Unload every model

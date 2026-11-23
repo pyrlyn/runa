@@ -43,6 +43,9 @@ private fun scaled(
     return fixed(scaled, decimals) + units[unit]
 }
 
+/** [value] to two decimals: more is noise in a time or a speed, and it keeps the JSON readable. */
+internal fun hundredths(value: Double): Double = (value * 100).roundToLong() / 100.0
+
 // Kotlin's common library has no number formatting, and this is all the CLI needs of it.
 private fun fixed(
     value: Double,

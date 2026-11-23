@@ -1,6 +1,7 @@
 package runa.cli
 
 import okio.FileSystem
+import okio.Path
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -101,5 +102,104 @@ class ImportCommandTest {
         assertEquals(2, again.exitCode)
         assertContains(again.stderr, "already exists")
         assertTrue(fileSystem.exists(source))
+    }
+
+    /** LM Studio's folder: two GGUF models, one beside its projector, and a model that is not GGUF. */
+    private fun lmStudioModels(root: Path = cli.home / "lmstudio" / "models"): Path {
+        writeModel(root / "acme" / "tiny-GGUF" / "tiny-Q4_K_M.gguf")
+        writeModel(root / "acme" / "tiny-GGUF" / "mmproj-tiny-f16.gguf")
+        writeModel(root / "other" / "small-GGUF" / "small-Q8_0.gguf", tinyLlama(fileType = 7))
+        fileSystem.createDirectories(root / "prism" / "bonsai-mlx")
+        fileSystem.write(root / "prism" / "bonsai-mlx" / "model.safetensors") { writeUtf8("weights") }
+        return root
+    }
+
+    @Test
+    fun fromLmStudioSymlinksEveryGgufModelUnderItsName() {
+        val root = lmStudioModels()
+        val tiny = models / "acme" / "tiny-GGUF" / "tiny-Q4_K_M.gguf"
+        val small = models / "other" / "small-GGUF" / "small-Q8_0.gguf"
+
+        val run = cli.run("import", "--from-lmstudio=$root")
+
+        assertEquals(0, run.exitCode)
+        assertEquals("$tiny\n$small\n", run.stdout)
+        assertEquals("Imported 2 models from $root (symlinked)\n", run.stderr)
+        assertEquals(root / "acme" / "tiny-GGUF" / "tiny-Q4_K_M.gguf", fileSystem.metadata(tiny).symlinkTarget)
+        // The projector is no model, and what is not GGUF is not runa's to run.
+        assertEquals(listOf(tiny), fileSystem.list(models / "acme" / "tiny-GGUF"))
+        assertFalse(fileSystem.exists(models / "prism"))
+        val listed = cli.run("ls").stdout
+        assertContains(listed, "acme/tiny-GGUF")
+        assertContains(listed, "other/small-GGUF")
+    }
+
+    @Test
+    fun fromLmStudioLeavesAloneWhatTheStoreHas() {
+        val root = lmStudioModels()
+        assertEquals(0, cli.run("import", "--from-lmstudio=$root").exitCode)
+        writeModel(root / "acme" / "new-GGUF" / "new-Q4_K_M.gguf")
+
+        val again = cli.run("import", "--from-lmstudio=$root", "--json")
+        val file = "new-Q4_K_M.gguf"
+        assertEquals(0, again.exitCode)
+        assertEquals("Imported 1 model from $root (symlinked); 2 already in the store\n", again.stderr)
+        assertEquals(
+            "[{\"model\":\"acme/new-GGUF\",\"mode\":\"symlink\",\"dry_run\":false," +
+                "\"files\":[{\"source\":\"${root / "acme" / "new-GGUF" / file}\"," +
+                "\"destination\":\"${models / "acme" / "new-GGUF" / file}\"}]}]\n",
+            again.stdout,
+        )
+
+        val nothingNew = cli.run("import", "--from-lmstudio=$root")
+        assertEquals("", nothingNew.stdout)
+        assertEquals("Every GGUF model in $root is already in the store\n", nothingNew.stderr)
+    }
+
+    @Test
+    fun fromLmStudioLooksInItsDefaultFolder() {
+        val user = cli.home / "user"
+        lmStudioModels(user / ".lmstudio" / "models")
+
+        val run = cli.run("import", "--from-lmstudio", "--dry-run", env = mapOf("HOME" to user.toString()))
+
+        assertEquals(0, run.exitCode)
+        assertEquals("Dry run: 2 models would be symlinked from ${user / ".lmstudio" / "models"}\n", run.stderr)
+        assertFalse(fileSystem.exists(models))
+    }
+
+    @Test
+    fun fromLmStudioPassesOverAFileThatIsNoModel() {
+        val root = lmStudioModels()
+        val broken = root / "acme" / "broken-GGUF" / "broken.gguf"
+        fileSystem.createDirectories(checkNotNull(broken.parent))
+        fileSystem.write(broken) { writeUtf8("PK not a model") }
+
+        val run = cli.run("import", "--from-lmstudio=$root", "--copy")
+
+        assertEquals(0, run.exitCode)
+        assertContains(run.stderr, "Warning: Skipped: $broken is not a GGUF model: Not a GGUF file\n")
+        assertContains(run.stderr, "Imported 2 models from $root (copied)\n")
+        // A copy, as asked, is a file of its own.
+        assertEquals(null, fileSystem.metadata(models / "acme" / "tiny-GGUF" / "tiny-Q4_K_M.gguf").symlinkTarget)
+    }
+
+    @Test
+    fun fromLmStudioNeedsItsFolderAndNothingElse() {
+        val missing = cli.run("import", "--from-lmstudio=${cli.home / "nowhere"}")
+        assertEquals(2, missing.exitCode)
+        assertEquals(
+            "Error: LM Studio's models folder is not at ${cli.home / "nowhere"}; name it with --from-lmstudio=<dir>\n",
+            missing.stderr,
+        )
+
+        val both = cli.run("import", source.toString(), "--from-lmstudio=${lmStudioModels()}")
+        assertEquals(2, both.exitCode)
+        assertContains(both.stderr, "--from-lmstudio takes every model as it is")
+        assertTrue(fileSystem.exists(source))
+
+        val neither = cli.run("import")
+        assertEquals(2, neither.exitCode)
+        assertContains(neither.stderr, "Name the .gguf file to import, or use --from-lmstudio")
     }
 }

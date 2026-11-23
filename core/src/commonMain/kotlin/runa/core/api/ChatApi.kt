@@ -47,9 +47,10 @@ public data class ChatResponse(
 ) {
     @Serializable
     public data class Output(
-        /** Always [MESSAGE] today. */
+        /** [MESSAGE] from runa; LM Studio also has `reasoning` and tool calls. */
         val type: String,
-        val content: String,
+        /** The text of a message; empty for an item that has none, such as a tool call. */
+        val content: String = "",
     )
 
     /** What the model said. */
@@ -68,8 +69,8 @@ public data class ChatStats(
     @SerialName("total_output_tokens") val totalOutputTokens: Int,
     @SerialName("tokens_per_second") val tokensPerSecond: Double,
     @SerialName("time_to_first_token_seconds") val timeToFirstTokenSeconds: Double,
-    /** `stop`: the model ended its answer; `length`: `max_output_tokens` or the context ran out. Not in LM Studio's stats. */
-    @SerialName("stop_reason") val stopReason: String,
+    /** `stop`: the model ended its answer; `length`: `max_output_tokens` or the context ran out. Null from LM Studio, which does not tell. */
+    @SerialName("stop_reason") val stopReason: String? = null,
 )
 
 // The data of the events of a streamed chat. Each says its own event name as `type`, as LM Studio's do.

@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.daemon.DaemonConnector
+import runa.cli.daemon.requireRunaBackend
 import runa.core.api.DaemonJson
 import runa.core.api.LogEvent
 
@@ -61,6 +62,7 @@ internal class LogCommand : CliktCommand(name = "log") {
             """.trimIndent()
 
         override fun run() {
+            requireRunaBackend(globals)
             if (filter != null && source != LogEvent.MODEL) throw UsageError("--filter is for --source ${LogEvent.MODEL}")
             val asJson = globals.wantsJson(json)
             runBlocking {

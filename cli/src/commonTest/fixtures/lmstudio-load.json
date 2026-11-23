@@ -1,0 +1,1 @@
+{"status":"loaded","estimate":null,"instance":{"id":"acme/tiny","model":"acme/tiny","context_length":2048,"gpu":null,"parallel":4,"ttl_seconds":null,"idle_seconds":null,"size_bytes":668000000},"load_time_seconds":1.5}

@@ -1,8 +1,16 @@
-Usage: runa import [<options>] <file>
+Usage: runa import [<options>] [<file>]
 
   Add a GGUF file to the model store
 
+  With --from-lmstudio the models that LM Studio downloaded are added under the
+  names they have there, as symlinks unless --copy or --hard-link says
+  otherwise: nothing is downloaded twice, and LM Studio keeps its files. Models
+  that are already in the store are left alone.
+
 Options:
+  --from-lmstudio[=<dir>]       Instead of one file: symlink every GGUF model
+                                of LM Studio's models folder (default:
+                                ~/.lmstudio/models)
   --user-repo=<publisher/repo>  Name the model instead of deriving it from the
                                 file
   --copy, --hard-link, --symlink

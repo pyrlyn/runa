@@ -1,0 +1,3 @@
+KEY                   TYPE       PARAMS  ARCH   QUANT   SIZE
+acme/tiny             llm        1.10B   llama  Q4_K_M  668 MB
+text-embedding-small  embedding                 F16     84.1 MB

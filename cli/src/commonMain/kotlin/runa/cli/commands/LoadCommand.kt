@@ -16,11 +16,11 @@ import com.github.ajalt.mordant.widgets.Text
 import kotlinx.coroutines.runBlocking
 import runa.cli.CommandGroup
 import runa.cli.Globals
-import runa.cli.daemon.DaemonConnector
 import runa.cli.daemon.chooseModel
 import runa.cli.daemon.describe
 import runa.cli.daemon.load
 import runa.cli.daemon.loadedNote
+import runa.cli.daemon.modelBackend
 import runa.core.GpuOffload
 import runa.core.LoadConfig
 import runa.core.api.LoadRequest
@@ -61,16 +61,19 @@ internal class LoadCommand : CliktCommand(name = "load") {
         The model stays in memory until `runa unload`, its --ttl or `runa daemon down`. The daemon is
         started when it does not run. A model can be loaded more than once: the second copy is called
         `key:2`, or what --identifier says. On success the identifier is printed.
+
+        With --backend lmstudio the model is loaded into LM Studio, which takes --context-length and
+        none of the other settings.
         """.trimIndent()
 
     override fun run() {
         val forProgram = globals.wantsJson(json)
         val response =
             runBlocking {
-                DaemonConnector(globals).require().use { daemon ->
+                globals.modelBackend().use { backend ->
                     val request =
                         LoadRequest(
-                            model = model ?: terminal.chooseModel(daemon.client.models().models, mayAsk = !globals.yes && !forProgram),
+                            model = model ?: terminal.chooseModel(backend.models().models, mayAsk = !globals.yes && !forProgram),
                             contextLength = contextLength,
                             gpu = gpu?.id,
                             parallel = parallel,
@@ -78,12 +81,12 @@ internal class LoadCommand : CliktCommand(name = "load") {
                             identifier = identifier,
                             estimateOnly = estimateOnly,
                         )
-                    daemon.client.load(terminal, request, showProgress = !forProgram)
+                    backend.load(terminal, request, showProgress = !forProgram)
                 }
             }
         response.loadedNote()?.let { note -> globals.log.info { note } }
         globals.renderer(json).render(response, LoadResponse.serializer()) {
-            Text(it.instance?.id ?: "Estimated memory: ${it.estimate.describe()}")
+            Text(it.instance?.id ?: "Estimated memory: ${it.estimate?.describe() ?: "unknown"}")
         }
     }
 }

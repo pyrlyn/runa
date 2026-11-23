@@ -29,6 +29,10 @@ import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.output.formatBytes
 import runa.cli.output.pick
+import runa.client.LmStudioBackend
+import runa.client.LmStudioDownload
+import runa.core.Backend
+import runa.core.BackendError
 import runa.core.UserInputError
 import runa.hub.HubClient
 import runa.hub.HubRepo
@@ -66,9 +70,14 @@ internal class GetCommand : CliktCommand(name = "get") {
         Without @quantization, the largest quantized variant that fits this machine's memory is taken.
         Gated and private models need an access token in HF_TOKEN. An interrupted download continues
         where it stopped when the command is run again.
+
+        With --backend lmstudio a running LM Studio downloads the model into its own folder: a name
+        from its catalog, or owner/repo@quantization and URLs as above. It goes on when this command is
+        interrupted.
         """.trimIndent()
 
     override fun run() {
+        if (globals.backend == Backend.LMSTUDIO) return getWithLmStudio()
         val request =
             HubRequest.parse(model)
                 ?: throw UserInputError(
@@ -207,19 +216,10 @@ internal class GetCommand : CliktCommand(name = "get") {
             return hub.download(repo, variant, directory, fileSystem)
         }
 
-        val layout =
-            progressBarLayout {
-                text(variant.label)
-                percentage()
-                progressBar()
-                completed(suffix = "B", includeTotal = true)
-                speed("B/s")
-                timeRemaining()
-            }
         // Drawn by hand instead of with Mordant's animator: that one hides the cursor, and Ctrl-C
         // ends the process too abruptly to show it again.
         val animation = MultiProgressBarAnimation(terminal)
-        val task = animation.addTask(layout, total = variant.sizeBytes)
+        val task = animation.addTask(downloadLayout(variant.label), total = variant.sizeBytes)
         return coroutineScope {
             val redraw =
                 launch {
@@ -239,7 +239,83 @@ internal class GetCommand : CliktCommand(name = "get") {
         }
     }
 
+    private fun downloadLayout(label: String) =
+        progressBarLayout {
+            text(label)
+            percentage()
+            progressBar()
+            completed(suffix = "B", includeTotal = true)
+            speed("B/s")
+            timeRemaining()
+        }
+
+    /** LM Studio downloads, into its own folder; this command starts the job and watches it. */
+    private fun getWithLmStudio() {
+        if (select) throw UserInputError("--select is not supported by the lmstudio backend: name the variant as owner/repo@quantization")
+        // LM Studio takes a quantization only beside a Hugging Face link, so owner/repo@quantization becomes one.
+        val quantization = if ('@' in model) model.substringAfterLast('@') else null
+        val name = model.substringBeforeLast('@')
+        val source = if (quantization != null && "://" !in name) "$HUGGING_FACE/$name" else name
+        val job =
+            runBlocking {
+                globals.lmStudio().use { lmStudio ->
+                    val started = lmStudio.download(source, quantization)
+                    val id = started.jobId
+                    if (started.status != LmStudioDownload.DOWNLOADING || id == null) started else follow(lmStudio, id, started)
+                }
+            }
+        when (job.status) {
+            LmStudioDownload.ALREADY_DOWNLOADED -> {
+                globals.log.info { "$model is already in LM Studio" }
+            }
+
+            LmStudioDownload.COMPLETED -> {
+                globals.log.info { "LM Studio downloaded $model" }
+            }
+
+            LmStudioDownload.PAUSED -> {
+                globals.log.warn {
+                    "The download of $model is paused in LM Studio and goes on when it is resumed there"
+                }
+            }
+
+            else -> {
+                throw BackendError("LM Studio could not download $model: the download is ${job.status}")
+            }
+        }
+        globals.renderer(json).render(job, LmStudioDownload.serializer()) { Text(it.status) }
+    }
+
+    /** Asks about the job until it is no longer downloading, and draws how far it is when someone is watching. */
+    private suspend fun follow(
+        lmStudio: LmStudioBackend,
+        id: String,
+        started: LmStudioDownload,
+    ): LmStudioDownload {
+        val total = started.totalSizeBytes
+        globals.log.info { "LM Studio downloads $model" + total?.let { " (${formatBytes(it)})" }.orEmpty() }
+        val watched = total != null && !globals.wantsJson(json) && terminal.terminalInfo.outputInteractive
+        val animation = MultiProgressBarAnimation(terminal)
+        val task = if (watched) animation.addTask(downloadLayout(model), total = checkNotNull(total)) else null
+        var drawn = 0L
+        var job = started
+        while (job.status == LmStudioDownload.DOWNLOADING) {
+            delay(globals.environment.downloadPoll)
+            job = lmStudio.downloadStatus(id)
+            val now = job.downloadedBytes
+            if (task != null && now != null) {
+                task.advance(now - drawn)
+                drawn = now
+                animation.refresh()
+            }
+        }
+        // What stays on the screen is the bar of a download that finished; any other is said in words.
+        if (task != null && job.status != LmStudioDownload.COMPLETED) animation.clear()
+        return job
+    }
+
     private companion object {
         const val REDRAW_MILLIS = 100L
+        const val HUGGING_FACE = "https://huggingface.co"
     }
 }
