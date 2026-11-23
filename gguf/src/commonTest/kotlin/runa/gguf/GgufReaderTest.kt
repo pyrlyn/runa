@@ -7,8 +7,11 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class GgufReaderTest {
     private fun GgufWriter.bytes(): ByteString = Buffer().also(::writeTo).readByteString()
@@ -74,14 +77,68 @@ class GgufReaderTest {
             )
         val writer = GgufWriter()
         values.forEachIndexed { index, (type, value) -> writer.put("k$index", type, value) }
+        // A nested array is passed over, not kept: its type and size are read, its elements are not.
+        val expected =
+            values.map { it.second }.dropLast(1) +
+                GgufValue.Array(GgufType.ARRAY, 1, listOf(GgufValue.Array(GgufType.STRING, 1, null)))
         assertEquals(
-            values.map { it.second },
+            expected,
             writer
                 .read()
                 .metadata.values
                 .toList(),
         )
     }
+
+    @Test
+    fun aNestedArrayBombIsSkippedNotKept() {
+        // 64^4 values in one entry: each level is within the per-array limit. The levels share one
+        // child, so the test itself does not hold 16 million values.
+        fun bomb(depth: Int): GgufValue.Array =
+            if (depth == 1) {
+                GgufValue.Array(GgufType.UINT8, 64, List(64) { GgufValue.Integer(7) })
+            } else {
+                val child = bomb(depth - 1)
+                GgufValue.Array(GgufType.ARRAY, 64, List(64) { child })
+            }
+
+        val bytes =
+            GgufWriter()
+                .put("bomb", GgufType.ARRAY, bomb(4))
+                .put("general.architecture", "llama")
+                .bytes()
+        val started = TimeSource.Monotonic.markNow()
+        val header = readGgufHeader(Buffer().write(bytes))
+        val elapsed = started.elapsedNow()
+
+        val value = assertIs<GgufValue.Array>(header.metadata["bomb"])
+        assertEquals(GgufType.ARRAY, value.elementType)
+        assertEquals(64, value.size)
+        assertTrue(header.metadata.values.sumOf(::kept) <= MAX_KEPT_ELEMENTS, "kept ${header.metadata.values.sumOf(::kept)}")
+        assertEquals("llama", header.architecture)
+        // Generous for slow CI; keeping every value took seconds and a gigabyte.
+        assertTrue(elapsed < 5.seconds, "read took $elapsed")
+    }
+
+    @Test
+    fun manySmallArraysShareOneBudget() {
+        val small = GgufValue.Array(GgufType.UINT8, 64, List(64) { GgufValue.Integer(1) })
+        val writer = GgufWriter()
+        repeat(1_000) { writer.put("a$it", GgufType.ARRAY, small) }
+        val header = writer.put("general.architecture", "llama").read()
+
+        assertEquals(1_001, header.metadata.size)
+        val arrays = (0 until 1_000).map { assertIs<GgufValue.Array>(header.metadata["a$it"], "a$it") }
+        assertTrue(arrays.all { it.size == 64L && it.elementType == GgufType.UINT8 })
+        val keptCount = (MAX_KEPT_ELEMENTS / 64).toInt()
+        assertTrue(arrays.take(keptCount).all { it.elements == small.elements })
+        assertTrue(arrays.drop(keptCount).all { it.elements == null })
+        assertEquals(MAX_KEPT_ELEMENTS, header.metadata.values.sumOf(::kept))
+        assertEquals("llama", header.architecture)
+    }
+
+    /** How many array elements [value] holds in memory, at every level. */
+    private fun kept(value: GgufValue): Long = if (value is GgufValue.Array) value.elements.orEmpty().sumOf { 1 + kept(it) } else 0
 
     @Test
     fun longArraysAreSkippedButWhatFollowsIsStillRead() {

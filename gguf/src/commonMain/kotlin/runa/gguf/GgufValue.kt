@@ -50,7 +50,8 @@ public sealed interface GgufValue {
     ) : GgufValue
 
     /**
-     * [elements] is null when the array is longer than the reader's limit: vocabularies have
+     * [elements] is null when the array is longer than the reader's limit, nested inside another
+     * array, or over the header's budget of kept elements ([MAX_KEPT_ELEMENTS]): vocabularies have
      * hundreds of thousands of entries and nothing here needs them, so they are skipped on disk.
      */
     public data class Array(

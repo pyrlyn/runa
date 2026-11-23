@@ -26,7 +26,13 @@ class GgufFuzzTest {
         repeat(ROUND_TRIPS) { seed ->
             val model = Random(seed).model()
             val header = readOrReject(model.bytes, "seed $seed") ?: fail("seed $seed: a written header was rejected")
-            assertEquals(model.metadata, header.metadata.toList(), "seed $seed")
+            assertEquals(
+                model.metadata.map { (key, value) ->
+                    key to value.withoutNestedElements()
+                },
+                header.metadata.toList(),
+                "seed $seed",
+            )
             assertEquals(model.tensors, header.tensors, "seed $seed")
         }
     }
@@ -80,9 +86,18 @@ class GgufFuzzTest {
 
         fun bytes(depth: Int) = Buffer().also(GgufWriter().put("k", GgufType.ARRAY, nested(depth))::writeTo).readByteString()
 
-        assertEquals(nested(4), readOrReject(bytes(4), "four deep")?.metadata?.get("k"))
+        // The arrays inside the top-level one are walked to their end but not kept.
+        assertEquals(nested(4).withoutNestedElements(), readOrReject(bytes(4), "four deep")?.metadata?.get("k"))
         assertEquals(null, readOrReject(bytes(5), "five deep"))
     }
+
+    /** What the reader returns for [this]: a top-level array keeps its elements, arrays inside it do not. */
+    private fun GgufValue.withoutNestedElements(): GgufValue =
+        if (this is GgufValue.Array) {
+            copy(elements = elements?.map { if (it is GgufValue.Array) it.copy(elements = null) else it })
+        } else {
+            this
+        }
 
     /** The header, or null when the reader refused the bytes; anything else fails the test. */
     private fun readOrReject(

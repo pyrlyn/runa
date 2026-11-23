@@ -20,7 +20,11 @@ public fun readGgufHeader(
     maxArrayElements: Int = DEFAULT_MAX_ARRAY_ELEMENTS,
 ): GgufHeader = fileSystem.source(path).buffer().use { readGgufHeader(it, maxArrayElements) }
 
-/** Reads a GGUF header from [source]; arrays longer than [maxArrayElements] are skipped, not kept. */
+/**
+ * Reads a GGUF header from [source]. Only top-level arrays of at most [maxArrayElements] elements
+ * are kept, and only while the header's budget of [MAX_KEPT_ELEMENTS] kept elements lasts; every
+ * other array is skipped on disk and comes back with `elements = null`.
+ */
 public fun readGgufHeader(
     source: BufferedSource,
     maxArrayElements: Int = DEFAULT_MAX_ARRAY_ELEMENTS,
@@ -33,6 +37,13 @@ public fun readGgufHeader(
 
 /** Long enough for every scalar-like array (dimensions, shapes), far below a vocabulary. */
 public const val DEFAULT_MAX_ARRAY_ELEMENTS: Int = 64
+
+/**
+ * How many array elements one header may keep in total, across all of its metadata entries. The
+ * per-array limit alone does not bound memory: nested arrays multiply it per level, and a header
+ * may carry tens of thousands of entries. Real models keep a few dozen elements at most.
+ */
+public const val MAX_KEPT_ELEMENTS: Long = 1L shl 12
 
 // The limits below reject corrupt or hostile headers before they cost memory or time. Real models
 // are orders of magnitude under each of them.
@@ -51,6 +62,9 @@ private class Reader(
     private val source: BufferedSource,
     private val maxArrayElements: Int,
 ) {
+    // What is left of MAX_KEPT_ELEMENTS for this header; charged before elements are read.
+    private var keptLeft: Long = MAX_KEPT_ELEMENTS
+
     fun header(): GgufHeader {
         if (!source.request(4) || source.readIntLe() != MAGIC) throw GgufFormatException("Not a GGUF file")
         val version = source.readIntLe()
@@ -126,7 +140,10 @@ private class Reader(
         val elementType = GgufType.of(source.readIntLe())
         val size = source.readLongLe()
         if (size !in 0..MAX_ARRAY_ELEMENTS) throw GgufFormatException("Implausible array length: ${size.toULong()}")
-        if (size <= maxArrayElements) {
+        // Only top-level arrays are kept: nothing reads a nested one, and keeping them would let one
+        // entry multiply the per-array limit by itself once per level of nesting.
+        if (depth == 0 && size <= maxArrayElements && size <= keptLeft) {
+            keptLeft -= size
             return GgufValue.Array(elementType, size, List(size.toInt()) { value(elementType, depth + 1) })
         }
         when {
@@ -134,7 +151,7 @@ private class Reader(
 
             elementType == GgufType.STRING -> repeat(size.toInt()) { skipString() }
 
-            // An array of arrays that long does not occur; walking it is still bounded by the file size.
+            // Nested arrays are walked, not kept; MAX_ARRAY_DEPTH bounds the recursion, the file size the work.
             else -> repeat(size.toInt()) { array(depth + 1) }
         }
         return GgufValue.Array(elementType, size, elements = null)
