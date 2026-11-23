@@ -7,6 +7,7 @@ import runa.config.DaemonInfo
 import runa.config.DaemonSettings
 import runa.core.GpuOffload
 import runa.core.LogLevel
+import runa.testing.assertGolden
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains

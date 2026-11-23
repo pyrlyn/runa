@@ -21,6 +21,7 @@ import runa.engine.LoadedModel
 import runa.store.StoreListing
 import runa.store.StoredModel
 import runa.store.find
+import runa.store.isNamed
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -50,6 +51,11 @@ public data class LoadDefaults(
     val ttl: Duration? = null,
 )
 
+/** No instance and no stored model has the name a request gave. */
+public class UnknownModelError(
+    message: String,
+) : RuntimeException(message)
+
 public class LoadResult(
     public val instance: InstanceDescription,
     public val estimate: MemoryEstimateDescription,
@@ -73,6 +79,8 @@ public class ModelRegistry(
     private val scope: CoroutineScope,
     private val defaults: LoadDefaults = LoadDefaults(),
     private val time: TimeSource.WithComparableMarks = TimeSource.Monotonic,
+    /** Told about every model that was loaded, whoever asked for it. */
+    private val onLoaded: (LoadResult) -> Unit = {},
     /** Told the identifier of an instance that was unloaded for being idle. */
     private val onEvicted: (String) -> Unit = {},
 ) {
@@ -82,6 +90,9 @@ public class ModelRegistry(
     // Identifiers of loads in flight, so two loads cannot both settle on the same one.
     private val reserved = HashSet<String>()
     private var closed = false
+
+    // Held while a request loads the model it names, so the requests behind it wait for that load.
+    private val loadingOnDemand = Mutex()
 
     /** What [spec] would take, without loading anything. */
     public fun estimate(spec: LoadSpec): MemoryEstimateDescription = estimate(find(spec.model), config(spec))
@@ -121,7 +132,7 @@ public class ModelRegistry(
             throw IllegalStateException("The daemon is shutting down")
         }
         if (ttl != null) instance.timer = scope.launch { unloadWhenIdle(instance, ttl) }
-        return LoadResult(instance.describe(), estimate(model, config), started.elapsedNow())
+        return LoadResult(instance.describe(), estimate(model, config), started.elapsedNow()).also(onLoaded)
     }
 
     /** Runs [block] with the model of instance [id], holding one of its parallel slots. */
@@ -141,6 +152,35 @@ public class ModelRegistry(
                 instance.active.decrementAndFetch()
             }
         }
+    }
+
+    /**
+     * Runs [block] with the model that a request calls [name]: the instance with that identifier,
+     * else a loaded instance of the stored model of that name, else that model, loaded now with the
+     * defaults. [block] also gets the identifier of the instance it runs on.
+     *
+     * @throws UnknownModelError when [name] is neither an instance nor a stored model.
+     * @throws UserInputError when [name] fits more than one stored model.
+     */
+    public suspend fun <T> useNamed(
+        name: String,
+        block: suspend (id: String, model: LoadedModel) -> T,
+    ): T {
+        val id = resolve(name)
+        return use(id) { block(id, it) }
+    }
+
+    private suspend fun resolve(name: String): String {
+        if (lock.withLock { name in instances }) return name
+        val listing = models()
+        val model =
+            when (listing.models.count { it.isNamed(name) }) {
+                0 -> throw UnknownModelError("No model is called '$name'. `runa ls` lists the models, `runa ps` the loaded ones")
+                else -> listing.find(name, modelsDir)
+            }
+
+        suspend fun loaded() = lock.withLock { instances.values.firstOrNull { it.stored.key == model.key }?.id }
+        return loaded() ?: loadingOnDemand.withLock { loaded() ?: load(LoadSpec(model.key.toString())).instance.id }
     }
 
     /**

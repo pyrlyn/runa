@@ -22,6 +22,7 @@ import runa.cli.commands.LoadCommand
 import runa.cli.commands.LsCommand
 import runa.cli.commands.PsCommand
 import runa.cli.commands.RunCommand
+import runa.cli.commands.ServerCommand
 import runa.cli.commands.StatusCommand
 import runa.cli.commands.UnloadCommand
 import runa.cli.commands.VersionCommand
@@ -59,6 +60,7 @@ internal class RunaCommand(
                 UnloadCommand(),
                 PsCommand(),
                 StatusCommand(),
+                ServerCommand(),
                 DaemonCommand(),
                 DaemonProcessCommand(),
                 VersionCommand(),

@@ -45,6 +45,34 @@ class ModelRegistryTest {
         }
 
     @Test
+    fun aRequestLoadsTheModelItNamesOnceWithTheDefaults() =
+        runTest {
+            val registry = registry(LoadDefaults(contextLength = 256, gpu = GpuOffload.Off, ttl = 60.seconds))
+            val used = mutableListOf<String>()
+            repeat(3) { launch { registry.useNamed("acme/alpha") { id, model -> used += "$id ${model.contextLength}" } } }
+            runCurrent()
+            assertEquals(List(3) { "$ALPHA 256" }, used)
+            assertEquals(LoadConfig(contextLength = 256, gpu = GpuOffload.Off), engine.loads.single().config)
+            // Loaded on demand, it goes the way of every idle model.
+            advanceTimeBy(61.seconds)
+            assertEquals(listOf(ALPHA), evicted)
+        }
+
+    @Test
+    fun aRequestMeansAnInstanceBeforeItMeansAStoredModel() =
+        runTest {
+            val registry = registry()
+            registry.load(LoadSpec("beta", identifier = "alpha"))
+            registry.useNamed("alpha") { id, _ -> assertEquals("alpha", id) }
+            // The stored model beta is loaded already, under another name.
+            registry.useNamed("acme/beta") { id, _ -> assertEquals("alpha", id) }
+            assertEquals(1, engine.loads.size)
+            registry.useNamed(ALPHA) { id, _ -> assertEquals(ALPHA, id) }
+            assertEquals(2, engine.loads.size)
+            assertFailsWith<UnknownModelError> { registry.useNamed("gamma") { _, _ -> } }
+        }
+
+    @Test
     fun aFreedIdentifierIsUsedAgain() =
         runTest {
             val registry = registry()

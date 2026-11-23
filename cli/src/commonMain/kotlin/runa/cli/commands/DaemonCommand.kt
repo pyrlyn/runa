@@ -20,6 +20,7 @@ import runa.cli.output.formatSeconds
 import runa.core.BackendError
 import runa.core.ExitCode
 import runa.core.api.EngineDescription
+import runa.core.api.ServerDescription
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -35,6 +36,8 @@ internal data class StatusView(
     @SerialName("uptime_seconds") val uptimeSeconds: Long? = null,
     val engine: EngineDescription? = null,
     @SerialName("loaded_instances") val loadedInstances: Int? = null,
+    /** What `runa server start` opened. */
+    val server: ServerDescription? = null,
 ) {
     constructor(daemon: DaemonConnection) : this(
         running = true,
@@ -44,6 +47,7 @@ internal data class StatusView(
         uptimeSeconds = daemon.status.uptimeSeconds,
         engine = daemon.status.engine,
         loadedInstances = daemon.status.loadedInstances,
+        server = daemon.status.server,
     )
 
     fun describe(): String {
@@ -52,6 +56,7 @@ internal data class StatusView(
             The runa daemon is running on $address (pid $pid, runa $version, up ${formatSeconds(uptimeSeconds ?: 0)})
             Engine: ${engine.name} ${engine.version} (${engine.accelerators.joinToString(", ")})
             Loaded models: $loadedInstances
+            Server: ${(server ?: ServerDescription()).describe()}
             """.trimIndent()
     }
 }
@@ -89,7 +94,8 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
         """
         Start and stop the background process that keeps models loaded
 
-        `load`, `unload` and `ps` talk to the daemon, and `load` and `ps` start it when it does not run.
+        `load`, `unload`, `ps` and `server` talk to the daemon, and `load`, `ps` and `server start` start it
+        when it does not run.
         It listens on a loopback port of its own choosing; its log is logs/daemon.log in runa's directory.
         """.trimIndent()
 

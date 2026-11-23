@@ -8,6 +8,8 @@ import runa.config.DiscoveryFile
 import runa.core.BackendError
 import runa.core.UserInputError
 import runa.core.api.DaemonStatus
+import runa.core.httpUrl
+import runa.core.isLoopbackHost
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -44,7 +46,7 @@ internal class DaemonConnector(
             ?.toInt()
 
     /** True when the daemon is named by address instead of being this machine's own. */
-    val byAddress: Boolean = host.lowercase() !in LOOPBACK || (port != null && globals.token != null)
+    val byAddress: Boolean = !isLoopbackHost(host) || (port != null && globals.token != null)
 
     /** Where the daemon is expected, for messages. */
     val address: String get() = if (port == null) host else "$host:$port"
@@ -105,8 +107,7 @@ internal class DaemonConnector(
         pid: Int?,
     ): DaemonConnection? {
         val address = "$host:$port"
-        // An IPv6 address needs brackets in a URL.
-        val client = DaemonClient(environment.httpEngine, "http://${if (':' in host) "[$host]" else host}:$port", token)
+        val client = DaemonClient(environment.httpEngine, httpUrl(host, port), token)
         val status =
             try {
                 client.status(PROBE_TIMEOUT).takeIf { pid == null || it.pid == pid }
@@ -130,7 +131,6 @@ internal class DaemonConnector(
         /** The hidden command that is the daemon process. */
         const val DAEMON_COMMAND: String = "__daemon"
 
-        private val LOOPBACK = setOf("127.0.0.1", "localhost", "::1")
         private val POLL = 100.milliseconds
         private val PROBE_TIMEOUT = 2.seconds
         private val LOCK_GRACE = 5.seconds

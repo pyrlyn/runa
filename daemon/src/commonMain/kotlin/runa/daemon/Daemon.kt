@@ -1,7 +1,5 @@
 package runa.daemon
 
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,7 +27,8 @@ import kotlin.uuid.Uuid
 
 /**
  * The daemon process: holds the loaded models and serves the API on a loopback port until it is
- * told to stop by SIGTERM or `POST /api/v1/shutdown`. Returns the process exit code.
+ * told to stop by SIGTERM or `POST /api/v1/shutdown`. `runa server start` makes it serve the same
+ * API on a second, public address as well. Returns the process exit code.
  *
  * @param engine creates the inference engine; it gets the sink for the engine's own log.
  */
@@ -73,16 +72,24 @@ private suspend fun serve(
             modelsDir = settings.modelsDir,
             scope = timers,
             defaults = LoadDefaults(settings.contextLength, settings.gpu, settings.ttl),
+            onLoaded = { log.info("Loaded ${it.instance.model} as '${it.instance.id}' in ${it.loadTime.inWholeMilliseconds} ms") },
             onEvicted = { log.info("Unloaded '$it': idle for longer than its ttl") },
         )
     val stopRequested = AtomicBoolean(false)
     var port = 0
+    val access = Access(randomHex() + randomHex())
+    val failures = Failures(log)
+    // Each server that starts brings Ktor's signal handlers back, see below.
+    val public = PublicServer(access, log, afterStart = ::catchTermination)
     val api =
         DaemonApi(
             registry = registry,
             engine = engine,
             store = store::list,
-            token = newToken(),
+            access = access,
+            failures = failures,
+            openAi = OpenAiApi(registry, store::list, access, failures, log),
+            server = public,
             version = settings.version,
             pid = pid,
             port = { port },
@@ -90,36 +97,33 @@ private suspend fun serve(
             log = log,
             requestShutdown = { stopRequested.store(true) },
         )
-    val server = embeddedServer(CIO, port = settings.port ?: 0, host = LOOPBACK) { api.install(this) }
     val discovery = DiscoveryFile(fileSystem, settings.paths.discoveryFile)
+    var server: HttpServer? = null
     try {
-        server.startSuspend(wait = false)
+        server = listen(LOOPBACK, settings.port ?: 0, log) { api.install(this, Listener.PRIVATE) }
         // After the server has started, because Ktor installs signal handlers of its own then: they
         // would stop the server and leave this process running without one.
         catchTermination()
-        port =
-            server.engine
-                .resolvedConnectors()
-                .first()
-                .port
+        port = server.port()
         // Written only now: whoever finds the file can connect at once.
-        discovery.write(DaemonInfo(pid, port, api.token, settings.version))
+        discovery.write(DaemonInfo(pid, port, access.token, settings.version))
         log.info("runa ${settings.version} (pid $pid) listens on $LOOPBACK:$port with ${engine.info.name} ${engine.info.version}")
         // Signal handlers can only set a flag, so the flag is polled.
         while (!stopRequested.load() && !terminationRequested()) delay(POLL)
         log.info("Stopping")
     } finally {
         discovery.delete(pid)
-        server.stopSuspend(gracePeriodMillis = GRACE_MILLIS, timeoutMillis = STOP_TIMEOUT_MILLIS)
+        public.stop()
+        server?.stopSuspend(gracePeriodMillis = GRACE_MILLIS, timeoutMillis = STOP_TIMEOUT_MILLIS)
         registry.close()
         timers.cancel()
         log.info("Stopped")
     }
 }
 
-/** 244 random bits from the operating system's generator, which is what `Uuid.random` reads. */
+/** 122 random bits from the operating system's generator, which is what `Uuid.random` reads; the token is two of these. */
 @OptIn(ExperimentalUuidApi::class)
-private fun newToken(): String = Uuid.random().toHexString() + Uuid.random().toHexString()
+internal fun randomHex(): String = Uuid.random().toHexString()
 
 private const val LOOPBACK = "127.0.0.1"
 private val POLL = 100.milliseconds

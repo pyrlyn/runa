@@ -1,1 +1,1 @@
-{"running":true,"address":"127.0.0.1:41234","pid":4242,"version":"1.2.3","uptime_seconds":125,"engine":{"name":"fake","version":"0","accelerators":["cpu"]},"loaded_instances":0}
+{"running":true,"address":"127.0.0.1:41234","pid":4242,"version":"1.2.3","uptime_seconds":125,"engine":{"name":"fake","version":"0","accelerators":["cpu"]},"loaded_instances":0,"server":{"running":false,"bind":null,"port":null,"cors":false,"api_key_required":false}}

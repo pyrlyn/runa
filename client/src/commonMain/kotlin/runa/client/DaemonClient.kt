@@ -33,6 +33,8 @@ import runa.core.api.LoadProgress
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
 import runa.core.api.ModelList
+import runa.core.api.ServerDescription
+import runa.core.api.ServerRequest
 import runa.core.api.ShutdownResponse
 import runa.core.api.UnloadRequest
 import runa.core.api.UnloadResponse
@@ -98,6 +100,14 @@ public class DaemonClient(
 
     public suspend fun unload(request: UnloadRequest): UnloadResponse =
         call(HttpMethod.Post, DaemonRoutes.UNLOAD, { json(UnloadRequest.serializer(), request) }) { it.read(UnloadResponse.serializer()) }
+
+    /** Opens or closes the listener for other programs, and returns what it is now. */
+    public suspend fun server(request: ServerRequest): ServerDescription =
+        call(
+            HttpMethod.Post,
+            DaemonRoutes.SERVER,
+            { json(ServerRequest.serializer(), request) },
+        ) { it.read(ServerDescription.serializer()) }
 
     /** Asks the daemon to stop; it answers first and exits afterwards. */
     public suspend fun shutdown() {
