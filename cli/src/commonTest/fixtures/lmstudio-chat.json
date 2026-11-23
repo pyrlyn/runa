@@ -1,0 +1,1 @@
+{"model_instance_id":"acme/tiny","output":[{"type":"reasoning","content":"Let me think."},{"type":"message","content":"\n\n[Be brief] echo: hi"}],"stats":{"input_tokens":9,"total_output_tokens":12,"tokens_per_second":29.75,"time_to_first_token_seconds":0.212,"stop_reason":null},"response_id":null}

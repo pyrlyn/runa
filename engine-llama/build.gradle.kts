@@ -12,6 +12,9 @@ plugins {
 
 val llamaDir = rootProject.layout.projectDirectory.dir("third_party/llama.cpp")
 
+// The C API over llama.cpp's C++-only `common` library. Its CMake project builds llama.cpp too.
+val shimDir = layout.projectDirectory.dir("src/nativeInterop/shim")
+
 // The submodule is pinned to a commit, so the commit stands for its content in up-to-date checks.
 val llamaRevision: Provider<String> =
     providers
@@ -35,8 +38,11 @@ val nativeHome: Provider<String> =
 
 val llamaOptions =
     listOf(
-        // Only the library: runa has its own CLI, server and HTTP client.
-        "-DLLAMA_BUILD_COMMON=OFF",
+        // The library and `common`, which has the chat templates, the tool call parsers and the
+        // grammars. runa has its own CLI, server and HTTP client.
+        "-DLLAMA_BUILD_COMMON=ON",
+        // `common` starts programs only for llama.cpp's own server.
+        "-DLLAMA_SUBPROCESS=OFF",
         "-DLLAMA_BUILD_TESTS=OFF",
         "-DLLAMA_BUILD_TOOLS=OFF",
         "-DLLAMA_BUILD_EXAMPLES=OFF",
@@ -65,8 +71,10 @@ fun llamaOptionsFor(target: org.jetbrains.kotlin.konan.target.KonanTarget): List
         }
     }
 
+// In the order a linker needs: a library before the ones it uses.
 fun llamaLibrariesFor(target: org.jetbrains.kotlin.konan.target.KonanTarget): List<String> =
-    listOf("libllama.a", "libggml.a", "libggml-cpu.a") +
+    listOf("libruna-llama.a", "libllama-common.a", "libllama-common-base.a", "libcpp-httplib.a") +
+        listOf("libllama.a", "libggml.a", "libggml-cpu.a") +
         (if (target.family == Family.OSX) listOf("libggml-metal.a", "libggml-blas.a") else emptyList()) +
         "libggml-base.a"
 
@@ -108,7 +116,7 @@ kotlin {
         val konan = konanTarget
         val interop =
             compilations.getByName("main").cinterops.create("llama") {
-                includeDirs(llamaDir.dir("include"), llamaDir.dir("ggml/include"))
+                includeDirs(llamaDir.dir("include"), llamaDir.dir("ggml/include"), shimDir)
             }
         // llama.cpp is not built for Windows yet (PLAN.md, section 13): mingwX64 gets the bindings
         // and compiles, but cannot link.
@@ -118,15 +126,16 @@ kotlin {
         val libraryDir = layout.buildDirectory.dir("llama/${konan.name}/lib")
         val cmake =
             tasks.register<CmakeStaticLibraries>("cmakeLlama$targetName") {
-                description = "Builds llama.cpp's static libraries for ${konan.name}."
-                sourceDir.set(llamaDir)
+                description = "Builds llama.cpp's static libraries and runa's C API over them for ${konan.name}."
+                sourceDir.set(shimDir)
+                sources.from(shimDir)
                 sourceRevision.set(llamaRevision)
                 konanTarget.set(konan.name)
-                options.set(llamaOptions + llamaOptionsFor(konan))
-                buildTargets.set(listOf("llama"))
+                options.set(llamaOptions + llamaOptionsFor(konan) + "-DRUNA_LLAMA_DIR=${llamaDir.asFile.path}")
+                buildTargets.set(listOf("runa-llama"))
                 konanHome.set(nativeHome)
                 konanDataDir.set(nativeDataDir)
-                workDir.set(layout.buildDirectory.dir("llama/${konan.name}/cmake"))
+                workDir.set(layout.buildDirectory.dir("llama/${konan.name}/build"))
                 this.libraryDir.set(libraryDir)
                 // Kotlin/Native downloads its compiler, clang and sysroots when its first task for
                 // a target runs. CMake compiles with them, so it waits for such a task.

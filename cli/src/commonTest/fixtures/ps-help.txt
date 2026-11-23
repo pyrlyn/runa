@@ -1,6 +1,6 @@
 Usage: runa ps [<options>]
 
-  List the models the daemon has loaded
+  List the loaded models
 
 Options:
   --json      Print JSON

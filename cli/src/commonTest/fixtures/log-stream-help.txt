@@ -1,0 +1,20 @@
+Usage: runa log stream [<options>]
+
+  Print the daemon's log as it is written, until Ctrl-C or until the daemon
+  stops
+
+  Nothing of what the models read and write is kept: the stream shows what
+  happens while it is open. It reaches the daemon's log file only when the
+  daemon was started with `--log-prompts`.
+
+Options:
+  --source=(model|server|runtime)
+                           model: what the models read and write; server: the
+                           daemon's log and its requests; runtime: the engine's
+                           log (default: model)
+  --filter=(input|output)  Of the model source, only what the models read, or
+                           only what they write
+  --stats                  Show token counts, time to first token and tokens
+                           per second of every answer
+  --json                   Print every event as one line of JSON
+  -h, --help               Show this message and exit

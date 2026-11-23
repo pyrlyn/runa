@@ -2,6 +2,7 @@ package runa.cli
 
 import okio.FileSystem
 import runa.gguf.GgufWriter
+import runa.testing.assertGolden
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains

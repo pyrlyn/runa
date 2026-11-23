@@ -9,6 +9,29 @@ through llama.cpp and does not need LM Studio.
 
 The implementation plan, phases and acceptance criteria are in [`PLAN.md`](PLAN.md).
 
+## Documentation
+
+- [`docs/getting-started.md`](docs/getting-started.md): from nothing to a model that answers.
+- [`docs/commands.md`](docs/commands.md): every command and its options, written from `--help`.
+- [`docs/openai.md`](docs/openai.md): the OpenAI-compatible API, with `curl` and the `openai`
+  Python client.
+- [`docs/logs.md`](docs/logs.md): what the daemon and its models do, and what its log file holds.
+- [`docs/lmstudio.md`](docs/lmstudio.md): the models of a running LM Studio through the same
+  commands.
+- [`docs/hardware.md`](docs/hardware.md): what `runa runtime survey` tells about a machine, and
+  how `runa load --auto` chooses by it.
+- [`docs/install.md`](docs/install.md): installation, and how a release is made.
+
+## Install
+
+```sh
+curl -fsSL https://github.com/pyrlyn/runa/releases/latest/download/install.sh | sh
+```
+
+for macOS on Apple Silicon and Linux on x86-64 and arm64, once the first release is out. The
+Homebrew formula, the archives, what Linux must have and how a release is made are in
+[`docs/install.md`](docs/install.md).
+
 ## Build
 
 ```sh

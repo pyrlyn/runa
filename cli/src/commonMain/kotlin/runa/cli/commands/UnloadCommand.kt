@@ -13,9 +13,9 @@ import com.github.ajalt.mordant.widgets.Text
 import kotlinx.coroutines.runBlocking
 import runa.cli.CommandGroup
 import runa.cli.Globals
-import runa.cli.daemon.DaemonConnector
+import runa.cli.daemon.runningModelBackend
 import runa.cli.output.pick
-import runa.client.DaemonClient
+import runa.client.ModelBackend
 import runa.core.UserInputError
 import runa.core.api.UnloadRequest
 import runa.core.api.UnloadResponse
@@ -28,21 +28,21 @@ internal class UnloadCommand : CliktCommand(name = "unload") {
 
     override val helpTags: Map<String, String> = CommandGroup.LOCAL_MODELS.helpTags
 
-    override fun help(context: Context): String = "Unload a model from the daemon and free its memory"
+    override fun help(context: Context): String = "Unload a model and free its memory"
 
     override fun run() {
         if (all && identifier != null) throw UsageError("Give an identifier or --all, not both")
         val response =
             runBlocking {
                 // A daemon that does not run has nothing loaded, so there is no reason to start one.
-                val daemon = DaemonConnector(globals).find()
-                if (daemon == null) {
+                val backend = globals.runningModelBackend()
+                if (backend == null) {
                     globals.log.info { "The runa daemon is not running, so no model is loaded" }
                     return@runBlocking UnloadResponse(emptyList())
                 }
-                daemon.use {
-                    val request = if (all) UnloadRequest(all = true) else UnloadRequest(instanceId = identifier ?: choose(it.client))
-                    if (request.all || request.instanceId != null) it.client.unload(request) else UnloadResponse(emptyList())
+                backend.use {
+                    val request = if (all) UnloadRequest(all = true) else UnloadRequest(instanceId = identifier ?: choose(it))
+                    if (request.all || request.instanceId != null) it.unload(request) else UnloadResponse(emptyList())
                 }
             }
         response.unloaded.forEach { globals.log.info { "Unloaded $it" } }
@@ -52,7 +52,7 @@ internal class UnloadCommand : CliktCommand(name = "unload") {
     }
 
     /** The one loaded model, or the one picked from a list; null when nothing is loaded. */
-    private suspend fun choose(client: DaemonClient): String? {
+    private suspend fun choose(client: ModelBackend): String? {
         val loaded = client.models().models.flatMap { it.loadedInstances }
         if (loaded.isEmpty()) {
             globals.log.info { "No models are loaded" }

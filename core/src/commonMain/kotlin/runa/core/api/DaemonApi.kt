@@ -6,6 +6,8 @@ import kotlinx.serialization.json.Json
 
 // The JSON of the daemon's native API (PLAN.md, section 6). The daemon writes these types and the
 // client reads them, so the two cannot drift apart; `--json` output of `ps` and `status` is the same.
+// The client of LM Studio answers in these types too. The daemon fills every field; a field that
+// says "null when the service does not tell" is null only for LM Studio.
 
 /**
  * How both sides write and read the API: every field is written, defaults and nulls too, and a
@@ -26,6 +28,9 @@ public data class DaemonStatus(
     @SerialName("uptime_seconds") val uptimeSeconds: Long,
     val engine: EngineDescription,
     @SerialName("loaded_instances") val loadedInstances: Int,
+    val server: ServerDescription = ServerDescription(),
+    /** The file the daemon's log goes to; null when it goes elsewhere, for example to a terminal. */
+    @SerialName("log_file") val logFile: String? = null,
 )
 
 @Serializable
@@ -33,6 +38,8 @@ public data class EngineDescription(
     val name: String,
     val version: String,
     val accelerators: List<String>,
+    /** True when the engine can put a model on a GPU of its machine; false also from a daemon too old to tell. */
+    @SerialName("gpu_offload") val gpuOffload: Boolean = false,
 )
 
 /** `GET /api/v1/models`. */
@@ -45,12 +52,13 @@ public data class ModelList(
 public data class ModelDescription(
     /** `publisher/repo@variant`, as `runa ls` shows it. */
     val key: String,
-    /** `llm` or `embedding`. */
+    /** `llm` or `embedding`; LM Studio also has `decision`. */
     val type: String,
     @SerialName("display_name") val displayName: String?,
     val architecture: String?,
     val quantization: String?,
-    val params: Long,
+    /** The number of parameters; null when the service does not tell. */
+    val params: Long?,
     @SerialName("size_bytes") val sizeBytes: Long,
     @SerialName("max_context_length") val maxContextLength: Long?,
     @SerialName("loaded_instances") val loadedInstances: List<InstanceDescription>,
@@ -63,12 +71,14 @@ public data class InstanceDescription(
     /** The key of the model it was loaded from. */
     val model: String,
     @SerialName("context_length") val contextLength: Int,
-    /** `off`, `max` or a ratio, as asked for at load time. */
-    val gpu: String,
-    val parallel: Int,
-    /** Seconds of idleness after which it is unloaded; null for never. */
+    /** `off`, `max` or a ratio, as asked for at load time; null when the service does not tell. */
+    val gpu: String?,
+    /** Null when the service does not tell. */
+    val parallel: Int?,
+    /** Seconds of idleness after which it is unloaded; null for never, and when the service does not tell. */
     @SerialName("ttl_seconds") val ttlSeconds: Long?,
-    @SerialName("idle_seconds") val idleSeconds: Long,
+    /** Null when the service does not tell. */
+    @SerialName("idle_seconds") val idleSeconds: Long?,
     @SerialName("size_bytes") val sizeBytes: Long,
 )
 
@@ -84,6 +94,11 @@ public data class LoadRequest(
     val identifier: String? = null,
     /** Answer with the memory estimate and load nothing. */
     @SerialName("estimate_only") val estimateOnly: Boolean = false,
+    /**
+     * Let the daemon choose [gpu] and [contextLength] by the memory of its machine, so that the
+     * model fits. Either one that is given is kept, and only the other is chosen.
+     */
+    val auto: Boolean = false,
     /** Answer with server-sent events: `progress` while loading, then `loaded` or `error`. */
     val stream: Boolean = false,
 )
@@ -92,16 +107,27 @@ public data class LoadRequest(
 public data class LoadResponse(
     /** [LOADED] or [ESTIMATED]. */
     val status: String,
-    val estimate: MemoryEstimateDescription,
+    /** Null when the service does not tell. */
+    val estimate: MemoryEstimateDescription?,
     /** Null when only an estimate was asked for. */
     val instance: InstanceDescription? = null,
     @SerialName("load_time_seconds") val loadTimeSeconds: Double? = null,
+    /** What the daemon chose; null when the request did not ask it to. */
+    val auto: AutoChoice? = null,
 ) {
     public companion object {
         public const val LOADED: String = "loaded"
         public const val ESTIMATED: String = "estimated"
     }
 }
+
+/** The settings a load with `auto` settled on. */
+@Serializable
+public data class AutoChoice(
+    /** No more than the model was trained with. */
+    @SerialName("context_length") val contextLength: Int,
+    val gpu: String,
+)
 
 @Serializable
 public data class MemoryEstimateDescription(
@@ -128,6 +154,31 @@ public data class UnloadResponse(
     val unloaded: List<String>,
 )
 
+/**
+ * The listener that `runa server start` opens for other programs. Part of the status, and the
+ * answer of `POST /api/v1/server`.
+ */
+@Serializable
+public data class ServerDescription(
+    val running: Boolean = false,
+    val bind: String? = null,
+    val port: Int? = null,
+    val cors: Boolean = false,
+    /** True when the OpenAI-compatible routes ask for an API key. */
+    @SerialName("api_key_required") val apiKeyRequired: Boolean = false,
+)
+
+/** `POST /api/v1/server`: open the listener on [bind] and [port], or close it. */
+@Serializable
+public data class ServerRequest(
+    val running: Boolean,
+    val bind: String? = null,
+    val port: Int? = null,
+    val cors: Boolean = false,
+    /** What clients of the OpenAI-compatible routes must send as their bearer token; null for nothing. */
+    @SerialName("api_key") val apiKey: String? = null,
+)
+
 /** `POST /api/v1/shutdown`. */
 @Serializable
 public data class ShutdownResponse(
@@ -144,12 +195,19 @@ public data class ApiError(
         val message: String,
         /** [INVALID_REQUEST], [UNAUTHORIZED] or [SERVER_ERROR]. */
         val type: String,
+        /** The request field that is wrong, when one is. */
+        val param: String? = null,
+        /** A finer reason than [type], for example [MODEL_NOT_FOUND]. */
+        val code: String? = null,
     )
 
     public companion object {
         public const val INVALID_REQUEST: String = "invalid_request_error"
         public const val UNAUTHORIZED: String = "authentication_error"
         public const val SERVER_ERROR: String = "server_error"
+
+        public const val MODEL_NOT_FOUND: String = "model_not_found"
+        public const val INVALID_API_KEY: String = "invalid_api_key"
     }
 }
 
@@ -159,9 +217,30 @@ public object DaemonRoutes {
     public const val MODELS: String = "/api/v1/models"
     public const val LOAD: String = "/api/v1/models/load"
     public const val UNLOAD: String = "/api/v1/models/unload"
+    public const val CHAT: String = "/api/v1/chat"
+    public const val SERVER: String = "/api/v1/server"
     public const val SHUTDOWN: String = "/api/v1/shutdown"
 
+    /** Takes `source` (one of [LogEvent.SOURCES]) and `filter` (one of [LogEvent.FILTERS]); without them, everything. */
+    public const val LOGS: String = "/api/v1/logs/stream"
+    public const val LOGS_SOURCE: String = "source"
+    public const val LOGS_FILTER: String = "filter"
+
+    // Of a streamed load.
     public const val EVENT_PROGRESS: String = "progress"
     public const val EVENT_LOADED: String = "loaded"
+
+    // Of a streamed chat, in the order they are sent.
+    public const val EVENT_CHAT_START: String = "chat.start"
+    public const val EVENT_MESSAGE_START: String = "message.start"
+    public const val EVENT_MESSAGE_DELTA: String = "message.delta"
+    public const val EVENT_MESSAGE_END: String = "message.end"
+    public const val EVENT_CHAT_END: String = "chat.end"
+
+    // Of the log stream: one `listening` once no event can be missed any more, then a `log` per event.
+    public const val EVENT_LISTENING: String = "listening"
+    public const val EVENT_LOG: String = "log"
+
+    /** Instead of the last event of a streamed load or chat, when it failed. */
     public const val EVENT_ERROR: String = "error"
 }

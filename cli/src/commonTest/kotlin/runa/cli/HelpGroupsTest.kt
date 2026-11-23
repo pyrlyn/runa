@@ -36,18 +36,22 @@ class HelpGroupsTest {
             |  ls      List the models on this machine
             |  import  Add a GGUF file to the model store
             |  run     Ask a model one question
+            |  chat    Talk to a model
             |  load    Load a model into the daemon
-            |  unload  Unload a model from the daemon and free its memory
-            |  ps      List the models the daemon has loaded
+            |  unload  Unload a model and free its memory
+            |  ps      List the loaded models
             |  tune    Does tune
             |
             |Serve:
             |  status  Show whether the daemon runs and what it has loaded
+            |  server  Serve the OpenAI-compatible API to other programs
+            |  log     Watch what the daemon and its models do
             |  daemon  Start and stop the background process that keeps models loaded
             |  expose  Does expose
             |
             |Runtime:
-            |  survey  Does survey
+            |  runtime  Show what this machine and this build run models with
+            |  survey   Does survey
             |
             |Commands:
             |  version     Print the runa version

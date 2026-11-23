@@ -1,5 +1,6 @@
 package runa.cli
 
+import runa.testing.assertGolden
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -38,6 +39,9 @@ class GoldenOutputTest {
     fun runHelp() = golden("run-help.txt", "run", "--help")
 
     @Test
+    fun chatHelp() = golden("chat-help.txt", "chat", "--help")
+
+    @Test
     fun loadHelp() = golden("load-help.txt", "load", "--help")
 
     @Test
@@ -51,6 +55,18 @@ class GoldenOutputTest {
 
     @Test
     fun daemonHelp() = golden("daemon-help.txt", "daemon", "--help")
+
+    @Test
+    fun logHelp() = golden("log-help.txt", "log", "--help")
+
+    @Test
+    fun logStreamHelp() = golden("log-stream-help.txt", "log", "stream", "--help")
+
+    @Test
+    fun serverHelp() = golden("server-help.txt", "server", "--help")
+
+    @Test
+    fun serverStartHelp() = golden("server-start-help.txt", "server", "start", "--help")
 
     @Test
     fun versionJson() = golden("version.json", "version", "--json")

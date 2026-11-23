@@ -1,42 +1,13 @@
 #!/usr/bin/env bash
-# Integration test of the daemon (PLAN.md, phase 5): runs the real executable against a real model
-# in a home of its own, so it neither sees nor disturbs a daemon the user runs.
+# Integration test of the daemon (PLAN.md, phase 5).
 #
 #   app/integration/daemon.sh <runa executable> <models directory> <model>
 set -euo pipefail
 
-runa="$1"
-models="$2"
+# shellcheck source=app/integration/lib.sh
+source "$(dirname "$0")/lib.sh"
+integration_setup "$1" "$2"
 model="$3"
-
-home="$(mktemp -d)"
-export RUNA_HOME="$home"
-ln -s "$models" "$home/models"
-
-pid_of_daemon() { "$runa" status --json | sed -n 's/.*"pid":\([0-9][0-9]*\).*/\1/p'; }
-
-fail() {
-  echo "FAILED: $1" >&2
-  echo "--- daemon.log" >&2
-  cat "$home/logs/daemon.log" >&2 2>/dev/null || true
-  exit 1
-}
-
-cleanup() {
-  pid="$(pid_of_daemon || true)"
-  if [ -n "$pid" ]; then kill -9 "$pid" 2>/dev/null || true; fi
-  rm -rf "$home"
-}
-trap cleanup EXIT
-
-# Waits until the discovery file is gone: the daemon removes it as the last thing it does.
-wait_for_stop() {
-  for _ in $(seq 50); do
-    [ -e "$home/run/daemon.json" ] || return 0
-    sleep 0.1
-  done
-  return 1
-}
 
 echo "status never starts the daemon"
 "$runa" status | grep -q "not running" || fail "status reports a daemon that was never started"
@@ -61,6 +32,14 @@ id="$("$runa" load "$model")"
 [ "$("$runa" unload second)" = "second" ] || fail "unload did not name what it unloaded"
 "$runa" unload "$id" >/dev/null
 [ "$("$runa" ps --json)" = "[]" ] || fail "ps --json lists a model after unload"
+
+echo "load --auto chooses the settings and tells them"
+"$runa" load "$model" --auto --estimate-only --json | grep -q '"auto":{"context_length":[0-9]*,"gpu":"' ||
+  fail "an estimate with --auto does not tell what was chosen"
+[ "$("$runa" ps --json)" = "[]" ] || fail "an estimate with --auto loaded the model"
+"$runa" load "$model" --auto --gpu off -c 2048 >/dev/null
+"$runa" ps --json | grep -q '"context_length":2048,"gpu":"off"' || fail "--auto did not keep the settings it was given"
+"$runa" unload --all >/dev/null
 
 echo "a model is unloaded after its ttl"
 "$runa" load "$model" --ttl 2 >/dev/null

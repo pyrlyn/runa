@@ -7,6 +7,16 @@ Usage: runa load [<options>] [<model>]
   than once: the second copy is called `key:2`, or what --identifier says. On
   success the identifier is printed.
 
+  With --auto the model goes to the GPU as a whole when it fits there, and gets
+  the longest context that still fits, up to 32768 tokens and to what it was
+  trained with. A model too large for the GPU is split between the GPU and the
+  CPU, or runs on the CPU. A fifth of the memory stays free, and what the
+  loaded models hold counts. With --estimate-only it loads nothing and tells
+  what it would choose.
+
+  With --backend lmstudio the model is loaded into LM Studio, which takes
+  --context-length and none of the other settings.
+
 Options:
   --identifier=<id>         The name to address the loaded model by (default:
                             its key)
@@ -18,6 +28,9 @@ Options:
                             (default: 1)
   --ttl=<seconds>           Unload the model after this long without a request;
                             0 for never (default: ttl in config.json)
+  --auto                    Let the daemon choose --gpu and --context-length by
+                            the memory of its machine; one that is given is
+                            kept
   --estimate-only           Print the memory the model would take and load
                             nothing
   --json                    Print JSON

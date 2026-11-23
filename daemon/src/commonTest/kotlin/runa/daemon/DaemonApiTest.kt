@@ -6,78 +6,27 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
-import runa.client.DaemonClient
 import runa.core.BackendError
-import runa.core.LogLevel
+import runa.core.GpuOffload
+import runa.core.LoadConfig
 import runa.core.UserInputError
 import runa.core.api.ApiError
+import runa.core.api.AutoChoice
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
 import runa.core.api.UnloadRequest
-import runa.engine.testing.FakeEngine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.TimeSource
 import io.ktor.client.engine.cio.CIO as ClientCIO
 
 /** The real server and the real client, talking over a loopback socket. */
 class DaemonApiTest {
-    private class Daemon(
-        val url: String,
-        val engine: FakeEngine,
-        val registry: ModelRegistry,
-        val shutdownRequested: () -> Boolean,
-    ) {
-        fun client(token: String? = TOKEN) = DaemonClient(ClientCIO.create(), url, token)
-    }
-
-    private fun withDaemon(block: suspend Daemon.() -> Unit) =
-        runBlocking {
-            val engine = FakeEngine()
-            val timers = CoroutineScope(SupervisorJob())
-            val registry = ModelRegistry(engine, { listing }, modelsDir, timers)
-            var port = 0
-            var shutdown = false
-            val api =
-                DaemonApi(
-                    registry = registry,
-                    engine = engine,
-                    store = { listing },
-                    token = TOKEN,
-                    version = "1.2.3",
-                    pid = 42,
-                    port = { port },
-                    started = TimeSource.Monotonic.markNow(),
-                    log = DaemonLog(LogLevel.ERROR) {},
-                    requestShutdown = { shutdown = true },
-                )
-            val server = embeddedServer(CIO, port = 0, host = "127.0.0.1") { api.install(this) }
-            server.startSuspend(wait = false)
-            try {
-                port =
-                    server.engine
-                        .resolvedConnectors()
-                        .first()
-                        .port
-                Daemon("http://127.0.0.1:$port", engine, registry) { shutdown }.block()
-            } finally {
-                server.stopSuspend(gracePeriodMillis = 0, timeoutMillis = 1_000)
-                timers.cancel()
-            }
-        }
-
     @Test
     fun statusNeedsNoToken() =
         withDaemon {
@@ -88,6 +37,7 @@ class DaemonApiTest {
                 assertEquals(url.substringAfterLast(':').toInt(), status.port)
                 assertEquals("fake", status.engine.name)
                 assertEquals(0, status.loadedInstances)
+                assertEquals(TestDaemon.LOG_FILE, status.logFile)
             }
         }
 
@@ -123,7 +73,7 @@ class DaemonApiTest {
                 assertEquals(512, instance.contextLength)
                 assertEquals(2, instance.parallel)
                 assertEquals(60, instance.ttlSeconds)
-                assertEquals(1_000 + 2 * 512, loaded.estimate.totalBytes)
+                assertEquals(1_000 + 2 * 512, loaded.estimate?.totalBytes)
                 assertNotNull(loaded.loadTimeSeconds)
                 assertEquals(1f, progress.last())
 
@@ -163,12 +113,32 @@ class DaemonApiTest {
         }
 
     @Test
+    fun autoIsChosenByTheDaemonAndToldInTheAnswer() =
+        withDaemon {
+            client().use { client ->
+                val estimated = client.load(LoadRequest("alpha", auto = true, estimateOnly = true))
+                assertEquals(AutoChoice(contextLength = 2048, gpu = "off"), estimated.auto)
+                assertEquals(1_000 + 2048 * 2L, estimated.estimate?.totalBytes)
+                assertEquals(0, engine.loads.size)
+
+                val progress = mutableListOf<Float>()
+                val loaded = client.load(LoadRequest("alpha", auto = true, contextLength = 1024)) { progress += it }
+                assertEquals(AutoChoice(contextLength = 1024, gpu = "off"), loaded.auto)
+                assertEquals(LoadConfig(1024, GpuOffload.Off), engine.loads.single().config)
+                assertEquals("off", loaded.instance?.gpu)
+                assertTrue(progress.isNotEmpty())
+
+                assertNull(client.load(LoadRequest("beta")).auto)
+            }
+        }
+
+    @Test
     fun anEstimateLoadsNothing() =
         withDaemon {
             client().use { client ->
                 val response = client.load(LoadRequest("alpha", contextLength = 100, estimateOnly = true))
                 assertEquals(LoadResponse.ESTIMATED, response.status)
-                assertEquals(1_200, response.estimate.totalBytes)
+                assertEquals(1_200, response.estimate?.totalBytes)
                 assertNull(response.instance)
                 assertEquals(0, engine.loads.size)
             }
@@ -214,6 +184,6 @@ class DaemonApiTest {
         }
 
     private companion object {
-        const val TOKEN = "0123456789abcdef"
+        const val TOKEN = TestDaemon.TOKEN
     }
 }

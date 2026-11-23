@@ -1,0 +1,5 @@
+CPU: Apple M3 Pro (arm64), 12 cores (6 performance), 12 threads
+Memory: 36.0 GB
+GPU: Apple M3 Pro, 27.0 GB of the machine's memory (metal)
+Engine: fake 0 (cpu)
+This build of runa computes on the CPU only

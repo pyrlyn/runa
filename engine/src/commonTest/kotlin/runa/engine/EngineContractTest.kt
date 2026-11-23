@@ -8,6 +8,8 @@ import okio.Path.Companion.toPath
 import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.LoadConfig
+import runa.core.ToolCall
+import runa.core.UserInputError
 import runa.engine.testing.FakeEngine
 import runa.engine.testing.FakeModel
 import kotlin.test.Test
@@ -53,6 +55,70 @@ class EngineContractTest {
             val completion = load().generate(GenerationRequest(Prompt.Chat(messages))).toCompletion()
             assertEquals("user: hi there", completion.text)
             assertEquals(FinishReason.STOP, completion.reason)
+        }
+
+    @Test
+    fun renderShowsWhatTheModelReads() =
+        runTest {
+            val model = load()
+            assertEquals("one two", model.render(Prompt.Text("one two")))
+            assertEquals("user: hi there", model.render(Prompt.Chat(listOf(ChatMessage(ChatRole.USER, "hi there")))))
+            // Nothing was generated for it.
+            assertEquals(emptyList(), model.requests)
+        }
+
+    @Test
+    fun aToolCallIsAnnouncedAndThenGetsItsArguments() =
+        runTest {
+            val tools = listOf(Tool("lookup"), Tool("add"), Tool("unused"))
+            val request = GenerationRequest(Prompt.Chat(listOf(ChatMessage(ChatRole.USER, "add then lookup")), tools))
+            val events = load().generate(request).toList()
+            assertEquals(
+                listOf(
+                    GenerationEvent.ToolCallStarted(0, "call_0", "lookup"),
+                    GenerationEvent.ToolCallArguments(0, "{\"words\":"),
+                    GenerationEvent.ToolCallArguments(0, "4}"),
+                    GenerationEvent.ToolCallStarted(1, "call_1", "add"),
+                ),
+                events.take(4),
+            )
+            assertEquals(FinishReason.TOOL_CALLS, assertIs<GenerationEvent.Finished>(events.last()).reason)
+
+            val completion = load().generate(request).toCompletion()
+            assertEquals("", completion.text)
+            assertEquals(
+                listOf(ToolCall("call_0", "lookup", "{\"words\":4}"), ToolCall("call_1", "add", "{\"words\":4}")),
+                completion.toolCalls,
+            )
+        }
+
+    @Test
+    fun aToolChoiceSaysWhatTheModelMayCall() =
+        runTest {
+            val tools = listOf(Tool("lookup"), Tool("add"))
+            val messages = listOf(ChatMessage(ChatRole.USER, "hi there"))
+
+            suspend fun called(choice: ToolChoice) =
+                load()
+                    .generate(GenerationRequest(Prompt.Chat(messages, tools, choice)))
+                    .toCompletion()
+                    .toolCalls
+                    .map { it.name }
+            assertEquals(emptyList(), called(ToolChoice.Auto))
+            assertEquals(emptyList(), called(ToolChoice.None))
+            assertEquals(listOf("lookup"), called(ToolChoice.Required))
+            assertEquals(listOf("add"), called(ToolChoice.Named("add")))
+
+            assertEquals(emptyList(), Prompt.Chat(messages, tools, ToolChoice.None).offeredTools())
+            assertFailsWith<UserInputError> { Prompt.Chat(messages, tools, ToolChoice.Named("divide")).offeredTools() }
+            assertFailsWith<UserInputError> { Prompt.Chat(messages, toolChoice = ToolChoice.Required).offeredTools() }
+        }
+
+    @Test
+    fun aJsonFormatIsAnsweredInJson() =
+        runTest {
+            val chat = Prompt.Chat(listOf(ChatMessage(ChatRole.USER, "say \"hi\"")), format = ResponseFormat.Json())
+            assertEquals("{\"echo\":\"user: say \\\"hi\\\"\"}", load().generate(GenerationRequest(chat)).toCompletion().text)
         }
 
     @Test

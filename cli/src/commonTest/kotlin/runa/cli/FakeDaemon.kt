@@ -11,12 +11,22 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.json.JsonPrimitive
 import okio.FileSystem
 import okio.IOException
 import okio.Path
 import runa.config.DaemonInfo
 import runa.config.DiscoveryFile
 import runa.core.api.ApiError
+import runa.core.api.AutoChoice
+import runa.core.api.ChatDelta
+import runa.core.api.ChatEnded
+import runa.core.api.ChatFailed
+import runa.core.api.ChatMark
+import runa.core.api.ChatRequest
+import runa.core.api.ChatResponse
+import runa.core.api.ChatStarted
+import runa.core.api.ChatStats
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.core.api.DaemonStatus
@@ -25,9 +35,12 @@ import runa.core.api.InstanceDescription
 import runa.core.api.LoadProgress
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
+import runa.core.api.LogEvent
 import runa.core.api.MemoryEstimateDescription
 import runa.core.api.ModelDescription
 import runa.core.api.ModelList
+import runa.core.api.ServerDescription
+import runa.core.api.ServerRequest
 import runa.core.api.ShutdownResponse
 import runa.core.api.UnloadRequest
 import runa.core.api.UnloadResponse
@@ -56,6 +69,13 @@ internal class FakeDaemon(
     /** Every request that passed the token check: `POST /api/v1/models/load {...}`. */
     val requests = mutableListOf<String>()
     val instances = mutableListOf<InstanceDescription>()
+
+    /** How many answers it stored, which is what their ids count. */
+    private var answers = 0
+
+    /** What `server start` opened. */
+    var server = ServerDescription()
+        private set
 
     val discovery = DiscoveryFile(FileSystem.SYSTEM, home / "run" / "daemon.json")
 
@@ -86,7 +106,7 @@ internal class FakeDaemon(
             )
         }
         val body = request.body.toByteArray().decodeToString()
-        requests += "${request.method.value} $path $body".trim()
+        requests += "${request.method.value} ${request.url.encodedPathAndQuery} $body".trim()
         return when (path) {
             DaemonRoutes.MODELS -> {
                 json(
@@ -113,8 +133,21 @@ internal class FakeDaemon(
                 unload(DaemonJson.decodeFromString(UnloadRequest.serializer(), body))
             }
 
+            DaemonRoutes.CHAT -> {
+                chat(DaemonJson.decodeFromString(ChatRequest.serializer(), body))
+            }
+
+            DaemonRoutes.SERVER -> {
+                serve(DaemonJson.decodeFromString(ServerRequest.serializer(), body))
+            }
+
+            DaemonRoutes.LOGS -> {
+                logs(request.url.parameters[DaemonRoutes.LOGS_SOURCE], request.url.parameters[DaemonRoutes.LOGS_FILTER])
+            }
+
             DaemonRoutes.SHUTDOWN -> {
                 running = false
+                server = ServerDescription()
                 discovery.delete()
                 json(ShutdownResponse.serializer(), ShutdownResponse("stopping"))
             }
@@ -126,15 +159,49 @@ internal class FakeDaemon(
     }
 
     private fun status() =
-        DaemonStatus(version, PID, port, uptimeSeconds = 125, EngineDescription("fake", "0", listOf("cpu")), instances.size)
+        DaemonStatus(
+            version,
+            PID,
+            port,
+            uptimeSeconds = 125,
+            EngineDescription("fake", "0", listOf("cpu")),
+            instances.size,
+            server,
+            logFile = LOG_FILE,
+        )
+
+    /** A log that has [LOG] in it and then ends, as the log of a daemon that stops. */
+    private fun MockRequestHandleScope.logs(
+        source: String?,
+        filter: String?,
+    ): HttpResponseData {
+        val events = LOG.filter { (source == null || it.source == source) && (filter == null || it.type == filter) }
+        return respond(
+            "event: ${DaemonRoutes.EVENT_LISTENING}\ndata: {}\n\n: keep-alive\n\n" +
+                events.joinToString("") { event(DaemonRoutes.EVENT_LOG, LogEvent.serializer(), it) },
+            HttpStatusCode.OK,
+            headersOf(HttpHeaders.ContentType, "text/event-stream"),
+        )
+    }
+
+    private fun MockRequestHandleScope.serve(request: ServerRequest): HttpResponseData {
+        val asked = ServerDescription(request.running, request.bind, request.port, request.cors, request.apiKey != null)
+        if (request.running && server.running && server != asked) {
+            return invalid("The server already runs on ${server.bind}:${server.port}; stop it first with `runa server stop`")
+        }
+        server = if (request.running) asked else ServerDescription()
+        return json(ServerDescription.serializer(), server)
+    }
 
     private fun MockRequestHandleScope.load(request: LoadRequest): HttpResponseData {
         val model =
             MODELS.firstOrNull { it.key.contains(request.model, ignoreCase = true) }
                 ?: return invalid("No model matches '${request.model}' in /models")
-        val context = request.contextLength ?: 4096
+        // What it chooses is what it was given, and else more context than the default.
+        val auto = if (request.auto) AutoChoice(request.contextLength ?: AUTO_CONTEXT, request.gpu ?: "max") else null
+        val context = auto?.contextLength ?: request.contextLength ?: 4096
         val estimate = MemoryEstimateDescription(model.sizeBytes, context * 1_000L, model.sizeBytes + context * 1_000L)
-        if (request.estimateOnly) return json(LoadResponse.serializer(), LoadResponse(LoadResponse.ESTIMATED, estimate))
+        if (request.estimateOnly) return json(LoadResponse.serializer(), LoadResponse(LoadResponse.ESTIMATED, estimate, auto = auto))
         val id = request.identifier ?: model.key
         if (instances.any { it.id == id }) return invalid("A model is already loaded as '$id'; unload it or choose another identifier")
         val instance =
@@ -142,7 +209,7 @@ internal class FakeDaemon(
                 id,
                 model.key,
                 context,
-                request.gpu ?: "max",
+                auto?.gpu ?: request.gpu ?: "max",
                 request.parallel ?: 1,
                 request.ttl?.takeIf {
                     it > 0
@@ -151,12 +218,61 @@ internal class FakeDaemon(
                 model.sizeBytes,
             )
         instances += instance
-        val loaded = LoadResponse(LoadResponse.LOADED, estimate, instance, loadTimeSeconds = 1.5)
+        val loaded = LoadResponse(LoadResponse.LOADED, estimate, instance, loadTimeSeconds = 1.5, auto = auto)
         check(request.stream) { "the CLI always asks for progress" }
         val events =
             listOf(0f, 0.5f, 1f).joinToString("") { event(DaemonRoutes.EVENT_PROGRESS, LoadProgress.serializer(), LoadProgress(it)) } +
                 event(DaemonRoutes.EVENT_LOADED, LoadResponse.serializer(), loaded)
         return respond(events, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
+    }
+
+    /**
+     * Answers with what it was asked, and with what the request carried besides: `[system prompt]`
+     * in front, and the answer it continues behind. [FAILING] as the input fails halfway.
+     */
+    private fun MockRequestHandleScope.chat(request: ChatRequest): HttpResponseData {
+        check(request.stream) { "the CLI always streams" }
+        if (instances.none { it.id == request.model }) {
+            val error = ApiError.Detail("No model is called '${request.model}'", ApiError.INVALID_REQUEST, code = ApiError.MODEL_NOT_FOUND)
+            return json(ApiError.serializer(), ApiError(error), HttpStatusCode.NotFound)
+        }
+        val input = (request.input as JsonPrimitive).content
+        val opening =
+            event(DaemonRoutes.EVENT_CHAT_START, ChatStarted.serializer(), ChatStarted(modelInstanceId = request.model)) +
+                event(DaemonRoutes.EVENT_MESSAGE_START, ChatMark.serializer(), ChatMark(DaemonRoutes.EVENT_MESSAGE_START))
+
+        fun delta(text: String) = event(DaemonRoutes.EVENT_MESSAGE_DELTA, ChatDelta.serializer(), ChatDelta(content = text))
+
+        fun stream(events: String) = respond(opening + events, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
+        if (input == FAILING) {
+            val error = ApiError.Detail("The model fell over", ApiError.SERVER_ERROR)
+            return stream(delta("Half an") + event(DaemonRoutes.EVENT_ERROR, ChatFailed.serializer(), ChatFailed(error = error)))
+        }
+        val head =
+            request.systemPrompt
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { "[$it] " }
+                .orEmpty() + "echo:"
+        val tail = " $input" + request.previousResponseId?.let { " (after $it)" }.orEmpty()
+        val result =
+            ChatResponse(
+                modelInstanceId = request.model,
+                output = listOf(ChatResponse.Output(ChatResponse.MESSAGE, head + tail)),
+                stats =
+                    ChatStats(
+                        inputTokens = 7,
+                        totalOutputTokens = 3,
+                        tokensPerSecond = 12.5,
+                        timeToFirstTokenSeconds = 0.25,
+                        stopReason = "stop",
+                    ),
+                responseId = if (request.store) "resp_${++answers}" else null,
+            )
+        return stream(
+            delta(head) + delta(tail) +
+                event(DaemonRoutes.EVENT_MESSAGE_END, ChatMark.serializer(), ChatMark(DaemonRoutes.EVENT_MESSAGE_END)) +
+                event(DaemonRoutes.EVENT_CHAT_END, ChatEnded.serializer(), ChatEnded(result = result)),
+        )
     }
 
     private fun MockRequestHandleScope.unload(request: UnloadRequest): HttpResponseData {
@@ -194,11 +310,48 @@ internal class FakeDaemon(
         const val ALPHA = "acme/alpha@Q4_K_M"
         const val BETA = "acme/beta@Q8_0"
 
+        /** The context it chooses for a load with `auto`. */
+        const val AUTO_CONTEXT = 8192
+
+        /** The message that makes the model fail halfway through its answer. */
+        const val FAILING = "fail"
+
         private fun model(
             key: String,
             size: Long,
         ) = ModelDescription(key, "llm", "Tiny", "llama", key.substringAfter('@'), 494_000_000, size, 32_768, emptyList())
 
         val MODELS = listOf(model(ALPHA, 398_000_000), model(BETA, 676_000_000))
+
+        /** Not under the test's own directory, which has another name in every run. */
+        const val LOG_FILE = "/state/logs/daemon.log"
+
+        private const val TIME = "2026-01-02T03:04:05Z"
+
+        /** One event of every kind. */
+        val LOG =
+            listOf(
+                LogEvent(TIME, LogEvent.SERVER, LogEvent.LOG, "Loaded $ALPHA as '$ALPHA' in 15 ms", level = "info"),
+                LogEvent(TIME, LogEvent.RUNTIME, LogEvent.LOG, "llama_context: n_ctx = 4096", level = "debug"),
+                LogEvent(
+                    TIME,
+                    LogEvent.MODEL,
+                    LogEvent.INPUT,
+                    "<|user|>\nWhat is the weather?\n<|assistant|>\n",
+                    model = ALPHA,
+                    endpoint = "chat",
+                ),
+                LogEvent(
+                    TIME,
+                    LogEvent.MODEL,
+                    LogEvent.OUTPUT,
+                    "Let me look.",
+                    model = ALPHA,
+                    endpoint = "chat",
+                    toolCalls = listOf(LogEvent.ToolCall("get_weather", "{\"city\":\"Oslo\"}")),
+                    stats = ChatStats(7, 3, 12.5, 0.25, "tool_calls"),
+                ),
+                LogEvent(TIME, LogEvent.SERVER, LogEvent.REQUEST, "POST /api/v1/chat 200 310 ms", level = "debug"),
+            )
     }
 }

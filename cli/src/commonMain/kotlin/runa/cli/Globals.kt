@@ -6,12 +6,17 @@ import runa.cli.output.Diagnostics
 import runa.cli.output.HumanRenderer
 import runa.cli.output.JsonRenderer
 import runa.cli.output.Renderer
+import runa.client.LmStudioBackend
 import runa.config.ConfigFile
 import runa.config.ConfigKey
+import runa.config.ConfigKind
 import runa.config.ConfigResolver
 import runa.config.DaemonSettings
+import runa.core.Backend
 import runa.core.GpuOffload
 import runa.core.LogLevel
+import runa.core.UserInputError
+import runa.core.httpUrl
 import runa.engine.Engine
 import runa.hub.HubClient
 import runa.platform.RunaPaths
@@ -29,7 +34,7 @@ internal class Globals(
     /** `-y`: answer every prompt with its default. Read by the interactive commands of later phases. */
     val yes: Boolean,
     private val flags: Map<ConfigKey, String>,
-    tokenFlag: String? = null,
+    private val tokenFlag: String? = null,
 ) {
     val paths: RunaPaths = resolveRunaPaths(environment.os, environment.env)
 
@@ -51,6 +56,24 @@ internal class Globals(
 
     /** The bearer token for a daemon whose discovery file this machine does not have. */
     val token: String? = (tokenFlag ?: environment.env(TOKEN_ENV))?.takeIf { it.isNotBlank() }
+
+    /** The service the model commands talk to. */
+    val backend: Backend by lazy {
+        val id = checkNotNull(config.resolve(ConfigKey.BACKEND).value)
+        // Flags and the environment are checked at the start; this is for a config.json edited by hand.
+        Backend.parse(id) ?: throw UserInputError("'$id' is not a backend: use ${Backend.entries.joinToString(" or ") { it.id }}")
+    }
+
+    /**
+     * A client for the LM Studio at `--host` and `--port`, by default this machine's port 1234; the
+     * caller closes it. The daemon's token is never sent there: LM Studio has its own.
+     */
+    fun lmStudio(): LmStudioBackend {
+        val host = checkNotNull(config.resolve(ConfigKey.HOST).value)
+        val port = config.resolve(ConfigKey.PORT).value?.toInt() ?: LmStudioBackend.DEFAULT_PORT
+        val token = (tokenFlag ?: environment.env(LmStudioBackend.TOKEN_ENV))?.takeIf { it.isNotBlank() }
+        return LmStudioBackend(environment.httpEngine, httpUrl(host, port), token)
+    }
 
     /** The model store at the configured `models_dir`. */
     val store: ModelStore by lazy {
@@ -74,6 +97,7 @@ internal class Globals(
             modelsDir = store.modelsDir,
             port = config.resolve(ConfigKey.PORT).value?.toInt(),
             logLevel = logLevel,
+            logPrompts = config.resolve(ConfigKey.LOG_PROMPTS).value == "true",
             contextLength = config.resolve(ConfigKey.CONTEXT_LENGTH).value?.toInt(),
             gpu = GpuOffload.parse(config.resolve(ConfigKey.GPU).value.orEmpty()) ?: GpuOffload.Max,
             ttl =
@@ -85,7 +109,18 @@ internal class Globals(
         )
 
     /** The global flags among [keys] that were given, as arguments for another `runa` process. */
-    fun flagArguments(vararg keys: ConfigKey): List<String> = keys.flatMap { key -> flags[key]?.let { listOf(key.flag, it) }.orEmpty() }
+    fun flagArguments(vararg keys: ConfigKey): List<String> =
+        keys.flatMap { key ->
+            val value = flags[key]
+            when {
+                value == null -> emptyList()
+
+                // A switch has no value: it is there or it is not.
+                key.kind == ConfigKind.BOOL -> listOfNotNull(key.flag.takeIf { value == "true" })
+
+                else -> listOf(key.flag, value)
+            }
+        }
 
     /** [jsonHere] is a command's own `--json`, so both `runa --json ls` and `runa ls --json` work. */
     fun wantsJson(jsonHere: Boolean = false): Boolean = json || jsonHere

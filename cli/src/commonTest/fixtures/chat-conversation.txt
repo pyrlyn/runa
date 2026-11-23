@@ -1,0 +1,13 @@
+Starting the runa daemon
+Loaded acme/alpha@Q4_K_M in 1.5 s: context 4096, gpu max, about 402 MB (weights 398 MB, context 4.10 MB)
+Chatting with acme/alpha@Q4_K_M. /help lists the commands, /exit ends the chat
+> prompt: 7 tokens, answer: 3 tokens (stop), time to first token: 0.25 s, 12.5 tokens/s
+> prompt: 7 tokens, answer: 3 tokens (stop), time to first token: 0.25 s, 12.5 tokens/s
+> Set the system prompt
+> prompt: 7 tokens, answer: 3 tokens (stop), time to first token: 0.25 s, 12.5 tokens/s
+> Started a new conversation
+> prompt: 7 tokens, answer: 3 tokens (stop), time to first token: 0.25 s, 12.5 tokens/s
+> Statistics are off
+> . > prompt: 7 tokens, answer: 3 tokens (stop), time to first token: 0.25 s, 12.5 tokens/s
+> Error: /nope is not a command; /help lists them
+> 

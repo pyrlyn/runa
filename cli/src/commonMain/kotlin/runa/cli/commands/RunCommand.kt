@@ -21,19 +21,20 @@ import okio.Path
 import okio.Path.Companion.toPath
 import runa.cli.CommandGroup
 import runa.cli.Globals
+import runa.cli.daemon.requireRunaBackend
+import runa.cli.output.hundredths
+import runa.cli.output.statsSummary
 import runa.config.ConfigKey
 import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.GpuOffload
 import runa.core.LoadConfig
-import runa.engine.FinishReason
 import runa.engine.GenerationEvent
 import runa.engine.GenerationRequest
 import runa.engine.GenerationStats
 import runa.engine.Prompt
 import runa.engine.Sampling
 import runa.store.find
-import kotlin.math.roundToLong
 import kotlin.time.DurationUnit
 
 @Serializable
@@ -58,8 +59,7 @@ internal data class RunStats(
         stats.completionTokens,
         stats.timeToFirstToken.inWholeMilliseconds,
         stats.generationTime.inWholeMilliseconds,
-        // Two decimals: more is noise, and it keeps the JSON readable.
-        (stats.tokensPerSecond * 100).roundToLong() / 100.0,
+        hundredths(stats.tokensPerSecond),
     )
 }
 
@@ -99,6 +99,7 @@ internal class RunCommand : CliktCommand(name = "run") {
         """.trimIndent()
 
     override fun run() {
+        requireRunaBackend(globals)
         val (name, path) = resolve()
         val config = globals.config
         val load =
@@ -130,6 +131,9 @@ internal class RunCommand : CliktCommand(name = "run") {
                                 if (streaming) terminal.rawPrint(event.text)
                             }
 
+                            // `runa run` gives the model no tools.
+                            is GenerationEvent.ToolCallStarted, is GenerationEvent.ToolCallArguments -> {}
+
                             is GenerationEvent.Finished -> {
                                 finished = event
                             }
@@ -146,7 +150,19 @@ internal class RunCommand : CliktCommand(name = "run") {
         } else {
             globals.renderer(json).render(result, RunResult.serializer()) { Text(it.text) }
         }
-        if (stats) terminal.println(terminal.theme.muted(summary(result.stats, finished.reason)), stderr = true)
+        if (stats) {
+            val summary =
+                with(result.stats) {
+                    statsSummary(
+                        promptTokens,
+                        completionTokens,
+                        result.finishReason,
+                        timeToFirstTokenMs / MILLIS_PER_SECOND,
+                        tokensPerSecond,
+                    )
+                }
+            terminal.println(terminal.theme.muted(summary), stderr = true)
+        }
     }
 
     /** The name to report and the file to load. */
@@ -157,25 +173,8 @@ internal class RunCommand : CliktCommand(name = "run") {
         return store.list().find(model, store.modelsDir).let { it.key.toString() to it.path }
     }
 
-    private fun summary(
-        stats: RunStats,
-        reason: FinishReason,
-    ): String {
-        val toFirst = stats.timeToFirstTokenMs / MILLIS_PER_SECOND
-        return "prompt: ${stats.promptTokens} tokens, answer: ${stats.completionTokens} tokens (${reason.id}), " +
-            "time to first token: $toFirst s, ${stats.tokensPerSecond} tokens/s"
-    }
-
     private companion object {
         const val GGUF_EXTENSION = ".gguf"
         const val MILLIS_PER_SECOND = 1000.0
     }
 }
-
-/** The word for a [FinishReason] in `--json` output and in `--stats`; the OpenAI API uses the same two. */
-private val FinishReason.id: String
-    get() =
-        when (this) {
-            FinishReason.STOP -> "stop"
-            FinishReason.LENGTH -> "length"
-        }

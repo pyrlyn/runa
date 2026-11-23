@@ -16,10 +16,12 @@ import runa.cli.CommandGroup
 import runa.cli.Globals
 import runa.cli.daemon.DaemonConnection
 import runa.cli.daemon.DaemonConnector
+import runa.cli.daemon.requireRunaBackend
 import runa.cli.output.formatSeconds
 import runa.core.BackendError
 import runa.core.ExitCode
 import runa.core.api.EngineDescription
+import runa.core.api.ServerDescription
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -35,6 +37,10 @@ internal data class StatusView(
     @SerialName("uptime_seconds") val uptimeSeconds: Long? = null,
     val engine: EngineDescription? = null,
     @SerialName("loaded_instances") val loadedInstances: Int? = null,
+    /** What `runa server start` opened. */
+    val server: ServerDescription? = null,
+    /** Null when the daemon's log goes elsewhere, for example to the terminal it was started in. */
+    @SerialName("log_file") val logFile: String? = null,
 ) {
     constructor(daemon: DaemonConnection) : this(
         running = true,
@@ -44,15 +50,19 @@ internal data class StatusView(
         uptimeSeconds = daemon.status.uptimeSeconds,
         engine = daemon.status.engine,
         loadedInstances = daemon.status.loadedInstances,
+        server = daemon.status.server,
+        logFile = daemon.status.logFile,
     )
 
     fun describe(): String {
         if (!running || engine == null) return "The runa daemon is not running"
-        return """
-            The runa daemon is running on $address (pid $pid, runa $version, up ${formatSeconds(uptimeSeconds ?: 0)})
-            Engine: ${engine.name} ${engine.version} (${engine.accelerators.joinToString(", ")})
-            Loaded models: $loadedInstances
-            """.trimIndent()
+        return listOfNotNull(
+            "The runa daemon is running on $address (pid $pid, runa $version, up ${formatSeconds(uptimeSeconds ?: 0)})",
+            "Engine: ${engine.describe()}",
+            "Loaded models: $loadedInstances",
+            "Server: ${(server ?: ServerDescription()).describe()}",
+            logFile?.let { "Log: $it" },
+        ).joinToString("\n")
     }
 }
 
@@ -74,7 +84,10 @@ internal class StatusCommand : CliktCommand(name = "status") {
 
     override fun help(context: Context): String = "Show whether the daemon runs and what it has loaded"
 
-    override fun run() = printStatus(globals, json)
+    override fun run() {
+        requireRunaBackend(globals)
+        printStatus(globals, json)
+    }
 }
 
 internal class DaemonCommand : CliktCommand(name = "daemon") {
@@ -89,8 +102,10 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
         """
         Start and stop the background process that keeps models loaded
 
-        `load`, `unload` and `ps` talk to the daemon, and `load` and `ps` start it when it does not run.
-        It listens on a loopback port of its own choosing; its log is logs/daemon.log in runa's directory.
+        `load`, `unload`, `ps`, `chat`, `server` and `log stream` talk to the daemon; `load`, `ps`, `chat`,
+        `server start` and `log stream` start it when it does not run.
+        It listens on a loopback port of its own choosing. `daemon status` says where its log is; a log
+        file of 10 MB is put aside, and the last three of those are kept.
         """.trimIndent()
 
     override fun run() = Unit
@@ -102,6 +117,7 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
         override fun help(context: Context): String = "Start the daemon, unless it runs already"
 
         override fun run() {
+            requireRunaBackend(globals)
             val view =
                 runBlocking {
                     DaemonConnector(globals).require().use { daemon ->
@@ -118,7 +134,12 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
 
         override fun help(context: Context): String = "Stop the daemon; the models it holds are unloaded"
 
-        override fun run() =
+        override fun run() {
+            requireRunaBackend(globals)
+            stop()
+        }
+
+        private fun stop() =
             runBlocking {
                 val connector = DaemonConnector(globals)
                 val daemon = connector.find()
@@ -149,7 +170,10 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
 
         override fun help(context: Context): String = "Show whether the daemon runs; the same as `runa status`"
 
-        override fun run() = printStatus(globals, json)
+        override fun run() {
+            requireRunaBackend(globals)
+            printStatus(globals, json)
+        }
     }
 
     private companion object {

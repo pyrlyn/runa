@@ -26,6 +26,17 @@ public expect fun spawnDetached(
     output: Path,
 )
 
+/** True when this process writes its standard output to the file at [path], and not to a terminal, a pipe or another file. */
+public expect fun standardOutputIs(path: Path): Boolean
+
+/**
+ * Points this process's standard output at [path] from now on, appending to the file and creating
+ * it for its owner alone. Standard error follows when it went where standard output went.
+ *
+ * @throws okio.IOException when the file cannot be opened.
+ */
+public expect fun appendStandardOutputTo(path: Path)
+
 /** Makes [path] readable and writable by its owner only (a no-op on Windows, where ACLs inherit). */
 public expect fun restrictToOwner(path: Path)
 

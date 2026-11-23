@@ -34,10 +34,13 @@ public enum class ConfigKey(
         check = oneOf(LogLevel.entries.map { it.id }),
     ),
 
+    /** Off by default: a prompt is somebody's conversation, and a log file is read by others and kept. */
+    LOG_PROMPTS("log_prompts", ConfigKind.BOOL, env = "RUNA_LOG_PROMPTS", default = "false", check = trueOrFalse),
+
     /** 7862 spells RUNA on a phone keypad; LM Studio's 1234 stays free for LM Studio. */
     SERVER_PORT("server.port", ConfigKind.INT, default = "7862", check = ::tcpPort),
     SERVER_BIND("server.bind", ConfigKind.STRING, default = "127.0.0.1", check = ::hostName),
-    SERVER_CORS("server.cors", ConfigKind.BOOL, default = "false", check = oneOf(listOf("true", "false"))),
+    SERVER_CORS("server.cors", ConfigKind.BOOL, default = "false", check = trueOrFalse),
 
     /** Unset means: `LoadConfig.DEFAULT_CONTEXT_LENGTH`, or the model's own when that is less. */
     CONTEXT_LENGTH("context_length", ConfigKind.INT, check = { intAtLeast(it, 1) }),
@@ -80,5 +83,7 @@ private fun oneOf(choices: List<String>): (String) -> String? =
             "must be one of: ${choices.joinToString(", ")}"
         }
     }
+
+private val trueOrFalse = oneOf(listOf("true", "false"))
 
 private fun gpuOffload(value: String): String? = if (GpuOffload.parse(value) != null) null else "must be off, max, or a number from 0 to 1"

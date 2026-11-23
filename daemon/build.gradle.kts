@@ -10,11 +10,13 @@ kotlin {
             api(projects.config)
             implementation(projects.store)
             implementation(libs.ktor.server.cio)
+            implementation(libs.ktor.server.cors)
             implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(projects.client)
             implementation(projects.engineTesting)
+            implementation(projects.testing)
             implementation(projects.gguf)
             implementation(libs.kotlinx.coroutines.test)
             // Plain HTTP on loopback, so the CIO client is enough here.

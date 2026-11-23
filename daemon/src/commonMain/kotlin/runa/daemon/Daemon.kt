@@ -1,7 +1,5 @@
 package runa.daemon
 
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,6 +16,7 @@ import runa.engine.Engine
 import runa.platform.FileLock
 import runa.platform.catchTermination
 import runa.platform.currentProcessId
+import runa.platform.surveyHardware
 import runa.platform.terminationRequested
 import runa.store.ModelStore
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -29,7 +28,8 @@ import kotlin.uuid.Uuid
 
 /**
  * The daemon process: holds the loaded models and serves the API on a loopback port until it is
- * told to stop by SIGTERM or `POST /api/v1/shutdown`. Returns the process exit code.
+ * told to stop by SIGTERM or `POST /api/v1/shutdown`. `runa server start` makes it serve the same
+ * API on a second, public address as well. Returns the process exit code.
  *
  * @param engine creates the inference engine; it gets the sink for the engine's own log.
  */
@@ -39,19 +39,22 @@ public fun runDaemon(
     engine: (log: (LogLevel, String) -> Unit) -> Engine,
     fileSystem: FileSystem = FileSystem.SYSTEM,
 ): Int {
-    val log = DaemonLog(settings.logLevel)
     val paths = settings.paths
     fileSystem.createDirectories(checkNotNull(paths.daemonLockFile.parent))
     // Held until the process ends, however it ends: the OS drops the lock of a dead process.
     val lock = FileLock.tryAcquire(paths.daemonLockFile)
     if (lock == null) {
-        log.error("Another runa daemon already runs for ${paths.stateDir}")
+        DaemonLog(settings.logLevel).error("Another runa daemon already runs for ${paths.stateDir}")
         return ExitCode.BACKEND
     }
     return lock.use {
+        // Only now: a second daemon that rotated the file would move it away from under the first.
+        val file = LogFile.ofStandardOutput(paths.daemonLogFile, fileSystem)
+        val log = DaemonLog(settings.logLevel, settings.logPrompts, write = file?.let { it::write } ?: ::println)
+        file?.onFailure = { log.at(LogLevel.WARN, it) }
         // Whatever an earlier daemon left behind describes a process that no longer exists.
         DiscoveryFile(fileSystem, paths.discoveryFile).delete()
-        runBlocking { serve(settings, engine(log::at), fileSystem, log) }
+        runBlocking { serve(settings, engine(log::runtime), fileSystem, log, file != null) }
         ExitCode.OK
     }
 }
@@ -62,6 +65,8 @@ private suspend fun serve(
     engine: Engine,
     fileSystem: FileSystem,
     log: DaemonLog,
+    /** Whether the log goes to the log file, and not to a terminal. */
+    logsToFile: Boolean,
 ) {
     val pid = currentProcessId()
     val store = ModelStore(fileSystem, settings.modelsDir)
@@ -73,53 +78,61 @@ private suspend fun serve(
             modelsDir = settings.modelsDir,
             scope = timers,
             defaults = LoadDefaults(settings.contextLength, settings.gpu, settings.ttl),
+            memory = { machineMemory(surveyHardware(), engine.info) },
+            onLoaded = { log.info("Loaded ${it.instance.model} as '${it.instance.id}' in ${it.loadTime.inWholeMilliseconds} ms") },
             onEvicted = { log.info("Unloaded '$it': idle for longer than its ttl") },
         )
     val stopRequested = AtomicBoolean(false)
     var port = 0
+    val access = Access(randomHex() + randomHex())
+    val failures = Failures(log)
+    // Each server that starts brings Ktor's signal handlers back, see below.
+    val public = PublicServer(access, log, afterStart = ::catchTermination)
     val api =
         DaemonApi(
             registry = registry,
             engine = engine,
             store = store::list,
-            token = newToken(),
+            access = access,
+            failures = failures,
+            openAi = OpenAiApi(registry, store::list, access, failures, log),
+            chat = ChatApi(registry, failures, log),
+            server = public,
             version = settings.version,
             pid = pid,
             port = { port },
             started = TimeSource.Monotonic.markNow(),
             log = log,
+            logFile = settings.paths.daemonLogFile.takeIf { logsToFile },
             requestShutdown = { stopRequested.store(true) },
         )
-    val server = embeddedServer(CIO, port = settings.port ?: 0, host = LOOPBACK) { api.install(this) }
     val discovery = DiscoveryFile(fileSystem, settings.paths.discoveryFile)
+    var server: HttpServer? = null
     try {
-        server.startSuspend(wait = false)
+        server = listen(LOOPBACK, settings.port ?: 0, log) { api.install(this, Listener.PRIVATE) }
         // After the server has started, because Ktor installs signal handlers of its own then: they
         // would stop the server and leave this process running without one.
         catchTermination()
-        port =
-            server.engine
-                .resolvedConnectors()
-                .first()
-                .port
+        port = server.port()
         // Written only now: whoever finds the file can connect at once.
-        discovery.write(DaemonInfo(pid, port, api.token, settings.version))
+        discovery.write(DaemonInfo(pid, port, access.token, settings.version))
         log.info("runa ${settings.version} (pid $pid) listens on $LOOPBACK:$port with ${engine.info.name} ${engine.info.version}")
         // Signal handlers can only set a flag, so the flag is polled.
         while (!stopRequested.load() && !terminationRequested()) delay(POLL)
         log.info("Stopping")
     } finally {
         discovery.delete(pid)
-        server.stopSuspend(gracePeriodMillis = GRACE_MILLIS, timeoutMillis = STOP_TIMEOUT_MILLIS)
+        public.stop()
+        server?.stopSuspend(gracePeriodMillis = GRACE_MILLIS, timeoutMillis = STOP_TIMEOUT_MILLIS)
         registry.close()
         timers.cancel()
         log.info("Stopped")
     }
 }
 
-/** 244 random bits from the operating system's generator, which is what `Uuid.random` reads. */
+/** 122 random bits from the operating system's generator, which is what `Uuid.random` reads; the token is two of these. */
 @OptIn(ExperimentalUuidApi::class)
-private fun newToken(): String = Uuid.random().toHexString() + Uuid.random().toHexString()
+internal fun randomHex(): String = Uuid.random().toHexString()
 
 private const val LOOPBACK = "127.0.0.1"
 private val POLL = 100.milliseconds

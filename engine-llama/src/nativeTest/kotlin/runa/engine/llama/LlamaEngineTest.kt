@@ -1,8 +1,13 @@
 package runa.engine.llama
 
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -10,12 +15,16 @@ import runa.core.ChatMessage
 import runa.core.ChatRole
 import runa.core.GpuOffload
 import runa.core.LoadConfig
+import runa.core.ToolCall
 import runa.core.UserInputError
 import runa.engine.FinishReason
 import runa.engine.GenerationEvent
 import runa.engine.GenerationRequest
 import runa.engine.Prompt
+import runa.engine.ResponseFormat
 import runa.engine.Sampling
+import runa.engine.Tool
+import runa.engine.ToolChoice
 import runa.engine.llama.cinterop.LLAMA_POOLING_TYPE_MEAN
 import runa.engine.toCompletion
 import kotlin.random.Random
@@ -23,6 +32,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -40,6 +50,17 @@ class LlamaEngineTest {
         sampling: Sampling = greedy,
         stop: List<String> = emptyList(),
     ) = GenerationRequest(Prompt.Chat(listOf(ChatMessage(ChatRole.USER, text))), sampling, maxTokens, stop)
+
+    private fun json(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
+
+    private val weather =
+        Tool(
+            "get_weather",
+            "Gets the current weather in a city",
+            json("""{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}"""),
+        )
+    private val clock = Tool("get_time", "Gets the current time in a city", weather.parameters)
+    private val question = ChatMessage(ChatRole.USER, "What is the weather in Paris?")
 
     @Test
     fun describesItself() {
@@ -145,6 +166,81 @@ class LlamaEngineTest {
         }
 
     @Test
+    fun aRequiredToolCallIsAnnouncedAndHasArgumentsOfItsSchema() =
+        withTestModel { model ->
+            val prompt = Prompt.Chat(listOf(question), listOf(weather), ToolChoice.Required)
+            val events = model.generate(GenerationRequest(prompt, greedy, maxTokens = 96)).toList()
+            val completion = events.asFlow().toCompletion()
+            assertEquals(FinishReason.TOOL_CALLS, completion.reason, "$events")
+            val call = completion.toolCalls.single()
+            assertEquals("get_weather", call.name)
+            assertTrue(call.id.startsWith("call_"), call.id)
+            assertIs<JsonPrimitive>(json(call.arguments)["city"], call.arguments)
+
+            val started = events.indexOfFirst { it is GenerationEvent.ToolCallStarted }
+            assertEquals(1, events.count { it is GenerationEvent.ToolCallStarted })
+            assertTrue(started < events.indexOfFirst { it is GenerationEvent.ToolCallArguments }, "$events")
+        }
+
+    @Test
+    fun aNamedToolIsTheOneCalled() =
+        withTestModel { model ->
+            // Either tool answers half of it; left alone, the model takes the first.
+            val both = ChatMessage(ChatRole.USER, "What is the weather in Paris, and what time is it there?")
+            val prompt = Prompt.Chat(listOf(both), listOf(weather, clock), ToolChoice.Named("get_time"))
+            val completion = model.generate(GenerationRequest(prompt, greedy, maxTokens = 96)).toCompletion()
+            assertEquals(listOf("get_time"), completion.toolCalls.map { it.name }, completion.text)
+
+            val unknown = Prompt.Chat(listOf(question), listOf(weather), ToolChoice.Named("get_date"))
+            assertFailsWith<UserInputError> { model.generate(GenerationRequest(unknown, greedy)).toList() }
+        }
+
+    @Test
+    fun aToolsResultIsReadAndWithoutACallTheAnswerIsText() =
+        withTestModel { model ->
+            val messages =
+                listOf(
+                    question,
+                    ChatMessage(ChatRole.ASSISTANT, "", toolCalls = listOf(ToolCall("call_1", "get_weather", """{"city":"Paris"}"""))),
+                    ChatMessage(ChatRole.TOOL, """{"temperature_celsius":21,"sky":"clear"}""", toolCallId = "call_1"),
+                )
+            val completion =
+                model
+                    .generate(
+                        GenerationRequest(Prompt.Chat(messages, listOf(weather)), greedy, maxTokens = 64),
+                    ).toCompletion()
+            assertEquals(emptyList(), completion.toolCalls)
+            assertContains(completion.text, "21")
+            assertEquals(FinishReason.STOP, completion.reason)
+
+            val forbidden = Prompt.Chat(listOf(question), listOf(weather), ToolChoice.None)
+            val answer = model.generate(GenerationRequest(forbidden, greedy, maxTokens = 32)).toCompletion()
+            assertEquals(emptyList(), answer.toolCalls)
+            assertTrue(answer.text.isNotBlank())
+            assertFalse("get_weather" in answer.text, answer.text)
+        }
+
+    @Test
+    fun aJsonFormatShapesTheAnswer() =
+        withTestModel { model ->
+            val ask = listOf(ChatMessage(ChatRole.USER, "What is the capital of France?"))
+            val schema =
+                json("""{"type":"object","properties":{"capital":{"type":"string"}},"required":["capital"],"additionalProperties":false}""")
+            val shaped =
+                model
+                    .generate(
+                        GenerationRequest(Prompt.Chat(ask, format = ResponseFormat.Json(schema)), greedy, 64),
+                    ).toCompletion()
+            assertEquals(setOf("capital"), json(shaped.text).keys, shaped.text)
+            assertEquals(FinishReason.STOP, shaped.reason)
+
+            // Without a schema the answer is still an object, which a small model may never close.
+            val free = model.generate(GenerationRequest(Prompt.Chat(ask, format = ResponseFormat.Json()), greedy, 48)).toCompletion()
+            assertTrue(free.text.trimStart().startsWith("{"), free.text)
+            if (free.reason == FinishReason.STOP) json(free.text)
+        }
+
+    @Test
     fun runsWithoutTheGpuAndWithPartOfIt() =
         withTestModelFile { path ->
             for (gpu in listOf(GpuOffload.Off, GpuOffload.Ratio(0.5))) {
@@ -160,6 +256,24 @@ class LlamaEngineTest {
         withTestModel { model ->
             val completion = model.generate(GenerationRequest(Prompt.Text("1, 2, 3, 4, 5,"), greedy, maxTokens = 8)).toCompletion()
             assertContains(completion.text, "6")
+        }
+
+    @Test
+    fun renderShowsWhatTheModelReads() =
+        withTestModel { model ->
+            assertEquals("1, 2, 3", model.render(Prompt.Text("1, 2, 3")))
+            val rendered = model.render(Prompt.Chat(listOf(ChatMessage(ChatRole.SYSTEM, "Be brief."), question)))
+            assertContains(rendered, "Be brief.")
+            assertContains(rendered, question.content)
+            // The template put its own marks around the messages.
+            assertTrue(rendered.length > "Be brief.".length + question.content.length, rendered)
+            // Rendering leaves the model as it was: it still answers.
+            assertTrue(
+                model
+                    .generate(chat("Say hello.", maxTokens = 4))
+                    .toCompletion()
+                    .stats.completionTokens > 0,
+            )
         }
 
     @Test

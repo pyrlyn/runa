@@ -14,13 +14,16 @@ import okio.Path
 import runa.core.GpuOffload
 import runa.core.LoadConfig
 import runa.core.UserInputError
+import runa.core.api.AutoChoice
 import runa.core.api.InstanceDescription
 import runa.core.api.MemoryEstimateDescription
 import runa.engine.Engine
 import runa.engine.LoadedModel
+import runa.engine.MemoryEstimate
 import runa.store.StoreListing
 import runa.store.StoredModel
 import runa.store.find
+import runa.store.isNamed
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -41,6 +44,11 @@ public data class LoadSpec(
     /** Idle time after which the instance is unloaded; zero for never. */
     val ttl: Duration? = null,
     val identifier: String? = null,
+    /**
+     * Choose [gpu] and [contextLength] by the machine's memory, so that the model fits. Either one
+     * that is given is kept; the [LoadDefaults] do not count as given.
+     */
+    val auto: Boolean = false,
 )
 
 /** The `context_length`, `gpu` and `ttl` settings of `config.json`. */
@@ -50,10 +58,23 @@ public data class LoadDefaults(
     val ttl: Duration? = null,
 )
 
+/** No instance and no stored model has the name a request gave. */
+public class UnknownModelError(
+    message: String,
+) : RuntimeException(message)
+
 public class LoadResult(
     public val instance: InstanceDescription,
     public val estimate: MemoryEstimateDescription,
     public val loadTime: Duration,
+    /** What `auto` chose; null when the load did not ask for it. */
+    public val auto: AutoChoice? = null,
+)
+
+/** What a load would take, and what `auto` would choose for it when asked. */
+public class LoadEstimate(
+    public val memory: MemoryEstimateDescription,
+    public val auto: AutoChoice?,
 )
 
 /**
@@ -72,7 +93,11 @@ public class ModelRegistry(
     private val modelsDir: Path,
     private val scope: CoroutineScope,
     private val defaults: LoadDefaults = LoadDefaults(),
+    /** The memory a load with `auto` plans with; asked on every such load. */
+    private val memory: () -> MachineMemory = { MachineMemory(systemBytes = null) },
     private val time: TimeSource.WithComparableMarks = TimeSource.Monotonic,
+    /** Told about every model that was loaded, whoever asked for it. */
+    private val onLoaded: (LoadResult) -> Unit = {},
     /** Told the identifier of an instance that was unloaded for being idle. */
     private val onEvicted: (String) -> Unit = {},
 ) {
@@ -83,8 +108,15 @@ public class ModelRegistry(
     private val reserved = HashSet<String>()
     private var closed = false
 
+    // Held while a request loads the model it names, so the requests behind it wait for that load.
+    private val loadingOnDemand = Mutex()
+
     /** What [spec] would take, without loading anything. */
-    public fun estimate(spec: LoadSpec): MemoryEstimateDescription = estimate(find(spec.model), config(spec))
+    public suspend fun estimate(spec: LoadSpec): LoadEstimate {
+        val model = find(spec.model)
+        val config = config(spec, model)
+        return LoadEstimate(describe(engine.estimateMemory(model.path, config)), choice(spec, config))
+    }
 
     /**
      * Loads a model and returns once it is ready for requests.
@@ -96,7 +128,8 @@ public class ModelRegistry(
         onProgress: (Float) -> Unit = {},
     ): LoadResult {
         val model = find(spec.model)
-        val config = config(spec)
+        val config = config(spec, model)
+        val estimate = engine.estimateMemory(model.path, config)
         val parallel = spec.parallel ?: 1
         if (parallel < 1) throw UserInputError("parallel must be at least 1")
         val ttl = (spec.ttl ?: defaults.ttl)?.takeIf { it > Duration.ZERO }
@@ -105,7 +138,7 @@ public class ModelRegistry(
         val instance =
             try {
                 val loaded = engine.load(model.path, config, onProgress)
-                Instance(id, model, loaded, config, parallel, ttl, time.markNow())
+                Instance(id, model, loaded, config, estimate.totalBytes, parallel, ttl, time.markNow())
             } catch (e: Throwable) {
                 withContext(NonCancellable) { lock.withLock { reserved -= id } }
                 throw e
@@ -121,7 +154,7 @@ public class ModelRegistry(
             throw IllegalStateException("The daemon is shutting down")
         }
         if (ttl != null) instance.timer = scope.launch { unloadWhenIdle(instance, ttl) }
-        return LoadResult(instance.describe(), estimate(model, config), started.elapsedNow())
+        return LoadResult(instance.describe(), describe(estimate), started.elapsedNow(), choice(spec, config)).also(onLoaded)
     }
 
     /** Runs [block] with the model of instance [id], holding one of its parallel slots. */
@@ -141,6 +174,35 @@ public class ModelRegistry(
                 instance.active.decrementAndFetch()
             }
         }
+    }
+
+    /**
+     * Runs [block] with the model that a request calls [name]: the instance with that identifier,
+     * else a loaded instance of the stored model of that name, else that model, loaded now with the
+     * defaults. [block] also gets the identifier of the instance it runs on.
+     *
+     * @throws UnknownModelError when [name] is neither an instance nor a stored model.
+     * @throws UserInputError when [name] fits more than one stored model.
+     */
+    public suspend fun <T> useNamed(
+        name: String,
+        block: suspend (id: String, model: LoadedModel) -> T,
+    ): T {
+        val id = resolve(name)
+        return use(id) { block(id, it) }
+    }
+
+    private suspend fun resolve(name: String): String {
+        if (lock.withLock { name in instances }) return name
+        val listing = models()
+        val model =
+            when (listing.models.count { it.isNamed(name) }) {
+                0 -> throw UnknownModelError("No model is called '$name'. `runa ls` lists the models, `runa ps` the loaded ones")
+                else -> listing.find(name, modelsDir)
+            }
+
+        suspend fun loaded() = lock.withLock { instances.values.firstOrNull { it.stored.key == model.key }?.id }
+        return loaded() ?: loadingOnDemand.withLock { loaded() ?: load(LoadSpec(model.key.toString())).instance.id }
     }
 
     /**
@@ -196,19 +258,32 @@ public class ModelRegistry(
 
     private fun find(name: String): StoredModel = models().find(name, modelsDir)
 
-    private fun config(spec: LoadSpec): LoadConfig {
-        val context = spec.contextLength ?: defaults.contextLength ?: LoadConfig.DEFAULT_CONTEXT_LENGTH
-        if (context < 1) throw UserInputError("context_length must be at least 1")
-        return LoadConfig(contextLength = context, gpu = spec.gpu ?: defaults.gpu)
+    private suspend fun config(
+        spec: LoadSpec,
+        model: StoredModel,
+    ): LoadConfig {
+        // With auto the configured defaults step aside: it is asked to choose what the request left open.
+        val context = spec.contextLength ?: if (spec.auto) null else defaults.contextLength ?: LoadConfig.DEFAULT_CONTEXT_LENGTH
+        if (context != null && context < 1) throw UserInputError("context_length must be at least 1")
+        if (!spec.auto) return LoadConfig(contextLength = context, gpu = spec.gpu ?: defaults.gpu)
+        val held = lock.withLock { instances.values.map { HeldModel(it.estimatedBytes, it.config.gpu) } }
+        return chooseLoadConfig(
+            model = model.key.toString(),
+            memory = memory(),
+            held = held,
+            contextLength = context,
+            gpu = spec.gpu,
+            trainedContext = model.contextLength?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt(),
+        ) { context -> engine.estimateMemory(model.path, LoadConfig(contextLength = context)).totalBytes }
     }
 
-    private fun estimate(
-        model: StoredModel,
+    private fun choice(
+        spec: LoadSpec,
         config: LoadConfig,
-    ): MemoryEstimateDescription =
-        engine.estimateMemory(model.path, config).let {
-            MemoryEstimateDescription(it.weightsBytes, it.contextBytes, it.totalBytes)
-        }
+    ): AutoChoice? = config.contextLength?.takeIf { spec.auto }?.let { AutoChoice(it, config.gpu.id) }
+
+    private fun describe(estimate: MemoryEstimate) =
+        MemoryEstimateDescription(estimate.weightsBytes, estimate.contextBytes, estimate.totalBytes)
 
     /** Call with [lock] held. Without a wish the model's key is taken, then `key:2`, `key:3`, and so on. */
     private fun reserve(
@@ -250,6 +325,8 @@ public class ModelRegistry(
         val stored: StoredModel,
         val model: LoadedModel,
         val config: LoadConfig,
+        /** What the engine estimated it takes, for the loads that plan around it. */
+        val estimatedBytes: Long,
         val parallel: Int,
         val ttl: Duration?,
         loadedAt: ComparableTimeMark,

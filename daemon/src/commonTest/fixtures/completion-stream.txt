@@ -1,0 +1,10 @@
+data: {"id":"cmpl-2","object":"text_completion","created":1700000000,"model":"acme/alpha@Q4_K_M","choices":[{"index":0,"text":"Once","finish_reason":null}]}
+
+data: {"id":"cmpl-2","object":"text_completion","created":1700000000,"model":"acme/alpha@Q4_K_M","choices":[{"index":0,"text":" upon","finish_reason":null}]}
+
+data: {"id":"cmpl-2","object":"text_completion","created":1700000000,"model":"acme/alpha@Q4_K_M","choices":[{"index":0,"text":"","finish_reason":"stop"}]}
+
+data: {"id":"cmpl-2","object":"text_completion","created":1700000000,"model":"acme/alpha@Q4_K_M","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":2,"total_tokens":4}}
+
+data: [DONE]
+

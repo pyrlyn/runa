@@ -13,15 +13,19 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.mordant.terminal.Terminal
+import runa.cli.commands.ChatCommand
 import runa.cli.commands.ConfigCommand
 import runa.cli.commands.DaemonCommand
 import runa.cli.commands.DaemonProcessCommand
 import runa.cli.commands.GetCommand
 import runa.cli.commands.ImportCommand
 import runa.cli.commands.LoadCommand
+import runa.cli.commands.LogCommand
 import runa.cli.commands.LsCommand
 import runa.cli.commands.PsCommand
 import runa.cli.commands.RunCommand
+import runa.cli.commands.RuntimeCommand
+import runa.cli.commands.ServerCommand
 import runa.cli.commands.StatusCommand
 import runa.cli.commands.UnloadCommand
 import runa.cli.commands.VersionCommand
@@ -35,12 +39,24 @@ internal class RunaCommand(
 ) : CliktCommand(name = "runa") {
     private val json by option("--json", help = "Print JSON instead of tables and text").flag()
     private val logLevel by option("--log-level", metavar = "level", help = "debug, info, warn or error (env: RUNA_LOG_LEVEL)")
+    private val logPrompts by option(
+        "--log-prompts",
+        help = "Write what the models read and write into the daemon's log file, for a daemon this command starts (env: RUNA_LOG_PROMPTS)",
+    ).flag()
     private val quiet by option("--quiet", help = "Print errors only").flag()
     private val verbose by option("--verbose", help = "Print debug detail").flag()
-    private val host by option("--host", metavar = "host", help = "Daemon host (env: RUNA_HOST)")
-    private val port by option("--port", metavar = "port", help = "Daemon port (env: RUNA_PORT)")
-    private val token by option("--token", metavar = "token", help = "API token of a daemon on another machine (env: RUNA_TOKEN)")
-    private val backend by option("--backend", metavar = "name", help = "runa or lmstudio (env: RUNA_BACKEND)")
+    private val host by option("--host", metavar = "host", help = "Host of the daemon, or of LM Studio (env: RUNA_HOST)")
+    private val port by option("--port", metavar = "port", help = "Port of the daemon, or of LM Studio instead of 1234 (env: RUNA_PORT)")
+    private val token by option(
+        "--token",
+        metavar = "token",
+        help = "API token of a daemon on another machine (env: RUNA_TOKEN), or of LM Studio (env: LM_API_TOKEN)",
+    )
+    private val backend by option(
+        "--backend",
+        metavar = "name",
+        help = "runa, or lmstudio to list, load and chat with the models of a running LM Studio (env: RUNA_BACKEND)",
+    )
     private val yes by option("-y", "--yes", help = "Take the default answer for every prompt").flag()
 
     init {
@@ -55,12 +71,16 @@ internal class RunaCommand(
                 LsCommand(),
                 ImportCommand(),
                 RunCommand(),
+                ChatCommand(),
                 LoadCommand(),
                 UnloadCommand(),
                 PsCommand(),
                 StatusCommand(),
+                ServerCommand(),
+                LogCommand(),
                 DaemonCommand(),
                 DaemonProcessCommand(),
+                RuntimeCommand(),
                 VersionCommand(),
                 ConfigCommand(),
                 CompletionCommand(name = "completion", help = "Print a completion script for bash, zsh or fish"),
@@ -77,6 +97,7 @@ internal class RunaCommand(
         val flags =
             listOfNotNull(
                 logLevel?.let { ConfigKey.LOG_LEVEL to it },
+                ConfigKey.LOG_PROMPTS.takeIf { logPrompts }?.let { it to "true" },
                 host?.let { ConfigKey.HOST to it },
                 port?.let { ConfigKey.PORT to it },
                 backend?.let { ConfigKey.BACKEND to it },

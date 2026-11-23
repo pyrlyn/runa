@@ -43,6 +43,8 @@ public data class EngineInfo(
     val version: String,
     /** The compute backends compiled in, for example `cpu` and `metal`. */
     val accelerators: List<String>,
+    /** True when the engine can put a model, or a part of one, on a GPU of this machine. */
+    val gpuOffload: Boolean,
 )
 
 public data class MemoryEstimate(
@@ -64,6 +66,14 @@ public interface LoadedModel : AutoCloseable {
     public val supportsEmbeddings: Boolean
 
     public suspend fun tokenize(text: String): List<Int>
+
+    /**
+     * The text the model reads for [prompt]: a chat goes through the model's template, with its tools
+     * and the opening of the answer. For whoever wants to see it; [generate] does not need it.
+     *
+     * @throws runa.core.UserInputError when the template does not take the chat.
+     */
+    public suspend fun render(prompt: Prompt): String
 
     /**
      * Generates a completion as a cold flow: nothing runs until it is collected, and cancelling

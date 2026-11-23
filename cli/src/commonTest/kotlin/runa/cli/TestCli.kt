@@ -12,10 +12,12 @@ import runa.config.DaemonSettings
 import runa.engine.Engine
 import runa.engine.testing.FakeEngine
 import runa.gguf.GgufWriter
+import runa.platform.Cpu
+import runa.platform.Gpu
+import runa.platform.GpuSource
+import runa.platform.HardwareSurvey
 import runa.platform.HostOs
-import runa.platform.systemEnv
 import kotlin.random.Random
-import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
 
 internal class CliRun(
@@ -35,16 +37,19 @@ internal class TestCli(
         extraCommands: List<CoreCliktCommand> = emptyList(),
         /** Lines typed at prompts; giving any makes the terminal interactive. */
         input: List<String> = emptyList(),
+        /** False for [input] that is piped in, with nobody at the keyboard. */
+        interactive: Boolean = input.isNotEmpty(),
         /** Answers the CLI's HTTP requests; without one, a request reaches the real network. */
         http: HttpClientEngine? = null,
         memory: Long? = 16_000_000_000,
+        hardware: HardwareSurvey = TEST_HARDWARE,
         engine: Engine = FakeEngine(),
         /** Stands in for the daemon process: its HTTP API, its start and its lock. */
         daemon: FakeDaemon? = null,
         /** What `runa __daemon` runs. */
         daemonProcess: (DaemonSettings) -> Int = { error("this test does not run the daemon process") },
     ): CliRun {
-        val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = input.isNotEmpty())
+        val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = interactive)
         recorder.inputLines = input.toMutableList()
         val environment =
             CliEnvironment(
@@ -56,12 +61,14 @@ internal class TestCli(
                 terminal = Terminal(terminalInterface = recorder),
                 httpEngine = daemon?.http ?: http,
                 physicalMemory = { memory },
+                hardware = { hardware },
                 engine = { engine },
                 daemon = daemonProcess,
                 startDaemon = { arguments, _ -> checkNotNull(daemon) { "this test has no daemon to start" }.start(arguments) },
                 daemonLockHeld = { daemon?.running == true },
                 // Long enough for a fake that starts at once, short enough for one that never does.
                 daemonStartTimeout = 300.milliseconds,
+                downloadPoll = 1.milliseconds,
             )
         val exitCode = runCli(args.toList(), environment, extraCommands)
         return CliRun(exitCode, recorder.stdout(), recorder.stderr())
@@ -74,22 +81,14 @@ internal class TestCli(
     }
 }
 
-/**
- * Compares [actual] with `src/commonTest/fixtures/<name>` (Gradle runs native tests from the
- * module directory). `RUNA_UPDATE_GOLDEN=1 ./gradlew :cli:allTests` rewrites the files instead.
- */
-internal fun assertGolden(
-    name: String,
-    actual: String,
-) {
-    val file = "src/commonTest/fixtures".toPath() / name
-    if (systemEnv("RUNA_UPDATE_GOLDEN") == "1") {
-        FileSystem.SYSTEM.write(file) { writeUtf8(actual) }
-        return
-    }
-    val expected = FileSystem.SYSTEM.read(file) { readUtf8() }
-    assertEquals(expected, actual, "Output differs from $file; rerun with RUNA_UPDATE_GOLDEN=1 if the change is intended")
-}
+/** The machine the tests run on, as far as `runtime survey` can tell. */
+internal val TEST_HARDWARE =
+    HardwareSurvey(
+        os = HostOs.MACOS,
+        cpu = Cpu("Apple M3 Pro", "arm64", cores = 12, performanceCores = 6, threads = 12),
+        memoryBytes = 36_000_000_000,
+        gpus = listOf(Gpu("Apple M3 Pro", 27_000_000_000, unifiedMemory = true, GpuSource.METAL)),
+    )
 
 /** A header-only language model: all that `ls` and `import` ever read of a model file. */
 internal fun tinyLlama(fileType: Long = 15): GgufWriter =

@@ -2,8 +2,11 @@ package runa.engine.testing
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.json.JsonPrimitive
 import okio.Path
+import runa.core.BackendError
 import runa.core.LoadConfig
+import runa.core.UserInputError
 import runa.engine.Engine
 import runa.engine.EngineInfo
 import runa.engine.FinishReason
@@ -13,22 +16,37 @@ import runa.engine.GenerationStats
 import runa.engine.LoadedModel
 import runa.engine.MemoryEstimate
 import runa.engine.Prompt
+import runa.engine.ResponseFormat
+import runa.engine.Tool
+import runa.engine.ToolChoice
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * An [Engine] without a model, for the tests of everything that uses one: a token is a word and
  * the completion echoes the prompt. It also shows that the interface does not need llama.cpp.
+ *
+ * In a chat it calls a tool when it must, and otherwise the tools the last message names. Asked for
+ * JSON, it answers `{"echo": prompt}`.
  */
-public class FakeEngine : Engine {
+public class FakeEngine(
+    /** Whether it says it can compute on a GPU. */
+    gpuOffload: Boolean = false,
+) : Engine {
+    /** What [estimateMemory] says a model's weights take. */
+    public var weightsBytes: Long = 1_000
+
     /** Every load so far, in order. */
     public val loads: MutableList<FakeLoad> = mutableListOf()
 
-    override val info: EngineInfo = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"))
+    /** A word at which generation fails, the way a backend fails halfway through an answer. */
+    public var failOn: String? = null
+
+    override val info: EngineInfo = EngineInfo(name = "fake", version = "0", accelerators = listOf("cpu"), gpuOffload = gpuOffload)
 
     override fun estimateMemory(
         model: Path,
         config: LoadConfig,
-    ): MemoryEstimate = MemoryEstimate(weightsBytes = 1_000, contextBytes = (config.contextLength ?: DEFAULT_CONTEXT) * 2L)
+    ): MemoryEstimate = MemoryEstimate(weightsBytes = weightsBytes, contextBytes = (config.contextLength ?: DEFAULT_CONTEXT) * 2L)
 
     override suspend fun load(
         model: Path,
@@ -37,7 +55,7 @@ public class FakeEngine : Engine {
     ): LoadedModel {
         onProgress(0f)
         onProgress(1f)
-        return FakeModel(config.contextLength ?: DEFAULT_CONTEXT).also { loads += FakeLoad(model, config, it) }
+        return FakeModel(config.contextLength ?: DEFAULT_CONTEXT) { failOn }.also { loads += FakeLoad(model, config, it) }
     }
 
     private companion object {
@@ -53,35 +71,64 @@ public class FakeLoad(
 
 public class FakeModel(
     override val contextLength: Int,
+    private val failOn: () -> String? = { null },
 ) : LoadedModel {
     public var closed: Boolean = false
         private set
     public var generatedTokens: Int = 0
         private set
 
+    /** Every generation that was started, in order. */
+    public val requests: MutableList<GenerationRequest> = mutableListOf()
+
     override val supportsEmbeddings: Boolean = true
 
     override suspend fun tokenize(text: String): List<Int> = words(text).map { it.hashCode() }
 
+    override suspend fun render(prompt: Prompt): String {
+        checkOpen()
+        return rendered(prompt)
+    }
+
+    private fun rendered(prompt: Prompt): String =
+        when (prompt) {
+            is Prompt.Text -> prompt.text
+            is Prompt.Chat -> prompt.messages.joinToString(" ") { "${it.role.id}: ${it.content}" }
+        }
+
     override fun generate(request: GenerationRequest): Flow<GenerationEvent> =
         flow {
             checkOpen()
-            val prompt =
-                when (val prompt = request.prompt) {
-                    is Prompt.Text -> prompt.text
-                    is Prompt.Chat -> prompt.messages.joinToString(" ") { "${it.role.id}: ${it.content}" }
-                }
+            requests += request
+            val prompt = rendered(request.prompt)
             val words = words(prompt)
+            // As a real engine does: there is nothing to continue.
+            if (words.isEmpty()) throw UserInputError("The prompt is empty")
+            val chat = request.prompt as? Prompt.Chat
+            val calls = chat?.let(::calledTools).orEmpty()
+            if (calls.isNotEmpty()) {
+                calls.forEachIndexed { index, tool ->
+                    emit(GenerationEvent.ToolCallStarted(index, "call_$index", tool.name))
+                    // In two pieces, as a model writes them.
+                    emit(GenerationEvent.ToolCallArguments(index, "{\"words\":"))
+                    emit(GenerationEvent.ToolCallArguments(index, "${words.size}}"))
+                }
+                val stats = GenerationStats(words.size, 2 * calls.size, 10.milliseconds, (calls.size * 200).milliseconds)
+                emit(GenerationEvent.Finished(FinishReason.TOOL_CALLS, stats))
+                return@flow
+            }
+            val answer = if (chat?.format is ResponseFormat.Json) listOf("{\"echo\":", "${JsonPrimitive(prompt)}}") else words
             val limit = minOf(request.maxTokens ?: Int.MAX_VALUE, contextLength)
             var emitted = 0
             var reason = FinishReason.STOP
-            for (word in words) {
+            for (word in answer) {
                 if (word in request.stop) break
+                if (word == failOn()) throw BackendError("The fake engine fails at '$word'")
                 if (emitted == limit) {
                     reason = FinishReason.LENGTH
                     break
                 }
-                emit(GenerationEvent.Text(if (emitted == 0) word else " $word"))
+                emit(GenerationEvent.Text(if (emitted == 0 || answer !== words) word else " $word"))
                 emitted++
                 generatedTokens++
             }
@@ -98,6 +145,14 @@ public class FakeModel(
     }
 
     private fun checkOpen() = check(!closed) { "The model is closed" }
+
+    private fun calledTools(chat: Prompt.Chat): List<Tool> {
+        val offered = chat.offeredTools()
+        return when (chat.toolChoice) {
+            ToolChoice.Auto -> words(chat.messages.last().content).let { named -> offered.filter { it.name in named } }
+            else -> offered.take(1)
+        }
+    }
 
     private fun words(text: String) = text.split(' ').filter { it.isNotEmpty() }
 }

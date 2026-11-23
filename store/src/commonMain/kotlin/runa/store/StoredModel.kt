@@ -25,8 +25,7 @@ public data class StoredModel(
 }
 
 /** True when [name] is this model's key, its `publisher/repo` or its repo alone; case does not matter. */
-public fun StoredModel.isNamed(name: String): Boolean =
-    listOf(key.toString(), key.model, key.repo).any { it.equals(name, ignoreCase = true) }
+public fun StoredModel.isNamed(name: String): Boolean = key.isNamed(name)
 
 /** A file in the store that could not be listed, and why. */
 public data class StoreProblem(

@@ -3,6 +3,9 @@ package runa.cli.output
 import com.github.ajalt.mordant.terminal.Terminal
 import runa.core.LogLevel
 
+/** How every error reaches the user, whatever the log level. */
+internal fun Terminal.printError(message: String?) = println(theme.danger("Error:") + " " + message, stderr = true)
+
 /** Progress notes and debug detail on stderr, so stdout stays clean for pipes and `--json`. */
 internal class Diagnostics(
     private val terminal: Terminal,

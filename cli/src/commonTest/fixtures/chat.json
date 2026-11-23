@@ -1,0 +1,1 @@
+{"model_instance_id":"acme/alpha@Q4_K_M","output":[{"type":"message","content":"echo: hi"}],"stats":{"input_tokens":7,"total_output_tokens":3,"tokens_per_second":12.5,"time_to_first_token_seconds":0.25,"stop_reason":"stop"},"response_id":null}
