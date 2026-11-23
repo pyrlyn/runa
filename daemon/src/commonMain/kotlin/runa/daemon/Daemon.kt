@@ -89,6 +89,7 @@ private suspend fun serve(
             access = access,
             failures = failures,
             openAi = OpenAiApi(registry, store::list, access, failures, log),
+            chat = ChatApi(registry, failures, log),
             server = public,
             version = settings.version,
             pid = pid,

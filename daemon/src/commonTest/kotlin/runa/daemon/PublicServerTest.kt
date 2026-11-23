@@ -7,8 +7,6 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
 import runa.core.UserInputError
 import runa.core.api.ApiError
 import runa.core.api.DaemonJson
@@ -24,20 +22,6 @@ import kotlin.test.assertTrue
 
 /** The listener of `runa server start`, beside the daemon's own. */
 class PublicServerTest {
-    /** A port that was free a moment ago. */
-    private suspend fun freePort(): Int {
-        val probe = embeddedServer(CIO, port = 0, host = LOOPBACK) {}
-        probe.startSuspend(wait = false)
-        try {
-            return probe.engine
-                .resolvedConnectors()
-                .first()
-                .port
-        } finally {
-            probe.stopSuspend(gracePeriodMillis = 0, timeoutMillis = 1_000)
-        }
-    }
-
     private suspend fun TestDaemon.open(
         port: Int,
         cors: Boolean = false,
@@ -179,8 +163,4 @@ class PublicServerTest {
             assertEquals(HttpStatusCode.BadRequest, response.status)
             assertTrue(client().use { it.status().server.running })
         }
-
-    private companion object {
-        const val LOOPBACK = "127.0.0.1"
-    }
 }

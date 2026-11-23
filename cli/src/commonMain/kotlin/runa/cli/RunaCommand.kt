@@ -13,6 +13,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.mordant.terminal.Terminal
+import runa.cli.commands.ChatCommand
 import runa.cli.commands.ConfigCommand
 import runa.cli.commands.DaemonCommand
 import runa.cli.commands.DaemonProcessCommand
@@ -56,6 +57,7 @@ internal class RunaCommand(
                 LsCommand(),
                 ImportCommand(),
                 RunCommand(),
+                ChatCommand(),
                 LoadCommand(),
                 UnloadCommand(),
                 PsCommand(),

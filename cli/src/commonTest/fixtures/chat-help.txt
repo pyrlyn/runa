@@ -1,0 +1,28 @@
+Usage: runa chat [<options>] [<model>]
+
+  Talk to a model
+
+  The daemon is started when it does not run, and the model is loaded when it
+  is not loaded yet; it stays loaded afterwards, see --ttl. The answers are
+  printed as they are generated, and the model remembers the conversation until
+  /clear. /help lists what else can be typed. Ctrl-C ends the chat, also in the
+  middle of an answer.
+
+  With -p, or with the question on standard input, the one answer goes to
+  standard output and nothing else does.
+
+Options:
+  -p, --prompt=<text>  Ask this one question, print the answer and exit
+  -s, --system=<text>  System prompt
+  --stats              Print token counts, time to first token and tokens per
+                       second after every answer
+  --ttl=<seconds>      When this command loads the model: unload it after this
+                       long without a request; 0 for never (default: ttl in
+                       config.json)
+  --json               With one question: print one JSON object when the answer
+                       is complete
+  -h, --help           Show this message and exit
+
+Arguments:
+  <model>  A loaded model from `runa ps` or a model from `runa ls`; without
+           one, the loaded model or a list to choose from

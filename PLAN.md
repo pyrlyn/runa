@@ -278,7 +278,7 @@ All endpoints need `Authorization: Bearer <token>` from the discovery file, exce
 | `POST /api/v1/models/load` | `{model, context_length, gpu, parallel, ttl, identifier, estimate_only}` → instance; progress as SSE when `stream=true` | `load` |
 | `POST /api/v1/models/unload` | `{instance_id}` or `{all: true}` | `unload` |
 | `POST /api/v1/models/download` / `GET /api/v1/models/download/status/{job}` | daemon-side downloads (optional; the CLI downloads itself in 1.0) | `get` (later) |
-| `POST /api/v1/chat` | native chat, SSE stream with stats | `chat` |
+| `POST /api/v1/chat` | native chat `{model, input, system_prompt, previous_response_id, store, stream, …}` → `{model_instance_id, output, stats, response_id}`; with `stream=true` the SSE events `chat.start`, `message.start`, `message.delta`, `message.end`, `chat.end`, or `error` | `chat` |
 | `GET /api/v1/logs/stream?source=model\|server\|runtime` | SSE log stream | `log stream` |
 | `POST /api/v1/server` | start/stop the public listener `{running, bind, port, cors, api_key}` → `{running, bind, port, cors, api_key_required}`, which `status` carries as `server` | `server start\|stop` |
 | `POST /api/v1/shutdown` | graceful stop | `daemon down` |
@@ -514,10 +514,16 @@ streams, the public listener over real sockets, the `server` commands against a 
 an Ubuntu 24.04 arm64 container. CI runs the script on the release executable of each target.
 `mingwX64` only compiles.
 
-Left for the next pull requests: `/api/v1/chat` and `runa chat` (step 3); tools and
-`response_format` through grammars; the `docs/` examples for `curl` and the `openai` Python client
-with their CI smoke test. Embeddings are tested against the fake engine only: the test model is a
-chat model.
+Landed in [#151](https://github.com/pyrlyn/runa/pull/151): `/api/v1/chat` of step 1 and step 3.
+Verified the same way: the unit tests (the endpoint against the fake engine with a golden stream,
+the input state machine, the command against a fake daemon), also in the Ubuntu container;
+`app/integration/chat.sh` with the real executable, which CI runs too; and by hand a conversation
+in a pseudo-terminal, where the model recalled a number from an earlier turn and forgot it after
+`/clear`.
+
+Left for the next pull request: tools and `response_format` through grammars; the `docs/` examples
+for `curl` and the `openai` Python client with their CI smoke test. Embeddings are tested against
+the fake engine only: the test model is a chat model.
 
 What differs from the steps below:
 
@@ -542,6 +548,25 @@ What differs from the steps below:
   `--port` logs the reason and stops, and the command that started it points at the log.
 - Requests to one instance are still decoded one after another; `--parallel` bounds how many may
   wait. Decoding them in one batch is left for later.
+- `/api/v1/chat` has the shapes of LM Studio's endpoint and less of it: `integrations` and input
+  that is not text are refused with `400`; `reasoning` and `context_length` are ignored; the stream
+  has no `model_load.*`, `prompt_processing.*`, `reasoning.*` or `tool_call.*` events.
+  `stats.stop_reason` (`stop` or `length`) is runa's addition. It needs the daemon's token on both
+  listeners.
+- The daemon keeps the conversations, in memory only: the last 1024 responses, the least recently
+  used forgotten first, all of them gone when it stops. Continuing a response it no longer has is a
+  `400`. `store: false` gives an answer without a `response_id`. A `system_prompt` replaces the
+  conversation's, an empty one removes it, none keeps it.
+- `runa chat` reads its lines in the terminal's cooked mode: "history" is the conversation, which
+  the daemon holds; there is no recall of earlier input on the arrow keys and no editing beyond
+  the terminal's own. A line that ends with a backslash continues, and `"""` opens and closes a
+  block of lines.
+- The prompt, the notes and `--stats` go to stderr and only the answer to stdout. Standard input
+  that is not a terminal is read whole as one question, like `-p`; `--json` is for one question
+  only. One question is not stored by the daemon.
+- Without a model, `chat` takes the one that is loaded, or asks which stored one to load. `--ttl`
+  applies only when the command loads the model itself. `/model` with a name switches and starts
+  a new conversation.
 
 Steps:
 1. `/v1/models`, `/v1/chat/completions` (stream and non-stream, tools, `response_format` with JSON

@@ -33,6 +33,8 @@ internal class TestCli(
         extraCommands: List<CoreCliktCommand> = emptyList(),
         /** Lines typed at prompts; giving any makes the terminal interactive. */
         input: List<String> = emptyList(),
+        /** False for [input] that is piped in, with nobody at the keyboard. */
+        interactive: Boolean = input.isNotEmpty(),
         /** Answers the CLI's HTTP requests; without one, a request reaches the real network. */
         http: HttpClientEngine? = null,
         memory: Long? = 16_000_000_000,
@@ -42,7 +44,7 @@ internal class TestCli(
         /** What `runa __daemon` runs. */
         daemonProcess: (DaemonSettings) -> Int = { error("this test does not run the daemon process") },
     ): CliRun {
-        val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = input.isNotEmpty())
+        val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = interactive)
         recorder.inputLines = input.toMutableList()
         val environment =
             CliEnvironment(

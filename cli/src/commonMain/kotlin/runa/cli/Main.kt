@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.CoreCliktCommand
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.parse
 import com.github.ajalt.mordant.terminal.Terminal
+import runa.cli.output.printError
 import runa.core.BackendError
 import runa.core.ExitCode
 import runa.core.UserInputError
@@ -24,8 +25,6 @@ internal fun runCli(
     val terminal = environment.terminal ?: Terminal(nonInteractiveWidth = PIPE_WIDTH)
     val command = RunaCommand(environment, terminal, extraCommands)
 
-    fun fail(message: String?) = terminal.println(terminal.theme.danger("Error:") + " " + message, stderr = true)
-
     return try {
         command.parse(args)
         ExitCode.OK
@@ -34,10 +33,10 @@ internal fun runCli(
         command.echoFormattedHelp(e)
         if (e is UsageError) ExitCode.USER_INPUT else e.statusCode
     } catch (e: UserInputError) {
-        fail(e.message)
+        terminal.printError(e.message)
         ExitCode.USER_INPUT
     } catch (e: BackendError) {
-        fail(e.message)
+        terminal.printError(e.message)
         ExitCode.BACKEND
     } catch (e: Exception) {
         // Anything else is a bug in runa: show where it came from.

@@ -49,12 +49,15 @@ public sealed interface GenerationEvent {
     ) : GenerationEvent
 }
 
-public enum class FinishReason {
+/** @property id the word for it in the APIs and in `--json` output; the OpenAI API uses the same two. */
+public enum class FinishReason(
+    public val id: String,
+) {
     /** The model ended its turn or produced a stop string. */
-    STOP,
+    STOP("stop"),
 
     /** [GenerationRequest.maxTokens] or the context length was reached. */
-    LENGTH,
+    LENGTH("length"),
 }
 
 public data class GenerationStats(

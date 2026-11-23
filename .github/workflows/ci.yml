@@ -161,6 +161,14 @@ jobs:
           MODELS: ${{ runner.temp }}/runa/models
         run: app/integration/server.sh "$RUNA" "$MODELS" "$TEST_MODEL"
 
+      # Integration (PLAN.md, phase 6): `runa chat` in a pipe and the conversations behind it.
+      - if: env.RUN == 'true' && env.SKIP_TESTS != 'true'
+        name: Chat integration test
+        env:
+          RUNA: app/build/bin/${{ matrix.target }}/releaseExecutable/runa.kexe
+          MODELS: ${{ runner.temp }}/runa/models
+        run: app/integration/chat.sh "$RUNA" "$MODELS" "$TEST_MODEL"
+
       - if: env.RUN == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

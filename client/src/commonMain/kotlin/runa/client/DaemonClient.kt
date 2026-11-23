@@ -26,6 +26,11 @@ import kotlinx.serialization.SerializationStrategy
 import runa.core.BackendError
 import runa.core.UserInputError
 import runa.core.api.ApiError
+import runa.core.api.ChatDelta
+import runa.core.api.ChatEnded
+import runa.core.api.ChatFailed
+import runa.core.api.ChatRequest
+import runa.core.api.ChatResponse
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.core.api.DaemonStatus
@@ -97,6 +102,26 @@ public class DaemonClient(
             loaded ?: throw BackendError("The daemon closed the connection before the model was loaded; see its log")
         }
     }
+
+    /**
+     * Sends one turn of a conversation and returns the whole answer; [onText] gets its pieces as
+     * the model writes them. Cancelling the call ends the generation.
+     */
+    public suspend fun chat(
+        request: ChatRequest,
+        onText: (String) -> Unit = {},
+    ): ChatResponse =
+        call(HttpMethod.Post, DaemonRoutes.CHAT, { json(ChatRequest.serializer(), request.copy(stream = true)) }) { response ->
+            var result: ChatResponse? = null
+            response.events { event, data ->
+                when (event) {
+                    DaemonRoutes.EVENT_MESSAGE_DELTA -> onText(decode(ChatDelta.serializer(), data).content)
+                    DaemonRoutes.EVENT_CHAT_END -> result = decode(ChatEnded.serializer(), data).result
+                    DaemonRoutes.EVENT_ERROR -> throw failure(decode(ChatFailed.serializer(), data).error)
+                }
+            }
+            result ?: throw BackendError("The daemon closed the connection before the answer was complete; see its log")
+        }
 
     public suspend fun unload(request: UnloadRequest): UnloadResponse =
         call(HttpMethod.Post, DaemonRoutes.UNLOAD, { json(UnloadRequest.serializer(), request) }) { it.read(UnloadResponse.serializer()) }
@@ -191,28 +216,41 @@ public class DaemonClient(
         status: HttpStatusCode,
         body: String,
     ): RuntimeException {
-        val message =
+        val error =
             try {
-                DaemonJson.decodeFromString(ApiError.serializer(), body).error.message
+                DaemonJson.decodeFromString(ApiError.serializer(), body).error
             } catch (_: SerializationException) {
                 null
             }
-        return when (status) {
-            HttpStatusCode.BadRequest -> {
-                UserInputError(message ?: "The daemon rejected the request")
+        return when {
+            status == HttpStatusCode.Unauthorized -> {
+                BackendError("The daemon at $baseUrl rejected the token; give the right one with --token or RUNA_TOKEN")
             }
 
-            HttpStatusCode.Unauthorized -> {
-                BackendError(
-                    "The daemon at $baseUrl rejected the token; give the right one with --token or RUNA_TOKEN",
-                )
+            // Whatever the status: a model nobody has is a 404, and still the user's to put right.
+            error?.type == ApiError.INVALID_REQUEST -> {
+                UserInputError(error.message)
+            }
+
+            status == HttpStatusCode.BadRequest -> {
+                UserInputError("The daemon rejected the request")
             }
 
             else -> {
-                BackendError("The daemon at $baseUrl answered ${status.value}" + message?.let { ": $it" }.orEmpty())
+                BackendError("The daemon at $baseUrl answered ${status.value}" + error?.let { ": ${it.message}" }.orEmpty())
             }
         }
     }
+
+    /** What the `error` event of a chat means: the answer began, so there was no status to read it from. */
+    private fun failure(error: ApiError.Detail): RuntimeException =
+        if (error.type ==
+            ApiError.INVALID_REQUEST
+        ) {
+            UserInputError(error.message)
+        } else {
+            BackendError("The answer was cut short: ${error.message}")
+        }
 
     private companion object {
         val CONNECT_TIMEOUT = 5.seconds
