@@ -1,7 +1,8 @@
 # runa: Kotlin/Native rewrite plan
 
-Status: in progress. Each phase in [section 8](#8-implementation-phases) carries a `Status:` line;
-a phase marked done has landed. The previous implementation was removed in the pull request that
+Status: every phase is implemented; what is left is the first release, which is the acceptance run
+of phase 10, and Windows, if it is wanted (phase 11). Each phase in
+[section 8](#8-implementation-phases) carries a `Status:` line. The previous implementation was removed in the pull request that
 added this file (see [Repository reset](#12-repository-reset)).
 
 ## Contents
@@ -753,8 +754,9 @@ estimate fits the reported memory in unit tests.
 
 Status: implemented ([#159](https://github.com/pyrlyn/runa/pull/159)), and the acceptance run is
 still to come: it is the first release, which only Ivan starts (`scripts/release.sh`, see
-[`docs/install.md`](docs/install.md)). Verified without a release: the build with the version of a tag on macOS arm64 and Linux arm64
-(`scripts/build-release.sh`); the install script and the formula against archives packed the way
+[`docs/install.md`](docs/install.md)). Verified without a release: the build with the version of
+a tag on macOS arm64 and Linux arm64 (`scripts/build-release.sh`); the install script and the
+formula against archives packed the way
 the release packs them (`app/integration/install.sh`, a CI step), on macOS and under `dash`; the
 install script on Linux arm64 in a Fedora container, up to the missing `libcrypt.so.1` it then
 names. Not verified, because each needs the workflows on `main` or a release: a run of `bump.yml`
@@ -786,9 +788,42 @@ script and Homebrew formula install a working `runa`, and `runa --version` match
 
 ### Phase 11: hardening
 
+Status: done ([#160](https://github.com/pyrlyn/runa/pull/160)), except Windows, which waits for
+the answer to question 2 of [section 13](#13-risks-and-open-questions): `mingwX64` still only
+compiles, behind `-Pruna.mingw=true`, and has no llama.cpp build, no CI job and no archive.
+
 - Windows (`mingwX64`) support if still wanted; fuzz-style property tests for the GGUF parser and
   the argument parser; performance pass on start-up time (target: `runa --version` < 20 ms,
   `runa ls` < 100 ms warm); documentation in `docs/` (getting started, commands, API).
+
+What was done:
+
+- **Property tests.** Both draw their cases from a seeded `kotlin.random.Random`, so a failure
+  names the seed that brings it back, and neither needs a library. `GgufFuzzTest`: what the
+  writer of `:gguf` writes is read back the same (500 headers, also with every array skipped),
+  and 4,000 damaged headers and arbitrary bytes are read or refused with `GgufFormatException`,
+  never with anything else. `CliFuzzTest`: 3,000 command lines, made from the command tree of
+  the CLI itself and from one working line for each thing runa does, damaged a little; each
+  exits with 0, 2 or 3 against the fake daemon, never with the stack trace of an unexpected
+  error. A run of 20,000 found nothing either.
+- **A bug the GGUF work found.** The reader checked each tensor's element count and not their
+  sum, so a header with two tensors of `Long.MAX_VALUE` elements had a negative parameter count.
+  The sum is checked now.
+- **Start-up time**, release executables, 200 runs after a warm-up:
+
+  | | `runa --version` | `runa ls`, 1 model | `runa ls`, 50 models |
+  | --- | --- | --- | --- |
+  | macOS arm64 (`hyperfine -N`) | 8.6 ms ± 0.4 | 9.5 ms ± 0.7 | 16.1 ms ± 0.9 |
+  | Linux arm64, Ubuntu 24.04 container (shell loop) | 11.3 ms | 12.3 ms | not measured |
+
+  Both targets are met with room, so nothing was changed, and no test holds the numbers: a
+  timing on a shared CI runner fails for reasons that are not runa's. Linux x86-64 was not
+  measured; there is no such machine here.
+- **Documentation.** [`docs/getting-started.md`](docs/getting-started.md) goes from the
+  installation to a served model. [`docs/commands.md`](docs/commands.md) is the `--help` of every
+  command; `CommandsReferenceTest` writes it and fails when it is out of date, so it cannot drift
+  from the CLI. The API is [`docs/openai.md`](docs/openai.md) of phase 6. The README lists all of
+  `docs/`.
 
 ## 9. Testing strategy
 

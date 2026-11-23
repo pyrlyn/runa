@@ -71,7 +71,19 @@ private class Reader(
             val value = value(GgufType.of(source.readIntLe()), depth = 0)
             if (metadata.put(key, value) != null) throw GgufFormatException("Duplicate metadata key $key")
         }
-        val tensors = List(tensorCount) { tensor() }
+        var weights = 0L
+        val tensors =
+            List(tensorCount) {
+                tensor().also {
+                    // Each count fits a Long, and their sum must too: it is the parameter count.
+                    if (weights >
+                        Long.MAX_VALUE - it.elementCount
+                    ) {
+                        throw GgufFormatException("The tensors hold an implausible number of weights")
+                    }
+                    weights += it.elementCount
+                }
+            }
         return GgufHeader(version, metadata, tensors)
     }
 

@@ -182,6 +182,18 @@ class GgufReaderTest {
             .writeIntLe(0)
             .writeLongLe(0)
         assertEquals("Tensor t has an implausible shape", failure(overflowingShape.readByteString()))
+
+        val overflowingSum = header(2, 0)
+        repeat(2) {
+            overflowingSum
+                .writeLongLe(1)
+                .writeUtf8("t")
+                .writeIntLe(1)
+                .writeLongLe(Long.MAX_VALUE)
+                .writeIntLe(0)
+                .writeLongLe(0)
+        }
+        assertEquals("The tensors hold an implausible number of weights", failure(overflowingSum.readByteString()))
     }
 
     @Test
