@@ -9,21 +9,25 @@ public data class GgufSplitPart(
     val stem: String,
     val index: Int,
     val total: Int,
+    /** The extension as the file spells it: `.gguf`, `.GGUF`, ... Its siblings are spelled the same. */
+    val extension: String = GGUF_EXTENSION,
 ) {
     /** True when [index] is one of the [total] parts; `-00000-of-00000` or `-00003-of-00002` is not. */
     public val isValid: Boolean get() = total >= 1 && index in 1..total
 
     /** The file name of part [index] of the same model. */
-    public fun fileName(index: Int): String = "$stem-${pad(index)}-of-${pad(total)}$GGUF_EXTENSION"
+    public fun fileName(index: Int): String = "$stem-${pad(index)}-of-${pad(total)}$extension"
 
     private fun pad(number: Int) = number.toString().padStart(5, '0')
 
     public companion object {
-        private val PATTERN = Regex("(.+)-(\\d{5})-of-(\\d{5})\\.gguf", RegexOption.IGNORE_CASE)
+        private val PATTERN = Regex("(.+)-(\\d{5})-of-(\\d{5})(\\.gguf)", RegexOption.IGNORE_CASE)
 
         /** Null when [fileName] is not a part of a split model. */
         public fun parse(fileName: String): GgufSplitPart? =
-            PATTERN.matchEntire(fileName)?.destructured?.let { (stem, index, total) -> GgufSplitPart(stem, index.toInt(), total.toInt()) }
+            PATTERN.matchEntire(fileName)?.destructured?.let { (stem, index, total, extension) ->
+                GgufSplitPart(stem, index.toInt(), total.toInt(), extension)
+            }
 
         /**
          * True when [indices], the part numbers of files that share a stem and a total, are

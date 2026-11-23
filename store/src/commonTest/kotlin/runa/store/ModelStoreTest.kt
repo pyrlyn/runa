@@ -187,6 +187,13 @@ class ModelStoreTest {
     }
 
     @Test
+    fun inspectFindsTheSiblingsOfAnUpperCaseSplitModel() {
+        val first = write(root / "Big-Q4_K_M-00001-of-00002.GGUF")
+        val second = write(root / "Big-Q4_K_M-00002-of-00002.GGUF")
+        assertEquals(listOf(first, second), store.inspect(first).files)
+    }
+
+    @Test
     fun inspectRefusesAPartNumberOutsideItsTotal() {
         for (name in listOf("big-00000-of-00000.gguf", "big-00001-of-00000.gguf", "big-00003-of-00002.gguf")) {
             val message = assertFailsWith<UserInputError> { store.inspect(write(root / name)) }.message.orEmpty()

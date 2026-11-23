@@ -27,6 +27,13 @@ class GgufFileNameTest {
     }
 
     @Test
+    fun siblingNamesKeepTheExtensionAsTheFileSpellsIt() {
+        assertEquals("Big-00002-of-00002.GGUF", GgufSplitPart.parse("Big-00001-of-00002.GGUF")?.fileName(2))
+        assertEquals("big-00001-of-00002.Gguf", GgufSplitPart.parse("big-00002-of-00002.Gguf")?.fileName(1))
+        assertEquals("Big", ggufStem("Big-00001-of-00002.GGUF"))
+    }
+
+    @Test
     fun aPartNumberOutsideItsTotalIsNotAValidPart() {
         assertTrue(GgufSplitPart.parse("big-00001-of-00001.gguf")!!.isValid)
         assertTrue(GgufSplitPart.parse("big-00002-of-00002.gguf")!!.isValid)
