@@ -38,6 +38,8 @@ internal data class StatusView(
     @SerialName("loaded_instances") val loadedInstances: Int? = null,
     /** What `runa server start` opened. */
     val server: ServerDescription? = null,
+    /** Null when the daemon's log goes elsewhere, for example to the terminal it was started in. */
+    @SerialName("log_file") val logFile: String? = null,
 ) {
     constructor(daemon: DaemonConnection) : this(
         running = true,
@@ -48,16 +50,18 @@ internal data class StatusView(
         engine = daemon.status.engine,
         loadedInstances = daemon.status.loadedInstances,
         server = daemon.status.server,
+        logFile = daemon.status.logFile,
     )
 
     fun describe(): String {
         if (!running || engine == null) return "The runa daemon is not running"
-        return """
-            The runa daemon is running on $address (pid $pid, runa $version, up ${formatSeconds(uptimeSeconds ?: 0)})
-            Engine: ${engine.name} ${engine.version} (${engine.accelerators.joinToString(", ")})
-            Loaded models: $loadedInstances
-            Server: ${(server ?: ServerDescription()).describe()}
-            """.trimIndent()
+        return listOfNotNull(
+            "The runa daemon is running on $address (pid $pid, runa $version, up ${formatSeconds(uptimeSeconds ?: 0)})",
+            "Engine: ${engine.name} ${engine.version} (${engine.accelerators.joinToString(", ")})",
+            "Loaded models: $loadedInstances",
+            "Server: ${(server ?: ServerDescription()).describe()}",
+            logFile?.let { "Log: $it" },
+        ).joinToString("\n")
     }
 }
 
@@ -94,9 +98,10 @@ internal class DaemonCommand : CliktCommand(name = "daemon") {
         """
         Start and stop the background process that keeps models loaded
 
-        `load`, `unload`, `ps` and `server` talk to the daemon, and `load`, `ps` and `server start` start it
-        when it does not run.
-        It listens on a loopback port of its own choosing; its log is logs/daemon.log in runa's directory.
+        `load`, `unload`, `ps`, `chat`, `server` and `log stream` talk to the daemon; `load`, `ps`, `chat`,
+        `server start` and `log stream` start it when it does not run.
+        It listens on a loopback port of its own choosing. `daemon status` says where its log is; a log
+        file of 10 MB is put aside, and the last three of those are kept.
         """.trimIndent()
 
     override fun run() = Unit

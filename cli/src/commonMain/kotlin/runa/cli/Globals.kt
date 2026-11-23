@@ -8,6 +8,7 @@ import runa.cli.output.JsonRenderer
 import runa.cli.output.Renderer
 import runa.config.ConfigFile
 import runa.config.ConfigKey
+import runa.config.ConfigKind
 import runa.config.ConfigResolver
 import runa.config.DaemonSettings
 import runa.core.GpuOffload
@@ -74,6 +75,7 @@ internal class Globals(
             modelsDir = store.modelsDir,
             port = config.resolve(ConfigKey.PORT).value?.toInt(),
             logLevel = logLevel,
+            logPrompts = config.resolve(ConfigKey.LOG_PROMPTS).value == "true",
             contextLength = config.resolve(ConfigKey.CONTEXT_LENGTH).value?.toInt(),
             gpu = GpuOffload.parse(config.resolve(ConfigKey.GPU).value.orEmpty()) ?: GpuOffload.Max,
             ttl =
@@ -85,7 +87,18 @@ internal class Globals(
         )
 
     /** The global flags among [keys] that were given, as arguments for another `runa` process. */
-    fun flagArguments(vararg keys: ConfigKey): List<String> = keys.flatMap { key -> flags[key]?.let { listOf(key.flag, it) }.orEmpty() }
+    fun flagArguments(vararg keys: ConfigKey): List<String> =
+        keys.flatMap { key ->
+            val value = flags[key]
+            when {
+                value == null -> emptyList()
+
+                // A switch has no value: it is there or it is not.
+                key.kind == ConfigKind.BOOL -> listOfNotNull(key.flag.takeIf { value == "true" })
+
+                else -> listOf(key.flag, value)
+            }
+        }
 
     /** [jsonHere] is a command's own `--json`, so both `runa --json ls` and `runa ls --json` work. */
     fun wantsJson(jsonHere: Boolean = false): Boolean = json || jsonHere

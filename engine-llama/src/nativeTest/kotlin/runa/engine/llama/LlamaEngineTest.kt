@@ -259,6 +259,24 @@ class LlamaEngineTest {
         }
 
     @Test
+    fun renderShowsWhatTheModelReads() =
+        withTestModel { model ->
+            assertEquals("1, 2, 3", model.render(Prompt.Text("1, 2, 3")))
+            val rendered = model.render(Prompt.Chat(listOf(ChatMessage(ChatRole.SYSTEM, "Be brief."), question)))
+            assertContains(rendered, "Be brief.")
+            assertContains(rendered, question.content)
+            // The template put its own marks around the messages.
+            assertTrue(rendered.length > "Be brief.".length + question.content.length, rendered)
+            // Rendering leaves the model as it was: it still answers.
+            assertTrue(
+                model
+                    .generate(chat("Say hello.", maxTokens = 4))
+                    .toCompletion()
+                    .stats.completionTokens > 0,
+            )
+        }
+
+    @Test
     fun cancellingTheCollectorLeavesTheModelUsable() =
         withTestModel { model ->
             val flow = model.generate(chat("Count from 1 to 30.", maxTokens = null))

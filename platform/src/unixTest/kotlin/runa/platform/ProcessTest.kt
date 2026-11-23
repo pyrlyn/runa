@@ -59,6 +59,28 @@ class ProcessTest {
     }
 
     @Test
+    fun standardOutputMovesToAnotherFile() {
+        val first = directory / "first.log"
+        val second = directory / "second.log"
+        FileSystem.SYSTEM.createDirectories(directory)
+        // In a child, so that the output of the test run itself stays where it is.
+        val code =
+            exitCodeOfChild {
+                appendStandardOutputTo(first)
+                println("one")
+                val wasFirst = standardOutputIs(first) && !standardOutputIs(second)
+                appendStandardOutputTo(second)
+                println("two")
+                if (wasFirst && standardOutputIs(second) && !standardOutputIs(first)) OUTPUT_MOVED else OUTPUT_ELSEWHERE
+            }
+        assertEquals(OUTPUT_MOVED, code)
+        assertEquals("one\n", FileSystem.SYSTEM.read(first) { readUtf8() })
+        assertEquals("two\n", FileSystem.SYSTEM.read(second) { readUtf8() })
+        assertEquals("600", mode(second))
+        assertFalse(standardOutputIs(directory / "no-such-file"))
+    }
+
+    @Test
     fun anotherProcessCannotTakeAHeldLock() {
         val path = directory / "lock"
         val lock = assertNotNull(FileLock.tryAcquire(path))
@@ -122,5 +144,7 @@ class ProcessTest {
     private companion object {
         const val LOCK_REFUSED = 7
         const val LOCK_TAKEN = 8
+        const val OUTPUT_MOVED = 9
+        const val OUTPUT_ELSEWHERE = 10
     }
 }

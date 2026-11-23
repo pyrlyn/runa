@@ -2,9 +2,11 @@ Usage: runa daemon [<options>] <command> [<args>]...
 
   Start and stop the background process that keeps models loaded
 
-  `load`, `unload`, `ps` and `server` talk to the daemon, and `load`, `ps` and
-  `server start` start it when it does not run. It listens on a loopback port
-  of its own choosing; its log is logs/daemon.log in runa's directory.
+  `load`, `unload`, `ps`, `chat`, `server` and `log stream` talk to the daemon;
+  `load`, `ps`, `chat`, `server start` and `log stream` start it when it does
+  not run. It listens on a loopback port of its own choosing. `daemon status`
+  says where its log is; a log file of 10 MB is put aside, and the last three
+  of those are kept.
 
 Options:
   -h, --help  Show this message and exit

@@ -12,10 +12,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import okio.Path.Companion.toPath
 import runa.client.DaemonClient
 import runa.core.LogLevel
 import runa.engine.testing.FakeEngine
 import runa.store.StoreListing
+import kotlin.time.Instant
 import kotlin.time.TimeSource
 import io.ktor.client.engine.cio.CIO as ClientCIO
 
@@ -28,6 +30,7 @@ internal class TestDaemon(
     val http: HttpClient,
     /** What the daemon logged, without the timestamps. */
     val log: List<String>,
+    val daemonLog: DaemonLog,
     val shutdownRequested: () -> Boolean,
 ) {
     fun client(token: String? = TOKEN) = DaemonClient(ClientCIO.create(), url, token)
@@ -52,8 +55,11 @@ internal class TestDaemon(
     companion object {
         const val TOKEN = "0123456789abcdef"
 
-        /** What the `created` fields say. */
+        /** What the `created` fields say, and the time of every line of the log: [TIME]. */
         const val NOW = 1_700_000_000L
+        const val TIME = "2023-11-14T22:13:20Z"
+
+        const val LOG_FILE = "/state/logs/daemon.log"
 
         /** How many conversations this daemon remembers: few, so a test can make it forget one. */
         const val CONVERSATIONS = 3
@@ -78,12 +84,14 @@ internal suspend fun freePort(): Int {
 
 internal fun withDaemon(
     models: StoreListing = listing,
+    /** Whether this daemon writes what its models read and write into its log. */
+    logPrompts: Boolean = false,
     block: suspend TestDaemon.() -> Unit,
 ) = runBlocking {
     val engine = FakeEngine()
     val timers = CoroutineScope(SupervisorJob())
     val lines = mutableListOf<String>()
-    val log = DaemonLog(LogLevel.INFO) { lines += it.substringAfter(' ') }
+    val log = DaemonLog(LogLevel.INFO, logPrompts, now = { Instant.fromEpochSeconds(TestDaemon.NOW) }) { lines += it.substringAfter(' ') }
     val registry = ModelRegistry(engine, { models }, modelsDir, timers)
     val access = Access(TestDaemon.TOKEN)
     val failures = Failures(log)
@@ -106,6 +114,7 @@ internal fun withDaemon(
             port = { port },
             started = TimeSource.Monotonic.markNow(),
             log = log,
+            logFile = TestDaemon.LOG_FILE.toPath(),
             requestShutdown = { shutdown = true },
         )
     val server = embeddedServer(CIO, port = 0, host = LOOPBACK) { api.install(this, Listener.PRIVATE) }
@@ -117,7 +126,7 @@ internal fun withDaemon(
                 .resolvedConnectors()
                 .first()
                 .port
-        TestDaemon("http://$LOOPBACK:$port", engine, registry, public, http, lines) { shutdown }.block()
+        TestDaemon("http://$LOOPBACK:$port", engine, registry, public, http, lines, log) { shutdown }.block()
     } finally {
         http.close()
         public.stop()

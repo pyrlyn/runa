@@ -17,7 +17,6 @@ import runa.core.api.ChatMark
 import runa.core.api.ChatRequest
 import runa.core.api.ChatResponse
 import runa.core.api.ChatStarted
-import runa.core.api.ChatStats
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.engine.Completion
@@ -25,8 +24,6 @@ import runa.engine.GenerationEvent
 import runa.engine.GenerationRequest
 import runa.engine.Prompt
 import runa.engine.toCompletion
-import kotlin.math.roundToLong
-import kotlin.time.DurationUnit
 
 /**
  * `POST /api/v1/chat`, which `runa chat` talks to: a conversation that the daemon remembers, so
@@ -63,9 +60,9 @@ internal class ChatApi(
         registry.useNamed(request.model) { id, model ->
             val turn = Turn(id, Conversation(systemPrompt, messages), request.store)
             if (request.stream) {
-                call.respondEvents(model.generate(generation), turn, failures)
+                call.respondEvents(log.watch(ENDPOINT, id, model, generation), turn, failures)
             } else {
-                val result = turn.result(model.generate(generation).toCompletion())
+                val result = turn.result(log.watch(ENDPOINT, id, model, generation).toCompletion())
                 call.respondJson(DaemonJson, ChatResponse.serializer(), result)
             }
         }
@@ -129,19 +126,10 @@ internal class ChatApi(
                 } else {
                     null
                 }
-            val stats = completion.stats
-            log.report("chat", model, stats)
             return ChatResponse(
                 modelInstanceId = model,
                 output = listOf(ChatResponse.Output(ChatResponse.MESSAGE, completion.text)),
-                stats =
-                    ChatStats(
-                        inputTokens = stats.promptTokens,
-                        totalOutputTokens = stats.completionTokens,
-                        tokensPerSecond = rounded(stats.tokensPerSecond, 100),
-                        timeToFirstTokenSeconds = rounded(stats.timeToFirstToken.toDouble(DurationUnit.SECONDS), 1_000),
-                        stopReason = completion.reason.id,
-                    ),
+                stats = chatStats(completion.stats, completion.reason),
                 responseId = responseId,
             )
         }
@@ -157,10 +145,7 @@ internal class ChatApi(
         const val TEXT = "text"
         const val RESPONSE_PREFIX = "resp_"
 
-        /** More digits than this are noise, and fewer keep the JSON readable. */
-        fun rounded(
-            value: Double,
-            steps: Int,
-        ) = (value * steps).roundToLong() / steps.toDouble()
+        /** What the log calls this endpoint. */
+        const val ENDPOINT = "chat"
     }
 }

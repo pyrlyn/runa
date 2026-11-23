@@ -34,6 +34,7 @@ class DaemonApiTest {
                 assertEquals(url.substringAfterLast(':').toInt(), status.port)
                 assertEquals("fake", status.engine.name)
                 assertEquals(0, status.loadedInstances)
+                assertEquals(TestDaemon.LOG_FILE, status.logFile)
             }
         }
 

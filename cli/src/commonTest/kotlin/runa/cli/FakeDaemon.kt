@@ -34,6 +34,7 @@ import runa.core.api.InstanceDescription
 import runa.core.api.LoadProgress
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
+import runa.core.api.LogEvent
 import runa.core.api.MemoryEstimateDescription
 import runa.core.api.ModelDescription
 import runa.core.api.ModelList
@@ -104,7 +105,7 @@ internal class FakeDaemon(
             )
         }
         val body = request.body.toByteArray().decodeToString()
-        requests += "${request.method.value} $path $body".trim()
+        requests += "${request.method.value} ${request.url.encodedPathAndQuery} $body".trim()
         return when (path) {
             DaemonRoutes.MODELS -> {
                 json(
@@ -139,6 +140,10 @@ internal class FakeDaemon(
                 serve(DaemonJson.decodeFromString(ServerRequest.serializer(), body))
             }
 
+            DaemonRoutes.LOGS -> {
+                logs(request.url.parameters[DaemonRoutes.LOGS_SOURCE], request.url.parameters[DaemonRoutes.LOGS_FILTER])
+            }
+
             DaemonRoutes.SHUTDOWN -> {
                 running = false
                 server = ServerDescription()
@@ -153,7 +158,30 @@ internal class FakeDaemon(
     }
 
     private fun status() =
-        DaemonStatus(version, PID, port, uptimeSeconds = 125, EngineDescription("fake", "0", listOf("cpu")), instances.size, server)
+        DaemonStatus(
+            version,
+            PID,
+            port,
+            uptimeSeconds = 125,
+            EngineDescription("fake", "0", listOf("cpu")),
+            instances.size,
+            server,
+            logFile = LOG_FILE,
+        )
+
+    /** A log that has [LOG] in it and then ends, as the log of a daemon that stops. */
+    private fun MockRequestHandleScope.logs(
+        source: String?,
+        filter: String?,
+    ): HttpResponseData {
+        val events = LOG.filter { (source == null || it.source == source) && (filter == null || it.type == filter) }
+        return respond(
+            "event: ${DaemonRoutes.EVENT_LISTENING}\ndata: {}\n\n: keep-alive\n\n" +
+                events.joinToString("") { event(DaemonRoutes.EVENT_LOG, LogEvent.serializer(), it) },
+            HttpStatusCode.OK,
+            headersOf(HttpHeaders.ContentType, "text/event-stream"),
+        )
+    }
 
     private fun MockRequestHandleScope.serve(request: ServerRequest): HttpResponseData {
         val asked = ServerDescription(request.running, request.bind, request.port, request.cors, request.apiKey != null)
@@ -288,5 +316,36 @@ internal class FakeDaemon(
         ) = ModelDescription(key, "llm", "Tiny", "llama", key.substringAfter('@'), 494_000_000, size, 32_768, emptyList())
 
         val MODELS = listOf(model(ALPHA, 398_000_000), model(BETA, 676_000_000))
+
+        /** Not under the test's own directory, which has another name in every run. */
+        const val LOG_FILE = "/state/logs/daemon.log"
+
+        private const val TIME = "2026-01-02T03:04:05Z"
+
+        /** One event of every kind. */
+        val LOG =
+            listOf(
+                LogEvent(TIME, LogEvent.SERVER, LogEvent.LOG, "Loaded $ALPHA as '$ALPHA' in 15 ms", level = "info"),
+                LogEvent(TIME, LogEvent.RUNTIME, LogEvent.LOG, "llama_context: n_ctx = 4096", level = "debug"),
+                LogEvent(
+                    TIME,
+                    LogEvent.MODEL,
+                    LogEvent.INPUT,
+                    "<|user|>\nWhat is the weather?\n<|assistant|>\n",
+                    model = ALPHA,
+                    endpoint = "chat",
+                ),
+                LogEvent(
+                    TIME,
+                    LogEvent.MODEL,
+                    LogEvent.OUTPUT,
+                    "Let me look.",
+                    model = ALPHA,
+                    endpoint = "chat",
+                    toolCalls = listOf(LogEvent.ToolCall("get_weather", "{\"city\":\"Oslo\"}")),
+                    stats = ChatStats(7, 3, 12.5, 0.25, "tool_calls"),
+                ),
+                LogEvent(TIME, LogEvent.SERVER, LogEvent.REQUEST, "POST /api/v1/chat 200 310 ms", level = "debug"),
+            )
     }
 }

@@ -152,13 +152,12 @@ internal class OpenAiApi(
         options: StreamOptions?,
         shape: Shape,
     ) {
-        if (!stream) {
-            val completion = model.generate(generation).toCompletion()
-            call.respondText(shape.whole(completion), ContentType.Application.Json)
-            log.report(shape.name, shape.model, completion.stats)
-            return
+        val events = log.watch(shape.name, shape.model, model, generation)
+        if (stream) {
+            call.respondEvents(events, Events(shape, options), failures)
+        } else {
+            call.respondText(shape.whole(events.toCompletion()), ContentType.Application.Json)
         }
-        call.respondEvents(model.generate(generation), Events(shape, options), failures)
     }
 
     private suspend fun embed(
@@ -325,10 +324,8 @@ internal class OpenAiApi(
 
         override fun toolArguments(arguments: GenerationEvent.ToolCallArguments) = frames(shape.toolArguments(arguments))
 
-        override suspend fun finished(event: GenerationEvent.Finished): List<String> {
-            log.report(shape.name, shape.model, event.stats)
-            return frames(shape.closing(event.reason), shape.usage(event.stats).takeIf { options?.includeUsage == true }, DONE)
-        }
+        override suspend fun finished(event: GenerationEvent.Finished) =
+            frames(shape.closing(event.reason), shape.usage(event.stats).takeIf { options?.includeUsage == true }, DONE)
 
         // As OpenAI sends a failure: the last event, and no [DONE] after it.
         override fun failed(error: ApiError) = frames(DaemonJson.encodeToString(ApiError.serializer(), error))

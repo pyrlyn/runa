@@ -113,6 +113,29 @@ internal class LlamaModel(
         return withContext(serial) { native { tokens(text, addSpecial = false).toList() } }
     }
 
+    override suspend fun render(prompt: Prompt): String {
+        checkOpen()
+        return when (prompt) {
+            is Prompt.Text -> {
+                prompt.text
+            }
+
+            // The template is a property of the model, not of the context: a generation may be running.
+            is Prompt.Chat -> {
+                withContext(serial) {
+                    native {
+                        val turn = turn(Sampling(), prompt)
+                        try {
+                            opening(turn).prompt
+                        } finally {
+                            runa_turn_free(turn)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun generate(request: GenerationRequest): Flow<GenerationEvent> =
         flow {
             checkOpen()
@@ -174,7 +197,7 @@ internal class LlamaModel(
         val opening =
             when (val prompt = request.prompt) {
                 is Prompt.Text -> TurnStart(prompt.text, stops = emptyList())
-                is Prompt.Chat -> native { turnStart(checkNotNull(runa_turn_start(turn)).toKString()) }
+                is Prompt.Chat -> native { opening(turn) }
             }
         val prompt = native { tokens(opening.prompt, addSpecial = true) }
         if (prompt.isEmpty()) throw UserInputError("The prompt is empty")
@@ -327,6 +350,9 @@ internal class LlamaModel(
                 runa_turn_init(model, templates(), chatRequest(chat).toString(), settings.ptr) ?: throw UserInputError(lastError())
             }
         }
+
+    /** The prompt of a chat's [turn], and where its answer ends. */
+    private fun opening(turn: CPointer<runa_turn>): TurnStart = turnStart(checkNotNull(runa_turn_start(turn)).toKString())
 
     /** The model's chat template. One that llama.cpp cannot read is replaced by ChatML, the most common format. */
     private fun templates(): CPointer<runa_chat> =

@@ -4,6 +4,7 @@ import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
+import kotlinx.cinterop.UnsafeNumber
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.cstr
@@ -28,10 +29,12 @@ import platform.posix.dup2
 import platform.posix.errno
 import platform.posix.execv
 import platform.posix.fork
+import platform.posix.fstat
 import platform.posix.getpid
 import platform.posix.lockf
 import platform.posix.open
 import platform.posix.setsid
+import platform.posix.stat
 import platform.posix.strerror
 import platform.posix.waitpid
 
@@ -75,6 +78,39 @@ public actual fun spawnDetached(
         waitpid(child, status.ptr, 0)
     }
 }
+
+@OptIn(ExperimentalForeignApi::class)
+public actual fun standardOutputIs(path: Path): Boolean =
+    memScoped {
+        val file = alloc<stat>()
+        stat(path.toString(), file.ptr) == 0 && sameFile(STDOUT_FILENO, file)
+    }
+
+@OptIn(ExperimentalForeignApi::class)
+public actual fun appendStandardOutputTo(path: Path) {
+    val errorsFollow =
+        memScoped {
+            val output = alloc<stat>()
+            fstat(STDOUT_FILENO, output.ptr) == 0 && sameFile(STDERR_FILENO, output)
+        }
+    val descriptor = open(path.toString(), O_WRONLY or O_CREAT or O_APPEND, OWNER_READ_WRITE)
+    if (descriptor < 0) throw IOException("cannot open $path: ${strerror(errno)?.toKString()}")
+    // dup2 swaps a descriptor in one step: nothing written meanwhile is lost, it lands in one file or the other.
+    dup2(descriptor, STDOUT_FILENO)
+    if (errorsFollow) dup2(descriptor, STDERR_FILENO)
+    platform.posix.close(descriptor)
+}
+
+/** True when [descriptor] is open on [file]: the same inode of the same device. */
+@OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
+private fun sameFile(
+    descriptor: Int,
+    file: stat,
+): Boolean =
+    memScoped {
+        val open = alloc<stat>()
+        fstat(descriptor, open.ptr) == 0 && open.st_dev == file.st_dev && open.st_ino == file.st_ino
+    }
 
 public actual fun restrictToOwner(path: Path) {
     val directory = FileSystem.SYSTEM.metadataOrNull(path)?.isDirectory == true

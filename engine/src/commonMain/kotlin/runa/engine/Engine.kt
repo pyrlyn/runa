@@ -66,6 +66,14 @@ public interface LoadedModel : AutoCloseable {
     public suspend fun tokenize(text: String): List<Int>
 
     /**
+     * The text the model reads for [prompt]: a chat goes through the model's template, with its tools
+     * and the opening of the answer. For whoever wants to see it; [generate] does not need it.
+     *
+     * @throws runa.core.UserInputError when the template does not take the chat.
+     */
+    public suspend fun render(prompt: Prompt): String
+
+    /**
      * Generates a completion as a cold flow: nothing runs until it is collected, and cancelling
      * the collector stops generation between two tokens. Unless cancelled, the flow ends with
      * exactly one [GenerationEvent.Finished].

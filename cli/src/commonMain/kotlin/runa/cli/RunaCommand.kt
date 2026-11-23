@@ -20,6 +20,7 @@ import runa.cli.commands.DaemonProcessCommand
 import runa.cli.commands.GetCommand
 import runa.cli.commands.ImportCommand
 import runa.cli.commands.LoadCommand
+import runa.cli.commands.LogCommand
 import runa.cli.commands.LsCommand
 import runa.cli.commands.PsCommand
 import runa.cli.commands.RunCommand
@@ -37,6 +38,10 @@ internal class RunaCommand(
 ) : CliktCommand(name = "runa") {
     private val json by option("--json", help = "Print JSON instead of tables and text").flag()
     private val logLevel by option("--log-level", metavar = "level", help = "debug, info, warn or error (env: RUNA_LOG_LEVEL)")
+    private val logPrompts by option(
+        "--log-prompts",
+        help = "Write what the models read and write into the daemon's log file, for a daemon this command starts (env: RUNA_LOG_PROMPTS)",
+    ).flag()
     private val quiet by option("--quiet", help = "Print errors only").flag()
     private val verbose by option("--verbose", help = "Print debug detail").flag()
     private val host by option("--host", metavar = "host", help = "Daemon host (env: RUNA_HOST)")
@@ -63,6 +68,7 @@ internal class RunaCommand(
                 PsCommand(),
                 StatusCommand(),
                 ServerCommand(),
+                LogCommand(),
                 DaemonCommand(),
                 DaemonProcessCommand(),
                 VersionCommand(),
@@ -81,6 +87,7 @@ internal class RunaCommand(
         val flags =
             listOfNotNull(
                 logLevel?.let { ConfigKey.LOG_LEVEL to it },
+                ConfigKey.LOG_PROMPTS.takeIf { logPrompts }?.let { it to "true" },
                 host?.let { ConfigKey.HOST to it },
                 port?.let { ConfigKey.PORT to it },
                 backend?.let { ConfigKey.BACKEND to it },

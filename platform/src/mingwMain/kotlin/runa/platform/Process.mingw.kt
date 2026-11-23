@@ -30,6 +30,11 @@ public actual fun spawnDetached(
     output: Path,
 ): Unit = throw UnsupportedOperationException(NO_DAEMON)
 
+// Only a daemon moves its output to another file, and there is none here.
+public actual fun standardOutputIs(path: Path): Boolean = false
+
+public actual fun appendStandardOutputTo(path: Path): Unit = throw UnsupportedOperationException(NO_DAEMON)
+
 public actual fun restrictToOwner(path: Path) {
 }
 

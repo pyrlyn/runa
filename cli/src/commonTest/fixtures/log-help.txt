@@ -1,0 +1,10 @@
+Usage: runa log [<options>] <command> [<args>]...
+
+  Watch what the daemon and its models do
+
+Options:
+  -h, --help  Show this message and exit
+
+Commands:
+  stream  Print the daemon's log as it is written, until Ctrl-C or until the
+          daemon stops

@@ -17,7 +17,8 @@ pid_of_daemon() { "$runa" status --json | sed -n 's/.*"pid":\([0-9][0-9]*\).*/\1
 fail() {
   echo "FAILED: $1" >&2
   echo "--- daemon.log" >&2
-  cat "$home/logs/daemon.log" >&2 2>/dev/null || true
+  # The end of it: a test of the log's rotation fills the file.
+  tail -n 200 "$home/logs/daemon.log" >&2 2>/dev/null || true
   exit 1
 }
 
