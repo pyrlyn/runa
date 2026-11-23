@@ -51,7 +51,7 @@ target() {
 # GitHub answers /releases/latest with a redirect to the page of the newest release, so its tag
 # is read without the API and its rate limit.
 latest() {
-  url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$REPOSITORY/releases/latest")" ||
+  url="$(curl --proto '=https' -fsSLI -o /dev/null -w '%{url_effective}' "$REPOSITORY/releases/latest")" ||
     fail "cannot ask $REPOSITORY for its latest release"
   case "$url" in
     */releases/tag/v*) echo "${url##*/}" ;;
