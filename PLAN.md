@@ -751,6 +751,36 @@ estimate fits the reported memory in unit tests.
 
 ### Phase 10: packaging and release (section 11)
 
+Status: implemented ([#159](https://github.com/pyrlyn/runa/pull/159)), and the acceptance run is
+still to come: it is the first release, which only Ivan starts (`scripts/release.sh`, see
+[`docs/install.md`](docs/install.md)). Verified without a release: the build with the version of a tag on macOS arm64 and Linux arm64
+(`scripts/build-release.sh`); the install script and the formula against archives packed the way
+the release packs them (`app/integration/install.sh`, a CI step), on macOS and under `dash`; the
+install script on Linux arm64 in a Fedora container, up to the missing `libcrypt.so.1` it then
+names. Not verified, because each needs the workflows on `main` or a release: a run of `bump.yml`
+and `release.yml`, the macOS codesigning and notarization, the Homebrew installation, the
+`releases/latest` path of the install script.
+
+What differs from section 11:
+
+- A release is not started by pushing a tag. The shared `bump.yml` of pyrlyn/ci makes the version
+  pull request, merges it when its checks pass, tags the merged commit, creates the draft release
+  and dispatches `release.yml`, a caller of the shared `release.yml`; a tag made with the
+  workflow token would start no `push` workflow anyway.
+- The archives are `runa-<tag>-<triple>.tar.gz` (`runa-v1.2.3-aarch64-apple-darwin.tar.gz`), the
+  names the shared workflow gives, and the checksums are one `SHA256SUMS` file.
+- Both Linux targets are built on the x86-64 runner: Kotlin/Native has no compiler for a Linux
+  arm64 host. The arm64 executable first runs in the `verify` job, after the release is out.
+- The version of a release is the `version` of `gradle.properties`, written by the release
+  commit; `-Pversion` from the tag overrides it, so the executable always reports its tag.
+- The Linux system libraries are declared, not removed: [`docs/install.md`](docs/install.md)
+  lists them, and the install script names them when runa does not start.
+- The formula is the release's `runa.rb`, installed through a local tap; there is no tap
+  repository.
+- Not done: `ketch.toml` and the git-cliff changelog, which section 11 puts after the first
+  release (the release notes are GitHub's generated ones); a Windows archive, since `mingwX64`
+  only compiles (phase 11).
+
 Acceptance: a tagged release produces signed archives for every enabled target, the install
 script and Homebrew formula install a working `runa`, and `runa --version` matches the tag.
 
