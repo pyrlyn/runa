@@ -1,0 +1,12 @@
+Usage: runa config [<options>] <command> [<args>]...
+
+  Show and change settings (config.json)
+
+Options:
+  -h, --help  Show this message and exit
+
+Commands:
+  get   Print one setting, or all of them, after flags and environment are
+        applied
+  set   Save a setting to config.json
+  path  Print where config.json lives

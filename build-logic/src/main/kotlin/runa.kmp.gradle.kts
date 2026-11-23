@@ -12,6 +12,20 @@ kotlin {
         mingwX64()
     }
 
+    // unixMain/unixTest sit between native and linux/apple for POSIX-only code (fork, signals,
+    // posix_spawn) that mingwX64 cannot share.
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
+    applyDefaultHierarchyTemplate {
+        common {
+            group("native") {
+                group("unix") {
+                    group("linux")
+                    group("apple")
+                }
+            }
+        }
+    }
+
     compilerOptions {
         allWarningsAsErrors.set(true)
     }

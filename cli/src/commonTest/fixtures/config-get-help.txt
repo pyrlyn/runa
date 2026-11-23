@@ -1,0 +1,10 @@
+Usage: runa config get [<options>] [<key>]
+
+  Print one setting, or all of them, after flags and environment are applied
+
+Options:
+  --json      Print JSON
+  -h, --help  Show this message and exit
+
+Arguments:
+  <key>  A setting name, for example server.port
