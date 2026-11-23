@@ -115,7 +115,7 @@ internal class FakeLmStudio(
         val result =
             """{"model_instance_id":"$instance","output":[{"type":"reasoning","content":"Let me think."},""" +
                 """{"type":"message","content":${JsonPrimitive(head + tail)}}],"stats":{"input_tokens":9,"total_output_tokens":12,""" +
-                """"reasoning_output_tokens":7,"tokens_per_second":29.753900615398926,"time_to_first_token_seconds":0.212}$id}"""
+                """"reasoning_output_tokens":7,"tokens_per_second":29.75,"time_to_first_token_seconds":0.212}$id}"""
         val events =
             listOf(
                 """{"type":"chat.start","model_instance_id":"$instance"}""",
