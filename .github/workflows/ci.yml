@@ -31,7 +31,7 @@ jobs:
         uses: pyrlyn/ci/.github/actions/macos-runner@9675ff42a0e3785beabccb68b0e4fa65910de453 # main
         with:
           runner: ${{ vars.MACOS_RUNNER }}
-          value: '["macos-14"]'
+          value: '["macos-15"]'
 
   # `docs-only` is "true" when every changed file is documentation (.github/infra.yml); it fails
   # open, so a failed `config` runs everything.
