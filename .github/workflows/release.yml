@@ -150,7 +150,7 @@ jobs:
       # one-line install reads it.
       - name: Install with the install.sh of the release
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/install.sh" "$RELEASE/install.sh"
+          curl --proto '=https' -fsSL -o "$RUNNER_TEMP/install.sh" "$RELEASE/install.sh"
           cmp "$RUNNER_TEMP/install.sh" scripts/install.sh
           RUNA_VERSION="$TAG" RUNA_INSTALL_DIR="$RUNNER_TEMP/bin" sh <"$RUNNER_TEMP/install.sh"
           test "$("$RUNNER_TEMP/bin/runa" --version | cut -d' ' -f2)" = "${TAG#v}"
@@ -163,7 +163,7 @@ jobs:
           HOMEBREW_NO_INSTALL_FROM_API: "1"
         run: |
           brew tap-new --no-git runa/release
-          curl -fsSL -o "$(brew --repository runa/release)/Formula/runa.rb" "$RELEASE/runa.rb"
+          curl --proto '=https' -fsSL -o "$(brew --repository runa/release)/Formula/runa.rb" "$RELEASE/runa.rb"
           brew install runa/release/runa
           test "$("$(brew --prefix)/bin/runa" --version | cut -d' ' -f2)" = "${TAG#v}"
           brew test runa/release/runa
