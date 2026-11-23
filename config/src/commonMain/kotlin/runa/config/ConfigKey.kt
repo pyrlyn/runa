@@ -1,6 +1,7 @@
 package runa.config
 
 import runa.core.Backend
+import runa.core.GpuOffload
 import runa.core.LogLevel
 
 /** How a setting is stored in `config.json`. */
@@ -80,13 +81,4 @@ private fun oneOf(choices: List<String>): (String) -> String? =
         }
     }
 
-private fun gpuOffload(value: String): String? {
-    val ratio = value.toDoubleOrNull()
-    return if (value == "off" || value == "max" ||
-        (ratio != null && ratio in 0.0..1.0)
-    ) {
-        null
-    } else {
-        "must be off, max, or a number from 0 to 1"
-    }
-}
+private fun gpuOffload(value: String): String? = if (GpuOffload.parse(value) != null) null else "must be off, max, or a number from 0 to 1"
