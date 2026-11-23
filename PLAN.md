@@ -202,7 +202,7 @@ Kotlin Multiplatform project, Gradle Kotlin DSL, version catalog in `gradle/libs
 | `:config` | config file (`config.json`), env overrides, CLI preferences, discovery file read/write | `:core`, `:platform` |
 | `:gguf` | pure-Kotlin GGUF header and metadata parser (architecture, parameter count, context length, quantization, tensor sizes) | okio |
 | `:store` | on-disk model store: layout, index, `ls`, `import` (move/copy/hard link/symlink), integrity | `:gguf`, `:config` |
-| `:hub` | Hugging Face client: repo info, file list, GGUF variant selection, resumable downloads with SHA-256 check, auth token | Ktor client |
+| `:hub` | Hugging Face client: repo info, file list, GGUF variant selection, resumable downloads with SHA-256 check, auth token | `:core`, `:gguf`, Ktor client |
 | `:engine` | backend-agnostic inference API: `Engine` (memory estimate, load) and `LoadedModel` (tokenize, generate as a `Flow<GenerationEvent>`, embeddings), request, sampling and stats types | `:core`, okio, kotlinx.coroutines |
 | `:engine-llama` | the llama.cpp implementation of `Engine`: load model, context, sampling, chat templates, grammars; the only module with cinterop (added in phase 4) | `:engine`, cinterop `llama` |
 | `:daemon` | model registry (instances, TTL eviction, JIT load, parallel slots), HTTP server, SSE, log bus | `:engine` (interface only), `:store`, `:hub`, Ktor server |
@@ -282,6 +282,7 @@ with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cann
 | Path | Content |
 |---|---|
 | `~/.runa/models/<publisher>/<repo>/<file>.gguf` | model store (same layout as LM Studio so `runa import --symlink` can reuse `~/.lmstudio/models`) |
+| `~/.runa/models/.index.json` | cache of parsed GGUF headers, keyed by path, size and mtime; safe to delete |
 | `~/.runa/config.json` | defaults: models dir, server port/bind/cors, default context, gpu, ttl, backend |
 | `~/.runa/cli-pref.json` | last loaded models, one-time warnings |
 | `~/.runa/run/daemon.json` | discovery: `{pid, port, token, version}`, mode 0600 |
@@ -289,7 +290,8 @@ with `LM_API_TOKEN` as the bearer token. Commands that LM Studio's REST API cann
 
 On Linux, `XDG_DATA_HOME`/`XDG_CONFIG_HOME`/`XDG_STATE_HOME` are honoured; `RUNA_HOME`
 overrides everything. Environment: `RUNA_HOME`, `RUNA_HOST`, `RUNA_PORT`, `RUNA_BACKEND`,
-`RUNA_LOG_LEVEL`, `HF_TOKEN`, `LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
+`RUNA_LOG_LEVEL`, `HF_TOKEN`, `HF_ENDPOINT` (a Hub mirror; `https://`, or `http://` on localhost),
+`LM_API_TOKEN`. Precedence: flag > env > `config.json` > default.
 
 ## 8. Implementation phases
 
@@ -340,6 +342,13 @@ config precedence tests (flag > env > file > default).
 
 ### Phase 2: local model store, `ls`, `import`
 
+Status: done ([#146](https://github.com/pyrlyn/runa/pull/146)). Verified on macOS arm64 and in an
+Ubuntu 24.04 arm64 container; warm `ls` on 200 models takes 36 ms with the release binary. Tests use
+synthetic headers; the parser was also run on a GGUF file written by llama.cpp in phase 3
+(Qwen2.5 0.5B: `qwen2`, 494M parameters, context 32768, Q4_K_M). `import` derives `publisher/repo` as
+`<general.organization or "local">/<file name without the quantization>`; a variant is named by its
+quantization (`@q4_k_m`), or by its file name when two files of a repo share one.
+
 Steps:
 1. `:gguf` parser: header, metadata key/values, tensor infos; reads only the header (never maps
    the whole file); derives architecture, parameter count, quantization, context length,
@@ -356,6 +365,16 @@ corrupt/truncated-file test; `ls --json` schema test; import tests for all four 
 dir; `ls` on 200 models finishes under 200 ms with a warm index.
 
 ### Phase 3: Hugging Face download, `get`
+
+Status: done ([#147](https://github.com/pyrlyn/runa/pull/147)). Verified on macOS arm64 and in an
+Ubuntu 24.04 arm64 container, with tests on Ktor's `MockEngine`, with the real binaries against a
+local stand-in for the Hub (interrupt, resume, split model), and with one real download:
+`runa get bartowski/Qwen2.5-0.5B-Instruct-GGUF@Q4_K_M` (398 MB), interrupted once and resumed.
+The default variant is the largest quantized one whose files take at most 70 % of physical memory:
+`runtime survey` does not exist yet, and the engine's own estimate comes with phase 4. `mmproj`
+files are listed but not downloaded; pairing a projector with a vision model belongs to the phase
+that loads one. `HF_TOKEN` goes to the Hub's own origin only, never to the CDN host a download
+redirects to.
 
 Steps:
 1. `:hub`: resolve `owner/repo`, `owner/repo@quant`, or a full `https://huggingface.co/...` URL;
@@ -539,11 +558,14 @@ Risks:
   phase 0; split `runa __daemon` into its own executable target if needed.
 - **llama.cpp API churn.** Pin a tag, upgrade deliberately, keep `:engine-llama` the only module
   that sees the C API.
-- **CI does not run.** GitHub Actions has started no run in this repository since 2026-10-26 and
-  most workflows are disabled by hand, so no phase has been verified on a runner and linuxX64
-  tests have never run. Until that is fixed, each phase is checked on macOS arm64 and in a Linux
-  arm64 container (`./gradlew linkDebugTestLinuxArm64`, then run each `test.kexe` from its module
-  directory).
+- **CI runs only on Linux.** GitHub Actions runs again (it started no run between 2026-10-26 and
+  phase 3), and `ubuntu-24.04 (linuxX64)` passes for phases 1 to 3. The `macos-14 (macosArm64)` job
+  is cancelled before it starts: GitHub answers "The configuration 'macos-14-arm64-us-default' is
+  not supported", because the macOS 14 images were retired on 2026-11-02
+  ([actions/runner-images#15226](https://github.com/actions/runner-images/issues/15226), read
+  2026-11-22). Until the job gets a runner that exists (the hosted `macos-15` or `macos-26` label,
+  or the dedicated Mac through the `MACOS_RUNNER` variable), macOS arm64 is checked locally with
+  `./gradlew build`.
 - **Linux system dependencies** (found in phases 0 and 1). The binary is dynamically linked to
   glibc and needs `libcrypt.so.1` (Fedora: `libxcrypt-compat`), glibc's gconv modules for Ktor
   (openSUSE minimal images: `glibc-locale-base`) and a system CA bundle for HTTPS (Debian and

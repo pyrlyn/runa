@@ -25,7 +25,6 @@ class HelpGroupsTest {
             listOf(
                 Grouped("survey", CommandGroup.RUNTIME),
                 Grouped("server", CommandGroup.SERVE),
-                Grouped("ls", CommandGroup.LOCAL_MODELS),
                 Grouped("load", CommandGroup.LOCAL_MODELS),
             )
         val help = TestCli().run("--help", extraCommands = commands).stdout
@@ -33,8 +32,10 @@ class HelpGroupsTest {
         assertEquals(
             """
             |Local models:
-            |  ls    Does ls
-            |  load  Does load
+            |  get     Download a GGUF model from Hugging Face
+            |  ls      List the models on this machine
+            |  import  Add a GGUF file to the model store
+            |  load    Does load
             |
             |Serve:
             |  server  Does server

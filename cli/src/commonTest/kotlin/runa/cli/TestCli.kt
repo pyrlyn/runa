@@ -4,9 +4,11 @@ import com.github.ajalt.clikt.core.CoreCliktCommand
 import com.github.ajalt.mordant.rendering.AnsiLevel
 import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.terminal.TerminalRecorder
+import io.ktor.client.engine.HttpClientEngine
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
+import runa.gguf.GgufWriter
 import runa.platform.HostOs
 import runa.platform.systemEnv
 import kotlin.random.Random
@@ -27,8 +29,14 @@ internal class TestCli(
         vararg args: String,
         env: Map<String, String> = emptyMap(),
         extraCommands: List<CoreCliktCommand> = emptyList(),
+        /** Lines typed at prompts; giving any makes the terminal interactive. */
+        input: List<String> = emptyList(),
+        /** Answers the CLI's HTTP requests; without one, a request reaches the real network. */
+        http: HttpClientEngine? = null,
+        memory: Long? = 16_000_000_000,
     ): CliRun {
-        val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80)
+        val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = input.isNotEmpty())
+        recorder.inputLines = input.toMutableList()
         val environment =
             CliEnvironment(
                 version = "1.2.3",
@@ -37,13 +45,17 @@ internal class TestCli(
                 fileSystem = FileSystem.SYSTEM,
                 os = HostOs.LINUX,
                 terminal = Terminal(terminalInterface = recorder),
+                httpEngine = http,
+                physicalMemory = { memory },
             )
         val exitCode = runCli(args.toList(), environment, extraCommands)
         return CliRun(exitCode, recorder.stdout(), recorder.stderr())
     }
 
     companion object {
-        fun temporaryHome(): Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "runa-cli-test-${Random.nextLong().toULong()}"
+        // Canonical, because import resolves links and macOS keeps its temporary directory behind one.
+        fun temporaryHome(): Path =
+            FileSystem.SYSTEM.canonicalize(FileSystem.SYSTEM_TEMPORARY_DIRECTORY) / "runa-cli-test-${Random.nextLong().toULong()}"
     }
 }
 
@@ -62,4 +74,22 @@ internal fun assertGolden(
     }
     val expected = FileSystem.SYSTEM.read(file) { readUtf8() }
     assertEquals(expected, actual, "Output differs from $file; rerun with RUNA_UPDATE_GOLDEN=1 if the change is intended")
+}
+
+/** A header-only language model: all that `ls` and `import` ever read of a model file. */
+internal fun tinyLlama(fileType: Long = 15): GgufWriter =
+    GgufWriter()
+        .put("general.architecture", "llama")
+        .put("general.name", "Tiny Llama")
+        .put("general.file_type", fileType)
+        .put("llama.context_length", 2048)
+        .tensor("token_embd.weight", 1_000, 1_240)
+
+internal fun writeModel(
+    path: Path,
+    model: GgufWriter = tinyLlama(),
+): Path {
+    FileSystem.SYSTEM.createDirectories(checkNotNull(path.parent))
+    FileSystem.SYSTEM.write(path) { model.writeTo(this) }
+    return path
 }

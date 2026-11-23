@@ -1,0 +1,4 @@
+KEY               TYPE       PARAMS  ARCH        QUANT   SIZE
+acme/tiny@q4_k_m  llm        1.24M   llama       Q4_K_M  237 B
+acme/tiny@q8_0    llm        1.74M   llama       Q8_0    282 B
+Nomic/embed@f16   embedding  137M    nomic-bert  F16     156 B
