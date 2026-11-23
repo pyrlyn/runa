@@ -1,0 +1,12 @@
+Usage: runa runtime survey [<options>]
+
+  Show the CPU, the memory, the GPUs and what the engine computes on
+
+  It is the machine this command runs on, and it asks no daemon. A GPU counts
+  for `runa load` only when the engine was built to compute on it: the survey
+  says so when it was not. `runa load --auto` chooses by this survey, taken by
+  the daemon on its own machine.
+
+Options:
+  --json      Print JSON
+  -h, --help  Show this message and exit

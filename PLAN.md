@@ -714,6 +714,30 @@ examples); a manual run against a real LM Studio 0.4.x recorded in the PR.
 
 ### Phase 9: hardware survey and smarter loading
 
+Status: done ([#158](https://github.com/pyrlyn/runa/pull/158)), steps 1 and 2; step 3 is marked
+"later" and is still open. Verified on macOS arm64 with `./gradlew build` and by hand with
+Qwen2.5 0.5B Q4_K_M (`runtime survey`, `load --auto` alone, with `--estimate-only` and with a
+setting given), in an Ubuntu 24.04 arm64 container (the tests of every module, the survey and
+`load --auto` on the CPU), and with the integration scripts. Not verified: a Linux machine with a
+real NVIDIA or AMD card, where only the parsing is covered, by faked sources. How to use it is in
+[`docs/hardware.md`](docs/hardware.md).
+
+What differs from the steps below:
+
+- What the survey reads sits behind `SystemSources` in `:platform`, and the survey is common
+  code over it; `computeCoreCount()` is an answer of the same survey.
+- Whether a GPU counts comes from the engine (`llama_supports_gpu_offload()`, `gpu_offload` in
+  the survey and in `status --json`), not from the list of compiled-in backends: that list has
+  `blas` in it, which is no GPU.
+- `--auto` is resolved by the daemon, on its machine and with what it has loaded: the whole model
+  on the GPU with the longest context that fits (at most 32768), else a split on a card with
+  memory of its own, else the CPU. `--gpu` and `--context-length` that are given are kept. A
+  fifth of the memory, at least 2 GiB, stays free, and 10 % of a card's own memory.
+- Known limits: `nvidia-smi` runs without a timeout; several GPUs are planned as the largest one;
+  the Windows survey has the memory and the processors only; a load in progress is not counted.
+- Not done, as the step says: `--draft-model`, `--reasoning`, CUDA and Vulkan release variants,
+  `runa runtime ls`.
+
 Steps:
 1. `runa runtime survey [--json]`: CPU model and cores, RAM, GPU and VRAM (Metal
    `MTLDevice.recommendedMaxWorkingSetSize` on macOS; `nvidia-smi`/sysfs on Linux), compiled-in

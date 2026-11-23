@@ -61,6 +61,9 @@ internal class TestDaemon(
 
         const val LOG_FILE = "/state/logs/daemon.log"
 
+        /** The memory of the machine this daemon says it runs on, which has no GPU. */
+        const val MEMORY = 8L * 1024 * 1024 * 1024
+
         /** How many conversations this daemon remembers: few, so a test can make it forget one. */
         const val CONVERSATIONS = 3
     }
@@ -92,7 +95,7 @@ internal fun withDaemon(
     val timers = CoroutineScope(SupervisorJob())
     val lines = mutableListOf<String>()
     val log = DaemonLog(LogLevel.INFO, logPrompts, now = { Instant.fromEpochSeconds(TestDaemon.NOW) }) { lines += it.substringAfter(' ') }
-    val registry = ModelRegistry(engine, { models }, modelsDir, timers)
+    val registry = ModelRegistry(engine, { models }, modelsDir, timers, memory = { MachineMemory(systemBytes = TestDaemon.MEMORY) })
     val access = Access(TestDaemon.TOKEN)
     val failures = Failures(log)
     val public = PublicServer(access, log)

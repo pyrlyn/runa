@@ -31,6 +31,7 @@ import runa.engine.llama.cinterop.llama_init_from_model
 import runa.engine.llama.cinterop.llama_model_default_params
 import runa.engine.llama.cinterop.llama_model_free
 import runa.engine.llama.cinterop.llama_model_load_from_file
+import runa.engine.llama.cinterop.llama_supports_gpu_offload
 import runa.gguf.GgufFormatException
 import runa.gguf.GgufHeader
 import runa.gguf.GgufSplitPart
@@ -55,7 +56,12 @@ public class LlamaEngine(
         val backends =
             (0 until ggml_backend_reg_count().toInt())
                 .mapNotNull { ggml_backend_reg_name(ggml_backend_reg_get(it.toULong()))?.toKString()?.lowercase() }
-        EngineInfo(name = "llama.cpp", version = LlamaBuild.VERSION, accelerators = listOf(CPU) + (backends - CPU))
+        EngineInfo(
+            name = "llama.cpp",
+            version = LlamaBuild.VERSION,
+            accelerators = listOf(CPU) + (backends - CPU),
+            gpuOffload = llama_supports_gpu_offload(),
+        )
     }
 
     override fun estimateMemory(

@@ -58,7 +58,7 @@ internal data class StatusView(
         if (!running || engine == null) return "The runa daemon is not running"
         return listOfNotNull(
             "The runa daemon is running on $address (pid $pid, runa $version, up ${formatSeconds(uptimeSeconds ?: 0)})",
-            "Engine: ${engine.name} ${engine.version} (${engine.accelerators.joinToString(", ")})",
+            "Engine: ${engine.describe()}",
             "Loaded models: $loadedInstances",
             "Server: ${(server ?: ServerDescription()).describe()}",
             logFile?.let { "Log: $it" },

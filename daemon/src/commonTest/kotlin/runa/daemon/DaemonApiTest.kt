@@ -7,8 +7,11 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import runa.core.BackendError
+import runa.core.GpuOffload
+import runa.core.LoadConfig
 import runa.core.UserInputError
 import runa.core.api.ApiError
+import runa.core.api.AutoChoice
 import runa.core.api.DaemonJson
 import runa.core.api.DaemonRoutes
 import runa.core.api.LoadRequest
@@ -106,6 +109,26 @@ class DaemonApiTest {
                 assertFailsWith<UserInputError> { client.unload(UnloadRequest(instanceId = "other")) }
                 assertFailsWith<UserInputError> { client.unload(UnloadRequest()) }
                 assertEquals(1, engine.loads.size)
+            }
+        }
+
+    @Test
+    fun autoIsChosenByTheDaemonAndToldInTheAnswer() =
+        withDaemon {
+            client().use { client ->
+                val estimated = client.load(LoadRequest("alpha", auto = true, estimateOnly = true))
+                assertEquals(AutoChoice(contextLength = 2048, gpu = "off"), estimated.auto)
+                assertEquals(1_000 + 2048 * 2L, estimated.estimate?.totalBytes)
+                assertEquals(0, engine.loads.size)
+
+                val progress = mutableListOf<Float>()
+                val loaded = client.load(LoadRequest("alpha", auto = true, contextLength = 1024)) { progress += it }
+                assertEquals(AutoChoice(contextLength = 1024, gpu = "off"), loaded.auto)
+                assertEquals(LoadConfig(1024, GpuOffload.Off), engine.loads.single().config)
+                assertEquals("off", loaded.instance?.gpu)
+                assertTrue(progress.isNotEmpty())
+
+                assertNull(client.load(LoadRequest("beta")).auto)
             }
         }
 

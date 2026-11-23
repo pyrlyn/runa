@@ -18,6 +18,7 @@ import okio.Path
 import runa.config.DaemonInfo
 import runa.config.DiscoveryFile
 import runa.core.api.ApiError
+import runa.core.api.AutoChoice
 import runa.core.api.ChatDelta
 import runa.core.api.ChatEnded
 import runa.core.api.ChatFailed
@@ -196,9 +197,11 @@ internal class FakeDaemon(
         val model =
             MODELS.firstOrNull { it.key.contains(request.model, ignoreCase = true) }
                 ?: return invalid("No model matches '${request.model}' in /models")
-        val context = request.contextLength ?: 4096
+        // What it chooses is what it was given, and else more context than the default.
+        val auto = if (request.auto) AutoChoice(request.contextLength ?: AUTO_CONTEXT, request.gpu ?: "max") else null
+        val context = auto?.contextLength ?: request.contextLength ?: 4096
         val estimate = MemoryEstimateDescription(model.sizeBytes, context * 1_000L, model.sizeBytes + context * 1_000L)
-        if (request.estimateOnly) return json(LoadResponse.serializer(), LoadResponse(LoadResponse.ESTIMATED, estimate))
+        if (request.estimateOnly) return json(LoadResponse.serializer(), LoadResponse(LoadResponse.ESTIMATED, estimate, auto = auto))
         val id = request.identifier ?: model.key
         if (instances.any { it.id == id }) return invalid("A model is already loaded as '$id'; unload it or choose another identifier")
         val instance =
@@ -206,7 +209,7 @@ internal class FakeDaemon(
                 id,
                 model.key,
                 context,
-                request.gpu ?: "max",
+                auto?.gpu ?: request.gpu ?: "max",
                 request.parallel ?: 1,
                 request.ttl?.takeIf {
                     it > 0
@@ -215,7 +218,7 @@ internal class FakeDaemon(
                 model.sizeBytes,
             )
         instances += instance
-        val loaded = LoadResponse(LoadResponse.LOADED, estimate, instance, loadTimeSeconds = 1.5)
+        val loaded = LoadResponse(LoadResponse.LOADED, estimate, instance, loadTimeSeconds = 1.5, auto = auto)
         check(request.stream) { "the CLI always asks for progress" }
         val events =
             listOf(0f, 0.5f, 1f).joinToString("") { event(DaemonRoutes.EVENT_PROGRESS, LoadProgress.serializer(), LoadProgress(it)) } +
@@ -306,6 +309,9 @@ internal class FakeDaemon(
         const val TOKEN = "secret-token"
         const val ALPHA = "acme/alpha@Q4_K_M"
         const val BETA = "acme/beta@Q8_0"
+
+        /** The context it chooses for a load with `auto`. */
+        const val AUTO_CONTEXT = 8192
 
         /** The message that makes the model fail halfway through its answer. */
         const val FAILING = "fail"

@@ -107,6 +107,7 @@ class LmStudioCommandsTest {
             listOf("--parallel", "2"),
             listOf("--identifier", "x"),
             listOf("--estimate-only"),
+            listOf("--auto"),
         )) {
             val run = run("load", TINY, *args.toTypedArray())
 
@@ -284,6 +285,7 @@ class LmStudioCommandsTest {
                 listOf("server", "stop"),
                 listOf("server", "status"),
                 listOf("log", "stream"),
+                listOf("runtime", "survey"),
             )
         for (command in commands) {
             val run = run(*command.toTypedArray())

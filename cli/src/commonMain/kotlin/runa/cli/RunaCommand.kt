@@ -24,6 +24,7 @@ import runa.cli.commands.LogCommand
 import runa.cli.commands.LsCommand
 import runa.cli.commands.PsCommand
 import runa.cli.commands.RunCommand
+import runa.cli.commands.RuntimeCommand
 import runa.cli.commands.ServerCommand
 import runa.cli.commands.StatusCommand
 import runa.cli.commands.UnloadCommand
@@ -79,6 +80,7 @@ internal class RunaCommand(
                 LogCommand(),
                 DaemonCommand(),
                 DaemonProcessCommand(),
+                RuntimeCommand(),
                 VersionCommand(),
                 ConfigCommand(),
                 CompletionCommand(name = "completion", help = "Print a completion script for bash, zsh or fish"),

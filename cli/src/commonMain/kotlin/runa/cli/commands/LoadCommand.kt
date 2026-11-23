@@ -26,6 +26,9 @@ import runa.core.LoadConfig
 import runa.core.api.LoadRequest
 import runa.core.api.LoadResponse
 
+/** ` with context 8192, gpu max` after an estimate that `--auto` chose the settings of. */
+private fun LoadResponse.chosenNote(): String = auto?.let { " with context ${it.contextLength}, gpu ${it.gpu}" }.orEmpty()
+
 internal class LoadCommand : CliktCommand(name = "load") {
     private val globals by requireObject<Globals>()
     private val model by argument("model", help = "A model from `runa ls`; without one, a list to choose from is shown").optional()
@@ -49,6 +52,10 @@ internal class LoadCommand : CliktCommand(name = "load") {
         metavar = "seconds",
         help = "Unload the model after this long without a request; 0 for never (default: ttl in config.json)",
     ).long().restrictTo(min = 0)
+    private val auto by option(
+        "--auto",
+        help = "Let the daemon choose --gpu and --context-length by the memory of its machine; one that is given is kept",
+    ).flag()
     private val estimateOnly by option("--estimate-only", help = "Print the memory the model would take and load nothing").flag()
     private val json by option("--json", help = JSON_HELP).flag()
 
@@ -61,6 +68,12 @@ internal class LoadCommand : CliktCommand(name = "load") {
         The model stays in memory until `runa unload`, its --ttl or `runa daemon down`. The daemon is
         started when it does not run. A model can be loaded more than once: the second copy is called
         `key:2`, or what --identifier says. On success the identifier is printed.
+
+        With --auto the model goes to the GPU as a whole when it fits there, and gets the longest
+        context that still fits, up to 32768 tokens and to what it was trained with. A model too large
+        for the GPU is split between the GPU and the CPU, or runs on the CPU. A fifth of the memory
+        stays free, and what the loaded models hold counts. With --estimate-only it loads nothing and
+        tells what it would choose.
 
         With --backend lmstudio the model is loaded into LM Studio, which takes --context-length and
         none of the other settings.
@@ -80,13 +93,14 @@ internal class LoadCommand : CliktCommand(name = "load") {
                             ttl = ttl,
                             identifier = identifier,
                             estimateOnly = estimateOnly,
+                            auto = auto,
                         )
                     backend.load(terminal, request, showProgress = !forProgram)
                 }
             }
         response.loadedNote()?.let { note -> globals.log.info { note } }
         globals.renderer(json).render(response, LoadResponse.serializer()) {
-            Text(it.instance?.id ?: "Estimated memory: ${it.estimate?.describe() ?: "unknown"}")
+            Text(it.instance?.id ?: ("Estimated memory: ${it.estimate?.describe() ?: "unknown"}" + it.chosenNote()))
         }
     }
 }

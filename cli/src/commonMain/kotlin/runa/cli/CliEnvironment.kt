@@ -8,11 +8,13 @@ import runa.config.DaemonSettings
 import runa.core.LogLevel
 import runa.engine.Engine
 import runa.platform.FileLock
+import runa.platform.HardwareSurvey
 import runa.platform.HostOs
 import runa.platform.executablePath
 import runa.platform.hostOs
 import runa.platform.physicalMemoryBytes
 import runa.platform.spawnDetached
+import runa.platform.surveyHardware
 import runa.platform.systemEnv
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -31,6 +33,8 @@ public class CliEnvironment internal constructor(
     internal val httpEngine: HttpClientEngine?,
     /** The machine's memory in bytes, or null when the OS does not say. */
     internal val physicalMemory: () -> Long?,
+    /** What `runa runtime survey` shows of this machine. */
+    internal val hardware: () -> HardwareSurvey,
     /** Creates the engine `runa run` loads models with; it gets the sink for the engine's own log. */
     internal val engine: (log: (LogLevel, String) -> Unit) -> Engine,
     /** Runs the daemon in this process until it is told to stop, and returns its exit code. */
@@ -65,6 +69,7 @@ public class CliEnvironment internal constructor(
         terminal = null,
         httpEngine = null,
         ::physicalMemoryBytes,
+        ::surveyHardware,
         engine,
         daemon,
     )

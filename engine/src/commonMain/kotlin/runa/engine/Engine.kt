@@ -43,6 +43,8 @@ public data class EngineInfo(
     val version: String,
     /** The compute backends compiled in, for example `cpu` and `metal`. */
     val accelerators: List<String>,
+    /** True when the engine can put a model, or a part of one, on a GPU of this machine. */
+    val gpuOffload: Boolean,
 )
 
 public data class MemoryEstimate(

@@ -132,7 +132,7 @@ internal class DaemonApi(
             pid = pid,
             port = port(),
             uptimeSeconds = started.elapsedNow().inWholeSeconds,
-            engine = engine.info.let { EngineDescription(it.name, it.version, it.accelerators) },
+            engine = engine.info.let { EngineDescription(it.name, it.version, it.accelerators, it.gpuOffload) },
             loadedInstances = registry.instances().size,
             server = server.describe(),
             logFile = logFile?.toString(),
@@ -222,7 +222,8 @@ internal class DaemonApi(
         val spec = spec(request)
         when {
             request.estimateOnly -> {
-                call.respond(LoadResponse.serializer(), LoadResponse(LoadResponse.ESTIMATED, registry.estimate(spec)))
+                val estimate = registry.estimate(spec)
+                call.respond(LoadResponse.serializer(), LoadResponse(LoadResponse.ESTIMATED, estimate.memory, auto = estimate.auto))
             }
 
             request.stream -> {
@@ -272,7 +273,7 @@ internal class DaemonApi(
     }
 
     private fun loaded(result: LoadResult) =
-        LoadResponse(LoadResponse.LOADED, result.estimate, result.instance, result.loadTime.toDouble(DurationUnit.SECONDS))
+        LoadResponse(LoadResponse.LOADED, result.estimate, result.instance, result.loadTime.toDouble(DurationUnit.SECONDS), result.auto)
 
     private suspend fun unload(request: UnloadRequest): UnloadResponse {
         val id = request.instanceId
@@ -296,6 +297,7 @@ internal class DaemonApi(
             parallel = request.parallel,
             ttl = ttl?.seconds,
             identifier = request.identifier,
+            auto = request.auto,
         )
     }
 
