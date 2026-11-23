@@ -17,6 +17,13 @@ public data class RunaPaths(
 ) {
     val configFile: Path get() = configDir / "config.json"
     val modelsDir: Path get() = dataDir / "models"
+
+    /** `{pid, port, token, version}` of the running daemon; how the CLI finds it. */
+    val discoveryFile: Path get() = stateDir / "run" / "daemon.json"
+
+    /** Held by the daemon for as long as it runs, so there is never a second one. */
+    val daemonLockFile: Path get() = stateDir / "run" / "daemon.lock"
+    val daemonLogFile: Path get() = stateDir / "logs" / "daemon.log"
 }
 
 /**

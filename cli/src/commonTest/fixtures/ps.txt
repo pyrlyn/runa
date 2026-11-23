@@ -1,0 +1,3 @@
+ID                 MODEL              CONTEXT  GPU  PARALLEL SIZE   IDLE TTL
+acme/alpha@Q4_K_M  acme/alpha@Q4_K_M  4096     max  1        398 MB 0s   10m
+big                acme/beta@Q8_0     8192     0.5  4        676 MB 0s   never

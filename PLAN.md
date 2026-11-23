@@ -450,6 +450,41 @@ contract checks as the fake engine (`EngineContractTest`).
 
 ### Phase 5: daemon, `load`, `unload`, `ps`, `status`
 
+Status: done ([#149](https://github.com/pyrlyn/runa/pull/149)). Verified on macOS arm64 and in an Ubuntu 24.04
+arm64 container with Qwen2.5 0.5B Q4_K_M: the unit tests (the registry and the HTTP API against
+the fake engine, the commands against a fake daemon) and `app/integration/daemon.sh`, which runs
+the real executable: `status` starts nothing, `daemon up` twice, load, `ps --json`, unload, a 2 s
+TTL, a killed daemon replaced by the next command, SIGTERM and `daemon down`. CI runs the script
+on the release executable of each target. `mingwX64` only compiles.
+
+What differs from the steps below, and what is left:
+
+- A daemon is alive when it holds the lock on `run/daemon.lock`, not when its pid exists: a pid
+  can be reused, a lock cannot outlive its process. A discovery file whose lock is free is stale
+  and is removed by the next command, `status` included.
+- The daemon is detached with a double `fork` and `setsid` rather than `posix_spawn`: besides a
+  session of its own it must stop being a child of the CLI, so that nobody has to wait for it.
+  It does not run on Windows yet: there is no llama.cpp build to test it with (section 13), so
+  `load`, `ps` and `daemon up` fail there with a clear error.
+- `unload` does not start the daemon, although section 5.1 lists it: a daemon that does not run
+  has nothing to unload.
+- A daemon named by address (`--host` other than loopback, or `--port` with a token) is never
+  started and its discovery file is not read; it needs `--port` and `--token` or `RUNA_TOKEN`.
+  The daemon itself still listens on loopback only; another bind address comes with
+  `server start` in phase 6.
+- Of the global flags only `--port` and `--log-level` are passed on to a daemon started on demand.
+  `--port` against a daemon that already runs on another port is an error, not a restart.
+- JIT load needs a request that names a model, so it comes with the chat endpoints in phase 6.
+  `--parallel` limits how many requests use an instance at once; decoding them in parallel is
+  also phase 6.
+- Every request the daemon refuses is `400 invalid_request_error`, an unknown model included;
+  `404` waits for the OpenAI-compatible endpoints.
+- `load` without a model asks only on an interactive terminal; with `-y`, `--json` or a pipe it
+  names the choices and exits with 2, unless there is exactly one model.
+- The log is one file, `logs/daemon.log`, appended to; rotation is phase 7.
+- The first start of a new binary takes about 4 s (the Metal shaders, as in phase 4); later
+  starts take 0.2 to 0.5 s.
+
 Steps:
 1. `runa daemon up|down|status`: detach, discovery file with a random token, single-instance lock,
    graceful shutdown on SIGTERM/`/api/v1/shutdown`, stale discovery file detection (dead pid).

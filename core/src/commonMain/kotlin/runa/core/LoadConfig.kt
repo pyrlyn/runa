@@ -7,4 +7,12 @@ public data class LoadConfig(
     val gpu: GpuOffload = GpuOffload.Max,
     /** CPU threads for inference; null means the engine picks. */
     val threads: Int? = null,
-)
+) {
+    public companion object {
+        /**
+         * The context when nobody chose one: enough for a conversation, and small enough that no
+         * model's cache is a surprise. A model trained with less gets what it has.
+         */
+        public const val DEFAULT_CONTEXT_LENGTH: Int = 4096
+    }
+}

@@ -8,6 +8,7 @@ import io.ktor.client.engine.HttpClientEngine
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
+import runa.config.DaemonSettings
 import runa.engine.Engine
 import runa.engine.testing.FakeEngine
 import runa.gguf.GgufWriter
@@ -15,6 +16,7 @@ import runa.platform.HostOs
 import runa.platform.systemEnv
 import kotlin.random.Random
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 
 internal class CliRun(
     val exitCode: Int,
@@ -37,6 +39,10 @@ internal class TestCli(
         http: HttpClientEngine? = null,
         memory: Long? = 16_000_000_000,
         engine: Engine = FakeEngine(),
+        /** Stands in for the daemon process: its HTTP API, its start and its lock. */
+        daemon: FakeDaemon? = null,
+        /** What `runa __daemon` runs. */
+        daemonProcess: (DaemonSettings) -> Int = { error("this test does not run the daemon process") },
     ): CliRun {
         val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE, width = 80, inputInteractive = input.isNotEmpty())
         recorder.inputLines = input.toMutableList()
@@ -48,9 +54,14 @@ internal class TestCli(
                 fileSystem = FileSystem.SYSTEM,
                 os = HostOs.LINUX,
                 terminal = Terminal(terminalInterface = recorder),
-                httpEngine = http,
+                httpEngine = daemon?.http ?: http,
                 physicalMemory = { memory },
                 engine = { engine },
+                daemon = daemonProcess,
+                startDaemon = { arguments, _ -> checkNotNull(daemon) { "this test has no daemon to start" }.start(arguments) },
+                daemonLockHeld = { daemon?.running == true },
+                // Long enough for a fake that starts at once, short enough for one that never does.
+                daemonStartTimeout = 300.milliseconds,
             )
         val exitCode = runCli(args.toList(), environment, extraCommands)
         return CliRun(exitCode, recorder.stdout(), recorder.stderr())

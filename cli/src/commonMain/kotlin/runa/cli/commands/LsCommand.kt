@@ -20,6 +20,7 @@ import runa.cli.output.listing
 import runa.core.ModelKind
 import runa.core.UserInputError
 import runa.store.StoredModel
+import runa.store.isNamed
 
 /** One model file (or split set) in `runa ls --json`; the array has one of these per variant. */
 @Serializable
@@ -52,10 +53,6 @@ internal data class ModelEntry(
         files = model.files.map { it.toString() },
     )
 }
-
-/** True when [name] is this model's key, its `publisher/repo` or its repo alone; case does not matter. */
-internal fun StoredModel.isNamed(name: String): Boolean =
-    listOf(key.toString(), key.model, key.repo).any { it.equals(name, ignoreCase = true) }
 
 internal class LsCommand : CliktCommand(name = "ls") {
     private val globals by requireObject<Globals>()
