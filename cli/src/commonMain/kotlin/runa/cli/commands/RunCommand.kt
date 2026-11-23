@@ -130,6 +130,9 @@ internal class RunCommand : CliktCommand(name = "run") {
                                 if (streaming) terminal.rawPrint(event.text)
                             }
 
+                            // `runa run` gives the model no tools.
+                            is GenerationEvent.ToolCallStarted, is GenerationEvent.ToolCallArguments -> {}
+
                             is GenerationEvent.Finished -> {
                                 finished = event
                             }

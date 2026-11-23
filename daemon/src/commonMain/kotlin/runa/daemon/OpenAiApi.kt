@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import runa.core.ChatMessage
 import runa.core.ChatRole
+import runa.core.ToolCall
 import runa.core.UserInputError
 import runa.core.api.ApiError
 import runa.core.api.DaemonJson
@@ -24,6 +25,9 @@ import runa.engine.GenerationRequest
 import runa.engine.GenerationStats
 import runa.engine.LoadedModel
 import runa.engine.Prompt
+import runa.engine.ResponseFormat
+import runa.engine.Tool
+import runa.engine.ToolChoice
 import runa.engine.toCompletion
 import runa.store.StoreListing
 import kotlin.io.encoding.Base64
@@ -93,14 +97,22 @@ internal class OpenAiApi(
         call: ApplicationCall,
         request: ChatCompletionRequest,
     ) {
-        if (request.tools.hasItems() || request.functions.hasItems()) throw UserInputError("tools are not supported yet")
-        val format = (request.responseFormat as? JsonObject)?.get("type")?.let { string(it, "response_format.type") }
-        if (format != null && format != "text") throw UserInputError("response_format '$format' is not supported yet")
+        if (request.functions.hasItems()) throw UserInputError("functions is not supported: send them as tools")
         requireOneChoice(request.n)
         if (request.messages.isEmpty()) throw UserInputError("messages must not be empty")
+        val prompt =
+            Prompt.Chat(
+                messages = request.messages.map(::chatMessage),
+                tools = request.tools.orEmpty().map(::tool),
+                toolChoice = toolChoice(request.toolChoice),
+                parallelToolCalls = request.parallelToolCalls,
+                format = responseFormat(request.responseFormat),
+            )
+        // A choice the tools cannot meet is refused here, before a model is loaded for it.
+        prompt.offeredTools()
         val generation =
             GenerationRequest(
-                prompt = Prompt.Chat(request.messages.map(::chatMessage)),
+                prompt = prompt,
                 sampling =
                     samplingOf(request.temperature, request.topP, request.topK, request.minP, request.repeatPenalty, request.seed),
                 maxTokens = tokenLimit(request.maxCompletionTokens ?: request.maxTokens, "max_tokens"),
@@ -180,7 +192,73 @@ internal class OpenAiApi(
 
                 else -> ChatRole.entries.firstOrNull { it.id == message.role }
             } ?: throw UserInputError("'${message.role}' is not a message role")
-        return ChatMessage(role, text(message.content))
+        val calls =
+            message.toolCalls.orEmpty().map { call ->
+                ToolCall(call.id.orEmpty(), call.function.name ?: throw UserInputError("A tool call needs a name"), call.function.arguments)
+            }
+        return ChatMessage(role, text(message.content), calls, message.toolCallId)
+    }
+
+    private fun tool(spec: ChatCompletionRequest.ToolSpec): Tool {
+        if (spec.type != ChatToolCall.FUNCTION) throw UserInputError("Only function tools are supported, not '${spec.type}'")
+        val function = spec.function ?: throw UserInputError("A tool needs a function")
+        return Tool(function.name, function.description, function.parameters)
+    }
+
+    private fun toolChoice(choice: JsonElement?): ToolChoice =
+        when (choice) {
+            null, JsonNull -> {
+                ToolChoice.Auto
+            }
+
+            is JsonObject -> {
+                val name = (choice["function"] as? JsonObject)?.get("name") as? JsonPrimitive
+                ToolChoice.Named(name?.takeIf { it.isString }?.content ?: throw UserInputError("tool_choice must name a function"))
+            }
+
+            else -> {
+                when ((choice as? JsonPrimitive)?.takeIf { it.isString }?.content) {
+                    "auto" -> ToolChoice.Auto
+                    "none" -> ToolChoice.None
+                    "required" -> ToolChoice.Required
+                    else -> throw UserInputError("tool_choice must be auto, none, required or a function")
+                }
+            }
+        }
+
+    /** `json_object` may carry a `schema` of its own: llama.cpp's server takes that, and so do its clients. */
+    private fun responseFormat(format: JsonElement?): ResponseFormat {
+        val fields =
+            when (format) {
+                null, JsonNull -> return ResponseFormat.Text
+                is JsonObject -> format
+                else -> throw UserInputError("response_format must be an object")
+            }
+
+        fun schema(value: JsonElement?): JsonObject? =
+            when (value) {
+                null, JsonNull -> null
+                is JsonObject -> value
+                else -> throw UserInputError("A response_format schema must be an object")
+            }
+        return when (val type = fields["type"]?.let { string(it, "response_format.type") }) {
+            "text" -> {
+                ResponseFormat.Text
+            }
+
+            "json_object" -> {
+                ResponseFormat.Json(schema(fields["schema"]))
+            }
+
+            "json_schema" -> {
+                val described = fields["json_schema"] as? JsonObject
+                ResponseFormat.Json(schema(described?.get("schema")) ?: throw UserInputError("response_format.json_schema needs a schema"))
+            }
+
+            else -> {
+                throw UserInputError("response_format.type must be text, json_object or json_schema, not '$type'")
+            }
+        }
     }
 
     private fun text(content: JsonElement?): String =
@@ -243,6 +321,10 @@ internal class OpenAiApi(
 
         override fun text(text: String) = frames(shape.text(text))
 
+        override fun toolCall(call: GenerationEvent.ToolCallStarted) = frames(shape.toolCall(call))
+
+        override fun toolArguments(arguments: GenerationEvent.ToolCallArguments) = frames(shape.toolArguments(arguments))
+
         override suspend fun finished(event: GenerationEvent.Finished): List<String> {
             log.report(shape.name, shape.model, event.stats)
             return frames(shape.closing(event.reason), shape.usage(event.stats).takeIf { options?.includeUsage == true }, DONE)
@@ -267,6 +349,10 @@ internal class OpenAiApi(
 
         fun text(text: String): String
 
+        fun toolCall(call: GenerationEvent.ToolCallStarted): String = error("Only a chat has tools")
+
+        fun toolArguments(arguments: GenerationEvent.ToolCallArguments): String = error("Only a chat has tools")
+
         fun closing(reason: FinishReason): String
 
         /** The extra last event of `stream_options.include_usage`. */
@@ -281,7 +367,21 @@ internal class OpenAiApi(
         override val name = "chat.completions"
 
         override fun whole(completion: Completion): String {
-            val choice = ChatCompletion.Choice(0, ChatCompletion.Message(ChatRole.ASSISTANT.id, completion.text), completion.reason.id)
+            val calls =
+                completion.toolCalls.map {
+                    ChatToolCall(
+                        id = it.id,
+                        type = ChatToolCall.FUNCTION,
+                        function = ChatToolCall.Function(it.name, it.arguments),
+                    )
+                }
+            val message =
+                ChatCompletion.Message(
+                    role = ChatRole.ASSISTANT.id,
+                    content = completion.text.takeUnless { it.isEmpty() && calls.isNotEmpty() },
+                    toolCalls = calls.ifEmpty { null },
+                )
+            val choice = ChatCompletion.Choice(0, message, completion.reason.id)
             val answer = ChatCompletion(id, "chat.completion", created, model, listOf(choice), usageOf(completion.stats))
             return OpenAiJson.encodeToString(ChatCompletion.serializer(), answer)
         }
@@ -290,7 +390,15 @@ internal class OpenAiApi(
 
         override fun text(text: String) = chunk(ChatCompletionChunk.Delta(content = text))
 
+        override fun toolCall(call: GenerationEvent.ToolCallStarted) =
+            piece(ChatToolCall(call.index, call.id, ChatToolCall.FUNCTION, ChatToolCall.Function(call.name, arguments = "")))
+
+        override fun toolArguments(arguments: GenerationEvent.ToolCallArguments) =
+            piece(ChatToolCall(arguments.index, function = ChatToolCall.Function(arguments = arguments.text)))
+
         override fun closing(reason: FinishReason) = chunk(ChatCompletionChunk.Delta(), reason.id)
+
+        private fun piece(call: ChatToolCall) = chunk(ChatCompletionChunk.Delta(toolCalls = listOf(call)))
 
         override fun usage(stats: GenerationStats) = encode(emptyList(), usageOf(stats))
 

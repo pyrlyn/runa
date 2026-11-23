@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 // The JSON of the OpenAI-compatible API (https://platform.openai.com/docs/api-reference). Only the
 // daemon writes it: the clients are other people's programs.
@@ -65,7 +66,11 @@ internal data class ChatCompletionRequest(
     /** A string or a list of strings. */
     val stop: JsonElement? = null,
     val n: Int? = null,
-    val tools: JsonElement? = null,
+    val tools: List<ToolSpec>? = null,
+    /** `auto`, `none`, `required`, or `{"type": "function", "function": {"name": ...}}`. */
+    @SerialName("tool_choice") val toolChoice: JsonElement? = null,
+    @SerialName("parallel_tool_calls") val parallelToolCalls: Boolean? = null,
+    /** What `tools` replaced. */
     val functions: JsonElement? = null,
     @SerialName("response_format") val responseFormat: JsonElement? = null,
 ) {
@@ -74,7 +79,49 @@ internal data class ChatCompletionRequest(
         val role: String,
         /** A string, or a list of `{"type": "text", "text": ...}` parts. */
         val content: JsonElement? = null,
+        /** In an assistant's message: the calls it made. */
+        @SerialName("tool_calls") val toolCalls: List<ChatToolCall>? = null,
+        /** In a tool's message: the call it answers. */
+        @SerialName("tool_call_id") val toolCallId: String? = null,
     )
+
+    @Serializable
+    data class ToolSpec(
+        val type: String = "function",
+        val function: Function? = null,
+    ) {
+        @Serializable
+        data class Function(
+            val name: String,
+            val description: String? = null,
+            /** A JSON schema. */
+            val parameters: JsonObject? = null,
+        )
+    }
+}
+
+/**
+ * A tool call: in an assistant's message of a request, in an answer, and piece by piece in a stream.
+ * There the first piece of a call has its [id], [type] and name, and the later ones only arguments.
+ */
+@Serializable
+internal data class ChatToolCall(
+    /** Only in a stream: which call of the answer the piece belongs to. */
+    val index: Int? = null,
+    val id: String? = null,
+    val type: String? = null,
+    val function: Function,
+) {
+    @Serializable
+    data class Function(
+        val name: String? = null,
+        /** JSON as the model wrote it. Without a default, so that an empty one is written too. */
+        val arguments: String,
+    )
+
+    companion object {
+        const val FUNCTION = "function"
+    }
 }
 
 @Serializable
@@ -103,7 +150,9 @@ internal data class ChatCompletion(
     @Serializable
     data class Message(
         val role: String,
-        val content: String,
+        /** Null when the model only called tools. */
+        val content: String?,
+        @SerialName("tool_calls") val toolCalls: List<ChatToolCall>? = null,
     )
 }
 
@@ -129,6 +178,7 @@ internal data class ChatCompletionChunk(
     data class Delta(
         val role: String? = null,
         val content: String? = null,
+        @SerialName("tool_calls") val toolCalls: List<ChatToolCall>? = null,
     )
 }
 

@@ -8,18 +8,40 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import runa.core.ToolCall
 import runa.core.api.ApiError
 import runa.core.api.DaemonJson
 import runa.core.api.LoadRequest
+import runa.engine.Prompt
+import runa.engine.ResponseFormat
+import runa.engine.ToolChoice
 import runa.store.StoreListing
 import runa.testing.assertGolden
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** The OpenAI-compatible routes, as a client on a loopback socket sees them. */
 class OpenAiApiTest {
     private suspend fun TestDaemon.chat(body: String) = post(OpenAiRoutes.CHAT_COMPLETIONS, body)
+
+    private val tools =
+        """"tools": [{"type": "function", "function": {"name": "lookup", "description": "Finds a word",
+        "parameters": {"type": "object", "properties": {"word": {"type": "string"}}}}},
+        {"type": "function", "function": {"name": "add"}}]"""
+
+    /** What the engine was last asked. */
+    private fun TestDaemon.asked(): Prompt.Chat =
+        assertIs<Prompt.Chat>(
+            engine.loads
+                .single()
+                .model.requests
+                .last()
+                .prompt,
+        )
 
     private suspend fun HttpResponse.error(): ApiError.Detail = DaemonJson.decodeFromString(ApiError.serializer(), bodyAsText()).error
 
@@ -88,6 +110,68 @@ class OpenAiApiTest {
         }
 
     @Test
+    fun aModelCallsATool() =
+        withDaemon {
+            val response = chat("""{"model": "alpha", $tools, "messages": [{"role": "user", "content": "please lookup this"}]}""")
+            assertEquals(
+                """{"id":"chatcmpl-1","object":"chat.completion","created":1700000000,"model":"acme/alpha@Q4_K_M",""" +
+                    """"choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[""" +
+                    """{"id":"call_0","type":"function","function":{"name":"lookup","arguments":"{\"words\":4}"}}]},""" +
+                    """"finish_reason":"tool_calls"}],""" +
+                    """"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}""",
+                response.bodyAsText(),
+            )
+            val asked = asked()
+            assertEquals(listOf("lookup", "add"), asked.tools.map { it.name })
+            assertEquals(listOf("Finds a word", null), asked.tools.map { it.description })
+            assertEquals(
+                Json.parseToJsonElement("""{"type":"object","properties":{"word":{"type":"string"}}}""").jsonObject,
+                asked.tools.first().parameters,
+            )
+            assertEquals(ToolChoice.Auto, asked.toolChoice)
+            assertEquals(null, asked.parallelToolCalls)
+        }
+
+    @Test
+    fun toolCallsStreamPieceByPiece() =
+        withDaemon {
+            val response =
+                chat(
+                    """{"model": "alpha", "stream": true, "stream_options": {"include_usage": true}, $tools,
+                    "messages": [{"role": "user", "content": "add then lookup"}]}""",
+                )
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertGolden("chat-stream-tools.txt", response.bodyAsText())
+        }
+
+    @Test
+    fun aToolChoiceAndAResponseFormatReachTheModel() =
+        withDaemon {
+            suspend fun answer(fields: String): String {
+                val response = chat("""{"model": "alpha", "messages": [{"role": "user", "content": "Hi"}], $fields}""")
+                val text = response.bodyAsText()
+                assertEquals(HttpStatusCode.OK, response.status, text)
+                return text
+            }
+            assertTrue(""""name":"add"""" in answer("""$tools, "tool_choice": {"type": "function", "function": {"name": "add"}}"""))
+            assertEquals(ToolChoice.Named("add"), asked().toolChoice)
+            assertTrue(""""name":"lookup"""" in answer("""$tools, "tool_choice": "required", "parallel_tool_calls": false"""))
+            assertEquals(ToolChoice.Required, asked().toolChoice)
+            assertEquals(false, asked().parallelToolCalls)
+            assertTrue(""""content":"user: Hi"""" in answer("""$tools, "tool_choice": "none""""))
+            assertEquals(ToolChoice.None, asked().toolChoice)
+
+            assertTrue(""""content":"{\"echo\":\"user: Hi\"}"""" in answer(""""response_format": {"type": "json_object"}"""))
+            assertEquals(ResponseFormat.Json(), asked().format)
+            val schema = """{"type":"object","properties":{"word":{"type":"string"}}}"""
+            answer(""""response_format": {"type": "json_schema", "json_schema": {"name": "word", "strict": true, "schema": $schema}}""")
+            assertEquals(ResponseFormat.Json(Json.parseToJsonElement(schema).jsonObject), asked().format)
+            // llama.cpp's own way to send a schema.
+            answer(""""response_format": {"type": "json_object", "schema": $schema}""")
+            assertEquals(ResponseFormat.Json(Json.parseToJsonElement(schema).jsonObject), asked().format)
+        }
+
+    @Test
     fun aCompletionContinuesThePromptAsItIs() =
         withDaemon {
             val whole = post(OpenAiRoutes.COMPLETIONS, """{"model": "alpha", "prompt": "Once upon a time", "max_tokens": 3}""")
@@ -137,10 +221,15 @@ class OpenAiApiTest {
                 answer(
                     """{"model": "alpha", "stream": null, "stop": null, "temperature": null, "max_tokens": -1, "n": 1, "tools": [],
                     "response_format": {"type": "text"}, "user": "someone", "frequency_penalty": 0,
-                    "messages": [{"role": "user", "content": "one two"}, {"role": "assistant", "content": null},
+                    "messages": [{"role": "user", "content": "one two"},
+                    {"role": "assistant", "content": null, "tool_calls": [
+                        {"id": "call_1", "type": "function", "function": {"name": "add", "arguments": "{\"a\":40}"}}]},
                     {"role": "tool", "content": "42", "tool_call_id": "call_1"}]}""",
                 ),
             )
+            val (_, called, result) = asked().messages
+            assertEquals(listOf(ToolCall("call_1", "add", """{"a":40}""")), called.toolCalls)
+            assertEquals("call_1", result.toolCallId)
             assertEquals(1, engine.loads.size)
         }
 
@@ -148,8 +237,18 @@ class OpenAiApiTest {
     fun whatIsNotSupportedIsRefusedBeforeAnythingIsLoaded() =
         withDaemon {
             val user = """"messages": [{"role": "user", "content": "Hi"}]"""
-            assertRefused(chat("""{"model": "alpha", $user, "tools": [{"type": "function"}]}"""), "tools")
-            assertRefused(chat("""{"model": "alpha", $user, "response_format": {"type": "json_object"}}"""), "json_object")
+            assertRefused(chat("""{"model": "alpha", $user, "tools": [{"type": "function"}]}"""), "function")
+            assertRefused(chat("""{"model": "alpha", $user, "tools": [{"type": "retrieval"}]}"""), "retrieval")
+            assertRefused(chat("""{"model": "alpha", $user, "functions": [{"name": "add"}]}"""), "functions")
+            assertRefused(chat("""{"model": "alpha", $user, $tools, "tool_choice": "sometimes"}"""), "tool_choice")
+            assertRefused(
+                chat("""{"model": "alpha", $user, $tools, "tool_choice": {"type": "function", "function": {"name": "divide"}}}"""),
+                "divide",
+            )
+            assertRefused(chat("""{"model": "alpha", $user, "tool_choice": "required"}"""), "no tools")
+            assertRefused(chat("""{"model": "alpha", $user, "response_format": {"type": "xml"}}"""), "xml")
+            assertRefused(chat("""{"model": "alpha", $user, "response_format": {"type": "json_schema", "json_schema": {}}}"""), "schema")
+            assertRefused(chat("""{"model": "alpha", $user, "response_format": "json"}"""), "response_format")
             assertRefused(chat("""{"model": "alpha", $user, "n": 2}"""), "n must be 1")
             assertRefused(chat("""{"model": "alpha", $user, "max_tokens": 0}"""), "max_tokens")
             assertRefused(chat("""{"model": "alpha", $user, "temperature": -1}"""), "temperature")

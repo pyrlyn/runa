@@ -2,13 +2,17 @@ package runa.gradle
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
@@ -24,8 +28,8 @@ import java.nio.file.Files
 import javax.inject.Inject
 
 /**
- * Builds the static libraries of a vendored CMake project for one Kotlin/Native target, so that
- * cinterop can embed them into the klib.
+ * Builds the static libraries of a CMake project for one Kotlin/Native target, so that cinterop
+ * can embed them into the klib.
  *
  * Linux targets are compiled with the clang and the sysroot Kotlin/Native itself links against
  * (glibc 2.19 and the libstdc++ of GCC 8): objects from the host compiler expect a newer
@@ -42,9 +46,14 @@ abstract class CmakeStaticLibraries
         @get:Internal
         abstract val sourceDir: DirectoryProperty
 
-        /** What stands for the content of [sourceDir] in up-to-date checks: the pinned commit. */
+        /** What stands for the vendored sources in up-to-date checks: the pinned commit. */
         @get:Input
         abstract val sourceRevision: Property<String>
+
+        /** The sources [sourceRevision] does not stand for: the project's own. */
+        @get:InputFiles
+        @get:PathSensitive(PathSensitivity.RELATIVE)
+        abstract val sources: ConfigurableFileCollection
 
         /** A [KonanTarget] name, for example `linux_x64`. */
         @get:Input

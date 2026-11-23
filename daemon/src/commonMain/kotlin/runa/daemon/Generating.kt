@@ -35,6 +35,12 @@ internal interface EventFormat {
 
     fun text(text: String): List<String>
 
+    /** A tool call begins. Only an endpoint that gives the model tools is asked. */
+    fun toolCall(call: GenerationEvent.ToolCallStarted): List<String> = error("This endpoint gives the model no tools")
+
+    /** The next piece of a call's arguments. */
+    fun toolArguments(arguments: GenerationEvent.ToolCallArguments): List<String> = error("This endpoint gives the model no tools")
+
     /** The frames that end a generation. This is also where an endpoint learns that the answer is complete. */
     suspend fun finished(event: GenerationEvent.Finished): List<String>
 
@@ -74,6 +80,8 @@ internal suspend fun ApplicationCall.respondEvents(
             send(
                 when (event) {
                     is GenerationEvent.Text -> format.text(event.text)
+                    is GenerationEvent.ToolCallStarted -> format.toolCall(event)
+                    is GenerationEvent.ToolCallArguments -> format.toolArguments(event)
                     is GenerationEvent.Finished -> format.finished(event)
                 },
             )

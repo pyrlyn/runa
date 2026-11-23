@@ -1,0 +1,2 @@
+# What docs/examples/openai_client.py needs; CI installs exactly this (app/integration/openai.sh).
+openai==3.57.0
