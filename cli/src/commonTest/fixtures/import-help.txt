@@ -1,0 +1,16 @@
+Usage: runa import [<options>] <file>
+
+  Add a GGUF file to the model store
+
+Options:
+  --user-repo=<publisher/repo>  Name the model instead of deriving it from the
+                                file
+  --copy, --hard-link, --symlink
+                                Keep the original file and copy, hard link or
+                                symlink it instead (default: move)
+  --dry-run                     Show what would be done and change nothing
+  --json                        Print JSON
+  -h, --help                    Show this message and exit
+
+Arguments:
+  <file>  A .gguf file; any part of a split model brings all of its parts

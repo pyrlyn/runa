@@ -1,6 +1,7 @@
 package runa.cli
 
 import com.github.ajalt.mordant.terminal.Terminal
+import okio.Path.Companion.toPath
 import runa.cli.output.Diagnostics
 import runa.cli.output.HumanRenderer
 import runa.cli.output.JsonRenderer
@@ -11,6 +12,7 @@ import runa.config.ConfigResolver
 import runa.core.LogLevel
 import runa.platform.RunaPaths
 import runa.platform.resolveRunaPaths
+import runa.store.ModelStore
 
 /** The root command's parsed global options, shared with every subcommand through the Clikt context. */
 internal class Globals(
@@ -40,6 +42,13 @@ internal class Globals(
             }
         }
 
+    /** The model store at the configured `models_dir`. */
+    val store: ModelStore by lazy {
+        ModelStore(environment.fileSystem, checkNotNull(config.resolve(ConfigKey.MODELS_DIR).value).toPath())
+    }
+
     /** [jsonHere] is a command's own `--json`, so both `runa --json ls` and `runa ls --json` work. */
-    fun renderer(jsonHere: Boolean = false): Renderer = if (json || jsonHere) JsonRenderer(terminal) else HumanRenderer(terminal)
+    fun wantsJson(jsonHere: Boolean = false): Boolean = json || jsonHere
+
+    fun renderer(jsonHere: Boolean = false): Renderer = if (wantsJson(jsonHere)) JsonRenderer(terminal) else HumanRenderer(terminal)
 }

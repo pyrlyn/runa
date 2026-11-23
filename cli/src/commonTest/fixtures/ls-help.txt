@@ -1,0 +1,13 @@
+Usage: runa ls [<options>] [<key>]
+
+  List the models on this machine
+
+Options:
+  --llm        Show language models only
+  --embedding  Show embedding models only
+  --variants   Show one row per file instead of one per model
+  --json       Print JSON
+  -h, --help   Show this message and exit
+
+Arguments:
+  <key>  Show the variants of one model, for example publisher/repo

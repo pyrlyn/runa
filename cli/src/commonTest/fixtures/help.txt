@@ -14,6 +14,10 @@ Options:
   -v, --version        Show the version and exit
   -h, --help           Show this message and exit
 
+Local models:
+  ls      List the models on this machine
+  import  Add a GGUF file to the model store
+
 Commands:
   version     Print the runa version
   config      Show and change settings (config.json)
