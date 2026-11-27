@@ -1,4 +1,4 @@
-# runa
+<h1><img src="brand/logo/runa-mark.svg" width="32" height="32" alt="" align="absmiddle"> runa</h1>
 
 Local models from the terminal: download GGUF models, load them in a background daemon, serve
 them over an OpenAI-compatible API and chat with them, in one native binary.
